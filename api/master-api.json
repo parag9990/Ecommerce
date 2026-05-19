@@ -1,0 +1,989 @@
+{
+  "project": "scalable-ecommerce-platform",
+  "version": "1.0.0",
+  "style": {
+    "public_api": "REST through API Gateway",
+    "internal_api": "gRPC between services",
+    "browser_typed_api": "gRPC-Web through Envoy or gateway bridge"
+  },
+  "auth_requirements": {
+    "public": {
+      "required": false,
+      "description": "No access token required."
+    },
+    "buyer": {
+      "required": true,
+      "roles": ["buyer", "seller", "admin", "superadmin"],
+      "description": "Logged-in customer level access."
+    },
+    "seller": {
+      "required": true,
+      "roles": ["seller", "seller_manager", "seller_catalog_editor", "seller_order_manager", "superadmin"],
+      "description": "Seller-owned resource access."
+    },
+    "admin": {
+      "required": true,
+      "roles": ["admin", "operations_admin", "finance_admin", "catalog_admin", "superadmin"],
+      "description": "Platform admin access."
+    },
+    "superadmin": {
+      "required": true,
+      "roles": ["superadmin"],
+      "description": "Highest privilege platform access."
+    },
+    "webhook": {
+      "required": true,
+      "description": "Provider signature based auth, not JWT."
+    }
+  },
+  "rest_endpoints": [
+    {
+      "id": "auth.signup",
+      "method": "POST",
+      "path": "/api/v1/auth/signup",
+      "service": "auth-service",
+      "grpc": "AuthService.Register",
+      "auth": "public",
+      "request_schema": "SignupRequest",
+      "response_schema": "AuthSessionResponse"
+    },
+    {
+      "id": "auth.login",
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "service": "auth-service",
+      "grpc": "AuthService.Login",
+      "auth": "public",
+      "request_schema": "LoginRequest",
+      "response_schema": "AuthSessionResponse"
+    },
+    {
+      "id": "auth.refresh",
+      "method": "POST",
+      "path": "/api/v1/auth/refresh",
+      "service": "auth-service",
+      "grpc": "AuthService.RefreshToken",
+      "auth": "public",
+      "request_schema": "RefreshTokenRequest",
+      "response_schema": "TokenResponse"
+    },
+    {
+      "id": "auth.logout",
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "service": "auth-service",
+      "grpc": "AuthService.Logout",
+      "auth": "buyer",
+      "request_schema": "LogoutRequest",
+      "response_schema": "SuccessResponse"
+    },
+    {
+      "id": "auth.otp_send",
+      "method": "POST",
+      "path": "/api/v1/auth/otp/send",
+      "service": "auth-service",
+      "grpc": "AuthService.CreateOTPChallenge",
+      "auth": "public",
+      "request_schema": "SendOTPRequest",
+      "response_schema": "OTPChallengeResponse"
+    },
+    {
+      "id": "auth.otp_verify",
+      "method": "POST",
+      "path": "/api/v1/auth/otp/verify",
+      "service": "auth-service",
+      "grpc": "AuthService.VerifyOTP",
+      "auth": "public",
+      "request_schema": "VerifyOTPRequest",
+      "response_schema": "SuccessResponse"
+    },
+    {
+      "id": "auth.password_forgot",
+      "method": "POST",
+      "path": "/api/v1/auth/password/forgot",
+      "service": "auth-service",
+      "grpc": "AuthService.CreateOTPChallenge",
+      "auth": "public",
+      "request_schema": "ForgotPasswordRequest",
+      "response_schema": "OTPChallengeResponse"
+    },
+    {
+      "id": "auth.password_reset",
+      "method": "POST",
+      "path": "/api/v1/auth/password/reset",
+      "service": "auth-service",
+      "grpc": "AuthService.ResetPassword",
+      "auth": "public",
+      "request_schema": "ResetPasswordRequest",
+      "response_schema": "SuccessResponse"
+    },
+    {
+      "id": "user.me_get",
+      "method": "GET",
+      "path": "/api/v1/me",
+      "service": "user-service",
+      "grpc": "UserService.GetUser",
+      "auth": "buyer",
+      "request_schema": "Empty",
+      "response_schema": "UserProfile"
+    },
+    {
+      "id": "user.me_update",
+      "method": "PATCH",
+      "path": "/api/v1/me",
+      "service": "user-service",
+      "grpc": "UserService.UpdateUserProfile",
+      "auth": "buyer",
+      "request_schema": "UpdateUserProfileRequest",
+      "response_schema": "UserProfile"
+    },
+    {
+      "id": "user.addresses_list",
+      "method": "GET",
+      "path": "/api/v1/me/addresses",
+      "service": "user-service",
+      "grpc": "UserService.ListUserAddresses",
+      "auth": "buyer",
+      "request_schema": "PaginationRequest",
+      "response_schema": "AddressListResponse"
+    },
+    {
+      "id": "user.address_create",
+      "method": "POST",
+      "path": "/api/v1/me/addresses",
+      "service": "user-service",
+      "grpc": "UserService.CreateAddress",
+      "auth": "buyer",
+      "request_schema": "AddressInput",
+      "response_schema": "Address"
+    },
+    {
+      "id": "user.address_update",
+      "method": "PATCH",
+      "path": "/api/v1/me/addresses/{address_id}",
+      "service": "user-service",
+      "grpc": "UserService.UpdateAddress",
+      "auth": "buyer",
+      "request_schema": "AddressInput",
+      "response_schema": "Address"
+    },
+    {
+      "id": "user.address_delete",
+      "method": "DELETE",
+      "path": "/api/v1/me/addresses/{address_id}",
+      "service": "user-service",
+      "grpc": "UserService.DeleteAddress",
+      "auth": "buyer",
+      "request_schema": "IdPathRequest",
+      "response_schema": "SuccessResponse"
+    },
+    {
+      "id": "seller.profile_get",
+      "method": "GET",
+      "path": "/api/v1/sellers/me",
+      "service": "user-service",
+      "grpc": "UserService.GetSellerProfile",
+      "auth": "seller",
+      "request_schema": "Empty",
+      "response_schema": "SellerProfile"
+    },
+    {
+      "id": "seller.profile_update",
+      "method": "PATCH",
+      "path": "/api/v1/sellers/me",
+      "service": "user-service",
+      "grpc": "UserService.UpdateSellerProfile",
+      "auth": "seller",
+      "request_schema": "UpdateSellerProfileRequest",
+      "response_schema": "SellerProfile"
+    },
+    {
+      "id": "product.list",
+      "method": "GET",
+      "path": "/api/v1/products",
+      "service": "product-service",
+      "grpc": "ProductService.ListProducts",
+      "auth": "public",
+      "request_schema": "ProductListRequest",
+      "response_schema": "ProductListResponse"
+    },
+    {
+      "id": "product.detail",
+      "method": "GET",
+      "path": "/api/v1/products/{product_id}",
+      "service": "product-service",
+      "grpc": "ProductService.GetProduct",
+      "auth": "public",
+      "request_schema": "IdPathRequest",
+      "response_schema": "Product"
+    },
+    {
+      "id": "category.list",
+      "method": "GET",
+      "path": "/api/v1/categories",
+      "service": "product-service",
+      "grpc": "ProductService.ListCategories",
+      "auth": "public",
+      "request_schema": "Empty",
+      "response_schema": "CategoryListResponse"
+    },
+    {
+      "id": "seller.product_create",
+      "method": "POST",
+      "path": "/api/v1/seller/products",
+      "service": "product-service",
+      "grpc": "ProductService.CreateProduct",
+      "auth": "seller",
+      "request_schema": "ProductInput",
+      "response_schema": "Product"
+    },
+    {
+      "id": "seller.product_update",
+      "method": "PATCH",
+      "path": "/api/v1/seller/products/{product_id}",
+      "service": "product-service",
+      "grpc": "ProductService.UpdateProduct",
+      "auth": "seller",
+      "request_schema": "ProductInput",
+      "response_schema": "Product"
+    },
+    {
+      "id": "seller.product_publish",
+      "method": "POST",
+      "path": "/api/v1/seller/products/{product_id}/publish",
+      "service": "product-service",
+      "grpc": "ProductService.PublishProduct",
+      "auth": "seller",
+      "request_schema": "IdPathRequest",
+      "response_schema": "Product"
+    },
+    {
+      "id": "search.products",
+      "method": "GET",
+      "path": "/api/v1/search",
+      "service": "search-service",
+      "grpc": "SearchService.SearchProducts",
+      "auth": "public",
+      "request_schema": "SearchRequest",
+      "response_schema": "SearchResponse"
+    },
+    {
+      "id": "search.autocomplete",
+      "method": "GET",
+      "path": "/api/v1/search/autocomplete",
+      "service": "search-service",
+      "grpc": "SearchService.Autocomplete",
+      "auth": "public",
+      "request_schema": "AutocompleteRequest",
+      "response_schema": "AutocompleteResponse"
+    },
+    {
+      "id": "cart.get",
+      "method": "GET",
+      "path": "/api/v1/cart",
+      "service": "cart-service",
+      "grpc": "CartService.GetCart",
+      "auth": "buyer",
+      "request_schema": "Empty",
+      "response_schema": "Cart"
+    },
+    {
+      "id": "cart.add_item",
+      "method": "POST",
+      "path": "/api/v1/cart/items",
+      "service": "cart-service",
+      "grpc": "CartService.AddItem",
+      "auth": "buyer",
+      "request_schema": "CartItemInput",
+      "response_schema": "Cart"
+    },
+    {
+      "id": "cart.update_item",
+      "method": "PATCH",
+      "path": "/api/v1/cart/items/{item_id}",
+      "service": "cart-service",
+      "grpc": "CartService.UpdateItemQuantity",
+      "auth": "buyer",
+      "request_schema": "CartItemQuantityInput",
+      "response_schema": "Cart"
+    },
+    {
+      "id": "cart.remove_item",
+      "method": "DELETE",
+      "path": "/api/v1/cart/items/{item_id}",
+      "service": "cart-service",
+      "grpc": "CartService.RemoveItem",
+      "auth": "buyer",
+      "request_schema": "IdPathRequest",
+      "response_schema": "Cart"
+    },
+    {
+      "id": "cart.merge",
+      "method": "POST",
+      "path": "/api/v1/cart/merge",
+      "service": "cart-service",
+      "grpc": "CartService.MergeGuestCart",
+      "auth": "buyer",
+      "request_schema": "MergeCartRequest",
+      "response_schema": "Cart"
+    },
+    {
+      "id": "cart.coupon_preview",
+      "method": "POST",
+      "path": "/api/v1/cart/coupons/preview",
+      "service": "cart-service",
+      "grpc": "CartService.ApplyCouponPreview",
+      "auth": "buyer",
+      "request_schema": "CouponPreviewRequest",
+      "response_schema": "CouponPreviewResponse"
+    },
+    {
+      "id": "wishlist.get",
+      "method": "GET",
+      "path": "/api/v1/wishlist",
+      "service": "wishlist-service",
+      "grpc": "WishlistService.GetWishlist",
+      "auth": "buyer",
+      "request_schema": "Empty",
+      "response_schema": "Wishlist"
+    },
+    {
+      "id": "wishlist.add",
+      "method": "POST",
+      "path": "/api/v1/wishlist/items",
+      "service": "wishlist-service",
+      "grpc": "WishlistService.AddWishlistItem",
+      "auth": "buyer",
+      "request_schema": "WishlistItemInput",
+      "response_schema": "Wishlist"
+    },
+    {
+      "id": "wishlist.remove",
+      "method": "DELETE",
+      "path": "/api/v1/wishlist/items/{product_id}",
+      "service": "wishlist-service",
+      "grpc": "WishlistService.RemoveWishlistItem",
+      "auth": "buyer",
+      "request_schema": "IdPathRequest",
+      "response_schema": "Wishlist"
+    },
+    {
+      "id": "wishlist.move_to_cart",
+      "method": "POST",
+      "path": "/api/v1/wishlist/items/{product_id}/move-to-cart",
+      "service": "wishlist-service",
+      "grpc": "WishlistService.MoveToCart",
+      "auth": "buyer",
+      "request_schema": "IdPathRequest",
+      "response_schema": "Cart"
+    },
+    {
+      "id": "order.checkout",
+      "method": "POST",
+      "path": "/api/v1/orders/checkout",
+      "service": "order-service",
+      "grpc": "OrderService.CreateOrderFromCart",
+      "auth": "buyer",
+      "request_schema": "CheckoutRequest",
+      "response_schema": "CheckoutResponse"
+    },
+    {
+      "id": "order.list",
+      "method": "GET",
+      "path": "/api/v1/orders",
+      "service": "order-service",
+      "grpc": "OrderService.ListOrders",
+      "auth": "buyer",
+      "request_schema": "PaginationRequest",
+      "response_schema": "OrderListResponse"
+    },
+    {
+      "id": "order.detail",
+      "method": "GET",
+      "path": "/api/v1/orders/{order_id}",
+      "service": "order-service",
+      "grpc": "OrderService.GetOrder",
+      "auth": "buyer",
+      "request_schema": "IdPathRequest",
+      "response_schema": "Order"
+    },
+    {
+      "id": "order.cancel",
+      "method": "POST",
+      "path": "/api/v1/orders/{order_id}/cancel",
+      "service": "order-service",
+      "grpc": "OrderService.CancelOrder",
+      "auth": "buyer",
+      "request_schema": "CancelOrderRequest",
+      "response_schema": "Order"
+    },
+    {
+      "id": "seller.order.list",
+      "method": "GET",
+      "path": "/api/v1/seller/orders",
+      "service": "order-service",
+      "grpc": "OrderService.ListSellerOrders",
+      "auth": "seller",
+      "request_schema": "PaginationRequest",
+      "response_schema": "OrderListResponse"
+    },
+    {
+      "id": "seller.order.fulfillment",
+      "method": "PATCH",
+      "path": "/api/v1/seller/orders/{order_id}/fulfillment",
+      "service": "order-service",
+      "grpc": "OrderService.UpdateFulfillment",
+      "auth": "seller",
+      "request_schema": "FulfillmentUpdateRequest",
+      "response_schema": "Order"
+    },
+    {
+      "id": "payment.retry",
+      "method": "POST",
+      "path": "/api/v1/payments/{payment_id}/retry",
+      "service": "payment-service",
+      "grpc": "PaymentService.CreatePaymentIntent",
+      "auth": "buyer",
+      "request_schema": "RetryPaymentRequest",
+      "response_schema": "PaymentIntentResponse"
+    },
+    {
+      "id": "payment.refund",
+      "method": "POST",
+      "path": "/api/v1/payments/{payment_id}/refund",
+      "service": "payment-service",
+      "grpc": "PaymentService.RefundPayment",
+      "auth": "admin",
+      "request_schema": "RefundRequest",
+      "response_schema": "Refund"
+    },
+    {
+      "id": "payment.webhook",
+      "method": "POST",
+      "path": "/api/v1/webhooks/payments/{provider}",
+      "service": "payment-service",
+      "grpc": "PaymentService.HandleWebhook",
+      "auth": "webhook",
+      "request_schema": "PaymentWebhookRequest",
+      "response_schema": "SuccessResponse"
+    },
+    {
+      "id": "cms.dashboard_summary",
+      "method": "GET",
+      "path": "/api/v1/seller/dashboard/summary",
+      "service": "cms-service",
+      "grpc": "CMSService.GetSellerAnalytics",
+      "auth": "seller",
+      "request_schema": "DateRangeRequest",
+      "response_schema": "SellerAnalyticsResponse"
+    },
+    {
+      "id": "cms.coupon_list",
+      "method": "GET",
+      "path": "/api/v1/seller/coupons",
+      "service": "cms-service",
+      "grpc": "CMSService.ListCoupons",
+      "auth": "seller",
+      "request_schema": "PaginationRequest",
+      "response_schema": "CouponListResponse"
+    },
+    {
+      "id": "cms.coupon_create",
+      "method": "POST",
+      "path": "/api/v1/seller/coupons",
+      "service": "cms-service",
+      "grpc": "CMSService.CreateCoupon",
+      "auth": "seller",
+      "request_schema": "CouponInput",
+      "response_schema": "Coupon"
+    },
+    {
+      "id": "cms.coupon_update",
+      "method": "PATCH",
+      "path": "/api/v1/seller/coupons/{coupon_id}",
+      "service": "cms-service",
+      "grpc": "CMSService.UpdateCoupon",
+      "auth": "seller",
+      "request_schema": "CouponInput",
+      "response_schema": "Coupon"
+    },
+    {
+      "id": "cms.campaign_list",
+      "method": "GET",
+      "path": "/api/v1/seller/campaigns",
+      "service": "cms-service",
+      "grpc": "CMSService.ListCampaigns",
+      "auth": "seller",
+      "request_schema": "PaginationRequest",
+      "response_schema": "CampaignListResponse"
+    },
+    {
+      "id": "cms.campaign_create",
+      "method": "POST",
+      "path": "/api/v1/seller/campaigns",
+      "service": "cms-service",
+      "grpc": "CMSService.CreateCampaign",
+      "auth": "seller",
+      "request_schema": "CampaignInput",
+      "response_schema": "Campaign"
+    },
+    {
+      "id": "session.ingest",
+      "method": "POST",
+      "path": "/api/v1/sessions/events",
+      "service": "session-service",
+      "grpc": "SessionService.IngestEvent",
+      "auth": "public",
+      "request_schema": "SessionEventInput",
+      "response_schema": "AcceptedResponse"
+    },
+    {
+      "id": "analytics.live",
+      "method": "GET",
+      "path": "/api/v1/analytics/live",
+      "service": "session-service",
+      "grpc": "SessionService.GetLiveMetrics",
+      "auth": "admin",
+      "request_schema": "DateRangeRequest",
+      "response_schema": "LiveMetricsResponse"
+    },
+    {
+      "id": "analytics.sessions",
+      "method": "GET",
+      "path": "/api/v1/analytics/sessions",
+      "service": "session-service",
+      "grpc": "SessionService.ListSessions",
+      "auth": "admin",
+      "request_schema": "SessionListRequest",
+      "response_schema": "SessionListResponse"
+    },
+    {
+      "id": "analytics.journey",
+      "method": "GET",
+      "path": "/api/v1/analytics/sessions/{session_id}/journey",
+      "service": "session-service",
+      "grpc": "SessionService.GetJourney",
+      "auth": "admin",
+      "request_schema": "IdPathRequest",
+      "response_schema": "JourneyResponse"
+    },
+    {
+      "id": "analytics.funnels",
+      "method": "GET",
+      "path": "/api/v1/analytics/funnels",
+      "service": "session-service",
+      "grpc": "SessionService.GetFunnelReport",
+      "auth": "admin",
+      "request_schema": "FunnelReportRequest",
+      "response_schema": "FunnelReportResponse"
+    },
+    {
+      "id": "analytics.heatmaps",
+      "method": "GET",
+      "path": "/api/v1/analytics/heatmaps",
+      "service": "session-service",
+      "grpc": "SessionService.GetHeatmap",
+      "auth": "admin",
+      "request_schema": "HeatmapRequest",
+      "response_schema": "HeatmapResponse"
+    },
+    {
+      "id": "notification.preferences_get",
+      "method": "GET",
+      "path": "/api/v1/me/notification-preferences",
+      "service": "notification-service",
+      "grpc": "NotificationService.GetNotificationPreference",
+      "auth": "buyer",
+      "request_schema": "Empty",
+      "response_schema": "NotificationPreference"
+    },
+    {
+      "id": "notification.preferences_update",
+      "method": "PATCH",
+      "path": "/api/v1/me/notification-preferences",
+      "service": "notification-service",
+      "grpc": "NotificationService.UpdateNotificationPreference",
+      "auth": "buyer",
+      "request_schema": "NotificationPreferenceInput",
+      "response_schema": "NotificationPreference"
+    },
+    {
+      "id": "admin.users",
+      "method": "GET",
+      "path": "/api/v1/admin/users",
+      "service": "superadmin-service",
+      "grpc": "SuperadminService.ListUsersForAdmin",
+      "auth": "admin",
+      "request_schema": "AdminUserListRequest",
+      "response_schema": "AdminUserListResponse"
+    },
+    {
+      "id": "admin.user_status",
+      "method": "PATCH",
+      "path": "/api/v1/admin/users/{user_id}/status",
+      "service": "superadmin-service",
+      "grpc": "SuperadminService.UpdateUserStatus",
+      "auth": "admin",
+      "request_schema": "StatusUpdateRequest",
+      "response_schema": "SuccessResponse"
+    },
+    {
+      "id": "admin.sellers",
+      "method": "GET",
+      "path": "/api/v1/admin/sellers",
+      "service": "superadmin-service",
+      "grpc": "SuperadminService.ListSellersForAdmin",
+      "auth": "admin",
+      "request_schema": "AdminSellerListRequest",
+      "response_schema": "AdminSellerListResponse"
+    },
+    {
+      "id": "admin.seller_status",
+      "method": "PATCH",
+      "path": "/api/v1/admin/sellers/{seller_id}/status",
+      "service": "superadmin-service",
+      "grpc": "SuperadminService.UpdateSellerStatus",
+      "auth": "admin",
+      "request_schema": "StatusUpdateRequest",
+      "response_schema": "SuccessResponse"
+    },
+    {
+      "id": "admin.orders",
+      "method": "GET",
+      "path": "/api/v1/admin/orders",
+      "service": "order-service",
+      "grpc": "OrderService.ListOrders",
+      "auth": "admin",
+      "request_schema": "AdminOrderListRequest",
+      "response_schema": "OrderListResponse"
+    },
+    {
+      "id": "admin.payments",
+      "method": "GET",
+      "path": "/api/v1/admin/payments",
+      "service": "payment-service",
+      "grpc": "PaymentService.ListPayments",
+      "auth": "admin",
+      "request_schema": "AdminPaymentListRequest",
+      "response_schema": "PaymentListResponse"
+    },
+    {
+      "id": "admin.refund_review",
+      "method": "POST",
+      "path": "/api/v1/admin/refunds/{refund_id}/review",
+      "service": "superadmin-service",
+      "grpc": "SuperadminService.ReviewRefund",
+      "auth": "admin",
+      "request_schema": "RefundReviewRequest",
+      "response_schema": "Refund"
+    },
+    {
+      "id": "admin.audit_logs",
+      "method": "GET",
+      "path": "/api/v1/admin/audit-logs",
+      "service": "superadmin-service",
+      "grpc": "SuperadminService.ListAuditLogs",
+      "auth": "admin",
+      "request_schema": "AuditLogListRequest",
+      "response_schema": "AuditLogListResponse"
+    },
+    {
+      "id": "admin.settings",
+      "method": "GET",
+      "path": "/api/v1/admin/settings",
+      "service": "superadmin-service",
+      "grpc": "SuperadminService.GetPlatformSettings",
+      "auth": "admin",
+      "request_schema": "Empty",
+      "response_schema": "PlatformSettingsResponse"
+    },
+    {
+      "id": "admin.setting_update",
+      "method": "PATCH",
+      "path": "/api/v1/admin/settings/{key}",
+      "service": "superadmin-service",
+      "grpc": "SuperadminService.UpdatePlatformSetting",
+      "auth": "superadmin",
+      "request_schema": "PlatformSettingInput",
+      "response_schema": "PlatformSetting"
+    }
+  ],
+  "grpc_services": {
+    "AuthService": {
+      "package": "ecommerce.auth.v1",
+      "methods": [
+        {"name": "Register", "input_schema": "SignupRequest", "output_schema": "AuthSessionResponse", "auth": "public"},
+        {"name": "Login", "input_schema": "LoginRequest", "output_schema": "AuthSessionResponse", "auth": "public"},
+        {"name": "RefreshToken", "input_schema": "RefreshTokenRequest", "output_schema": "TokenResponse", "auth": "public"},
+        {"name": "Logout", "input_schema": "LogoutRequest", "output_schema": "SuccessResponse", "auth": "buyer"},
+        {"name": "VerifyAccessToken", "input_schema": "TokenIntrospectionRequest", "output_schema": "TokenClaims", "auth": "internal"},
+        {"name": "CreateOTPChallenge", "input_schema": "SendOTPRequest", "output_schema": "OTPChallengeResponse", "auth": "public"},
+        {"name": "VerifyOTP", "input_schema": "VerifyOTPRequest", "output_schema": "SuccessResponse", "auth": "public"},
+        {"name": "AssignRole", "input_schema": "AssignRoleRequest", "output_schema": "SuccessResponse", "auth": "admin"},
+        {"name": "RevokeRole", "input_schema": "RevokeRoleRequest", "output_schema": "SuccessResponse", "auth": "admin"},
+        {"name": "ResetPassword", "input_schema": "ResetPasswordRequest", "output_schema": "SuccessResponse", "auth": "public"}
+      ]
+    },
+    "UserService": {
+      "package": "ecommerce.user.v1",
+      "methods": [
+        {"name": "CreateUser", "input_schema": "CreateUserRequest", "output_schema": "UserProfile", "auth": "internal"},
+        {"name": "GetUser", "input_schema": "IdPathRequest", "output_schema": "UserProfile", "auth": "buyer"},
+        {"name": "BatchGetUsers", "input_schema": "BatchIdsRequest", "output_schema": "UserListResponse", "auth": "internal"},
+        {"name": "UpdateUserProfile", "input_schema": "UpdateUserProfileRequest", "output_schema": "UserProfile", "auth": "buyer"},
+        {"name": "ListUserAddresses", "input_schema": "PaginationRequest", "output_schema": "AddressListResponse", "auth": "buyer"},
+        {"name": "CreateAddress", "input_schema": "AddressInput", "output_schema": "Address", "auth": "buyer"},
+        {"name": "UpdateAddress", "input_schema": "AddressInput", "output_schema": "Address", "auth": "buyer"},
+        {"name": "DeleteAddress", "input_schema": "IdPathRequest", "output_schema": "SuccessResponse", "auth": "buyer"},
+        {"name": "GetSellerProfile", "input_schema": "IdPathRequest", "output_schema": "SellerProfile", "auth": "seller"},
+        {"name": "UpdateSellerProfile", "input_schema": "UpdateSellerProfileRequest", "output_schema": "SellerProfile", "auth": "seller"}
+      ]
+    },
+    "ProductService": {
+      "package": "ecommerce.product.v1",
+      "methods": [
+        {"name": "CreateProduct", "input_schema": "ProductInput", "output_schema": "Product", "auth": "seller"},
+        {"name": "UpdateProduct", "input_schema": "ProductInput", "output_schema": "Product", "auth": "seller"},
+        {"name": "PublishProduct", "input_schema": "IdPathRequest", "output_schema": "Product", "auth": "seller"},
+        {"name": "UnpublishProduct", "input_schema": "IdPathRequest", "output_schema": "Product", "auth": "seller"},
+        {"name": "GetProduct", "input_schema": "IdPathRequest", "output_schema": "Product", "auth": "public"},
+        {"name": "BatchGetProducts", "input_schema": "BatchIdsRequest", "output_schema": "ProductListResponse", "auth": "internal"},
+        {"name": "ListProducts", "input_schema": "ProductListRequest", "output_schema": "ProductListResponse", "auth": "public"},
+        {"name": "ReserveInventory", "input_schema": "InventoryReservationRequest", "output_schema": "InventoryReservationResponse", "auth": "internal"},
+        {"name": "ReleaseInventory", "input_schema": "InventoryReservationActionRequest", "output_schema": "SuccessResponse", "auth": "internal"},
+        {"name": "CommitInventory", "input_schema": "InventoryReservationActionRequest", "output_schema": "SuccessResponse", "auth": "internal"}
+      ]
+    },
+    "CartService": {
+      "package": "ecommerce.cart.v1",
+      "methods": [
+        {"name": "GetCart", "input_schema": "Empty", "output_schema": "Cart", "auth": "buyer"},
+        {"name": "AddItem", "input_schema": "CartItemInput", "output_schema": "Cart", "auth": "buyer"},
+        {"name": "UpdateItemQuantity", "input_schema": "CartItemQuantityInput", "output_schema": "Cart", "auth": "buyer"},
+        {"name": "RemoveItem", "input_schema": "IdPathRequest", "output_schema": "Cart", "auth": "buyer"},
+        {"name": "ClearCart", "input_schema": "Empty", "output_schema": "Cart", "auth": "buyer"},
+        {"name": "MergeGuestCart", "input_schema": "MergeCartRequest", "output_schema": "Cart", "auth": "buyer"},
+        {"name": "ApplyCouponPreview", "input_schema": "CouponPreviewRequest", "output_schema": "CouponPreviewResponse", "auth": "buyer"},
+        {"name": "GetCartSummary", "input_schema": "Empty", "output_schema": "CartSummary", "auth": "buyer"}
+      ]
+    },
+    "WishlistService": {
+      "package": "ecommerce.wishlist.v1",
+      "methods": [
+        {"name": "GetWishlist", "input_schema": "Empty", "output_schema": "Wishlist", "auth": "buyer"},
+        {"name": "AddWishlistItem", "input_schema": "WishlistItemInput", "output_schema": "Wishlist", "auth": "buyer"},
+        {"name": "RemoveWishlistItem", "input_schema": "IdPathRequest", "output_schema": "Wishlist", "auth": "buyer"},
+        {"name": "MoveToCart", "input_schema": "IdPathRequest", "output_schema": "Cart", "auth": "buyer"},
+        {"name": "CheckWishlistStatus", "input_schema": "IdPathRequest", "output_schema": "WishlistStatusResponse", "auth": "buyer"}
+      ]
+    },
+    "OrderService": {
+      "package": "ecommerce.order.v1",
+      "methods": [
+        {"name": "CreateOrderFromCart", "input_schema": "CheckoutRequest", "output_schema": "CheckoutResponse", "auth": "buyer"},
+        {"name": "GetOrder", "input_schema": "IdPathRequest", "output_schema": "Order", "auth": "buyer"},
+        {"name": "ListOrders", "input_schema": "PaginationRequest", "output_schema": "OrderListResponse", "auth": "buyer"},
+        {"name": "ListSellerOrders", "input_schema": "PaginationRequest", "output_schema": "OrderListResponse", "auth": "seller"},
+        {"name": "CancelOrder", "input_schema": "CancelOrderRequest", "output_schema": "Order", "auth": "buyer"},
+        {"name": "MarkOrderPaid", "input_schema": "OrderPaymentUpdateRequest", "output_schema": "Order", "auth": "internal"},
+        {"name": "UpdateFulfillment", "input_schema": "FulfillmentUpdateRequest", "output_schema": "Order", "auth": "seller"},
+        {"name": "GetOrderForPayment", "input_schema": "IdPathRequest", "output_schema": "Order", "auth": "internal"}
+      ]
+    },
+    "PaymentService": {
+      "package": "ecommerce.payment.v1",
+      "methods": [
+        {"name": "CreatePaymentIntent", "input_schema": "PaymentIntentRequest", "output_schema": "PaymentIntentResponse", "auth": "buyer"},
+        {"name": "GetPayment", "input_schema": "IdPathRequest", "output_schema": "Payment", "auth": "buyer"},
+        {"name": "ListPayments", "input_schema": "AdminPaymentListRequest", "output_schema": "PaymentListResponse", "auth": "admin"},
+        {"name": "RefundPayment", "input_schema": "RefundRequest", "output_schema": "Refund", "auth": "admin"},
+        {"name": "GetRefund", "input_schema": "IdPathRequest", "output_schema": "Refund", "auth": "admin"},
+        {"name": "HandleWebhook", "input_schema": "PaymentWebhookRequest", "output_schema": "SuccessResponse", "auth": "webhook"}
+      ]
+    },
+    "RecommendationService": {
+      "package": "ecommerce.recommendation.v1",
+      "methods": [
+        {"name": "GetRecommendations", "input_schema": "RecommendationRequest", "output_schema": "RecommendationResponse", "auth": "public"},
+        {"name": "GetSimilarProducts", "input_schema": "IdPathRequest", "output_schema": "RecommendationResponse", "auth": "public"},
+        {"name": "GetTrendingProducts", "input_schema": "ProductListRequest", "output_schema": "RecommendationResponse", "auth": "public"},
+        {"name": "TrackRecommendationImpression", "input_schema": "RecommendationEventInput", "output_schema": "AcceptedResponse", "auth": "public"},
+        {"name": "TrackRecommendationClick", "input_schema": "RecommendationEventInput", "output_schema": "AcceptedResponse", "auth": "public"}
+      ]
+    },
+    "SearchService": {
+      "package": "ecommerce.search.v1",
+      "methods": [
+        {"name": "SearchProducts", "input_schema": "SearchRequest", "output_schema": "SearchResponse", "auth": "public"},
+        {"name": "Autocomplete", "input_schema": "AutocompleteRequest", "output_schema": "AutocompleteResponse", "auth": "public"},
+        {"name": "ReindexProduct", "input_schema": "IdPathRequest", "output_schema": "SuccessResponse", "auth": "admin"},
+        {"name": "DeleteProductFromIndex", "input_schema": "IdPathRequest", "output_schema": "SuccessResponse", "auth": "internal"},
+        {"name": "CreateSynonym", "input_schema": "SearchSynonymInput", "output_schema": "SearchSynonym", "auth": "admin"},
+        {"name": "ListSynonyms", "input_schema": "PaginationRequest", "output_schema": "SearchSynonymListResponse", "auth": "admin"}
+      ]
+    },
+    "CMSService": {
+      "package": "ecommerce.cms.v1",
+      "methods": [
+        {"name": "ValidateCoupon", "input_schema": "CouponPreviewRequest", "output_schema": "CouponPreviewResponse", "auth": "internal"},
+        {"name": "CreateCoupon", "input_schema": "CouponInput", "output_schema": "Coupon", "auth": "seller"},
+        {"name": "UpdateCoupon", "input_schema": "CouponInput", "output_schema": "Coupon", "auth": "seller"},
+        {"name": "ListCoupons", "input_schema": "PaginationRequest", "output_schema": "CouponListResponse", "auth": "seller"},
+        {"name": "GetSellerSettings", "input_schema": "IdPathRequest", "output_schema": "SellerSettings", "auth": "seller"},
+        {"name": "UpdateSellerSettings", "input_schema": "SellerSettingsInput", "output_schema": "SellerSettings", "auth": "seller"},
+        {"name": "GetSellerAnalytics", "input_schema": "DateRangeRequest", "output_schema": "SellerAnalyticsResponse", "auth": "seller"},
+        {"name": "RecordCouponRedemption", "input_schema": "CouponRedemptionInput", "output_schema": "SuccessResponse", "auth": "internal"}
+      ]
+    },
+    "SessionService": {
+      "package": "ecommerce.session.v1",
+      "methods": [
+        {"name": "IngestEvent", "input_schema": "SessionEventInput", "output_schema": "AcceptedResponse", "auth": "public"},
+        {"name": "GetSession", "input_schema": "IdPathRequest", "output_schema": "Session", "auth": "admin"},
+        {"name": "ListSessions", "input_schema": "SessionListRequest", "output_schema": "SessionListResponse", "auth": "admin"},
+        {"name": "GetJourney", "input_schema": "IdPathRequest", "output_schema": "JourneyResponse", "auth": "admin"},
+        {"name": "GetLiveMetrics", "input_schema": "DateRangeRequest", "output_schema": "LiveMetricsResponse", "auth": "admin"},
+        {"name": "GetFunnelReport", "input_schema": "FunnelReportRequest", "output_schema": "FunnelReportResponse", "auth": "admin"},
+        {"name": "GetHeatmap", "input_schema": "HeatmapRequest", "output_schema": "HeatmapResponse", "auth": "admin"}
+      ]
+    },
+    "NotificationService": {
+      "package": "ecommerce.notification.v1",
+      "methods": [
+        {"name": "SendOTP", "input_schema": "SendNotificationRequest", "output_schema": "AcceptedResponse", "auth": "internal"},
+        {"name": "SendNotification", "input_schema": "SendNotificationRequest", "output_schema": "AcceptedResponse", "auth": "internal"},
+        {"name": "GetDeliveryStatus", "input_schema": "IdPathRequest", "output_schema": "NotificationDelivery", "auth": "admin"},
+        {"name": "GetNotificationPreference", "input_schema": "Empty", "output_schema": "NotificationPreference", "auth": "buyer"},
+        {"name": "UpdateNotificationPreference", "input_schema": "NotificationPreferenceInput", "output_schema": "NotificationPreference", "auth": "buyer"}
+      ]
+    },
+    "SuperadminService": {
+      "package": "ecommerce.superadmin.v1",
+      "methods": [
+        {"name": "ListUsersForAdmin", "input_schema": "AdminUserListRequest", "output_schema": "AdminUserListResponse", "auth": "admin"},
+        {"name": "UpdateUserStatus", "input_schema": "StatusUpdateRequest", "output_schema": "SuccessResponse", "auth": "admin"},
+        {"name": "ListSellersForAdmin", "input_schema": "AdminSellerListRequest", "output_schema": "AdminSellerListResponse", "auth": "admin"},
+        {"name": "UpdateSellerStatus", "input_schema": "StatusUpdateRequest", "output_schema": "SuccessResponse", "auth": "admin"},
+        {"name": "ReviewRefund", "input_schema": "RefundReviewRequest", "output_schema": "Refund", "auth": "admin"},
+        {"name": "GetPlatformSettings", "input_schema": "Empty", "output_schema": "PlatformSettingsResponse", "auth": "admin"},
+        {"name": "UpdatePlatformSetting", "input_schema": "PlatformSettingInput", "output_schema": "PlatformSetting", "auth": "superadmin"},
+        {"name": "ListAuditLogs", "input_schema": "AuditLogListRequest", "output_schema": "AuditLogListResponse", "auth": "admin"}
+      ]
+    }
+  },
+  "schemas": {
+    "Empty": {"type": "object", "properties": {}},
+    "SuccessResponse": {"type": "object", "required": ["success"], "properties": {"success": {"type": "boolean"}}},
+    "AcceptedResponse": {"type": "object", "required": ["accepted"], "properties": {"accepted": {"type": "boolean"}, "event_id": {"type": "string"}}},
+    "PaginationRequest": {"type": "object", "properties": {"page": {"type": "integer", "minimum": 1}, "page_size": {"type": "integer", "minimum": 1, "maximum": 100}, "cursor": {"type": "string"}}},
+    "IdPathRequest": {"type": "object", "properties": {"id": {"type": "string"}}},
+    "BatchIdsRequest": {"type": "object", "required": ["ids"], "properties": {"ids": {"type": "array", "items": {"type": "string"}}}},
+    "DateRangeRequest": {"type": "object", "properties": {"from": {"type": "string", "format": "date-time"}, "to": {"type": "string", "format": "date-time"}}},
+    "Money": {"type": "object", "required": ["amount", "currency"], "properties": {"amount": {"type": "integer", "description": "Minor unit amount, for example paise/cents."}, "currency": {"type": "string"}}},
+    "SignupRequest": {"type": "object", "required": ["email", "password", "full_name"], "properties": {"email": {"type": "string", "format": "email"}, "phone": {"type": "string"}, "password": {"type": "string", "minLength": 8}, "full_name": {"type": "string"}, "role": {"type": "string", "enum": ["buyer", "seller"]}}},
+    "LoginRequest": {"type": "object", "required": ["identifier", "password"], "properties": {"identifier": {"type": "string"}, "password": {"type": "string"}, "device": {"type": "object"}}},
+    "RefreshTokenRequest": {"type": "object", "required": ["refresh_token"], "properties": {"refresh_token": {"type": "string"}}},
+    "LogoutRequest": {"type": "object", "properties": {"refresh_token": {"type": "string"}, "all_devices": {"type": "boolean"}}},
+    "TokenResponse": {"type": "object", "required": ["access_token", "refresh_token", "expires_in"], "properties": {"access_token": {"type": "string"}, "refresh_token": {"type": "string"}, "expires_in": {"type": "integer"}}},
+    "AuthSessionResponse": {"type": "object", "properties": {"user": {"$ref": "#/schemas/UserProfile"}, "tokens": {"$ref": "#/schemas/TokenResponse"}, "session_id": {"type": "string"}}},
+    "SendOTPRequest": {"type": "object", "required": ["target", "channel", "purpose"], "properties": {"target": {"type": "string"}, "channel": {"type": "string", "enum": ["email", "phone"]}, "purpose": {"type": "string", "enum": ["signup", "login", "password_reset", "phone_verify", "email_verify"]}}},
+    "OTPChallengeResponse": {"type": "object", "required": ["challenge_id", "expires_in"], "properties": {"challenge_id": {"type": "string"}, "expires_in": {"type": "integer"}}},
+    "VerifyOTPRequest": {"type": "object", "required": ["challenge_id", "otp"], "properties": {"challenge_id": {"type": "string"}, "otp": {"type": "string"}}},
+    "ForgotPasswordRequest": {"type": "object", "required": ["identifier"], "properties": {"identifier": {"type": "string"}}},
+    "ResetPasswordRequest": {"type": "object", "required": ["challenge_id", "otp", "new_password"], "properties": {"challenge_id": {"type": "string"}, "otp": {"type": "string"}, "new_password": {"type": "string", "minLength": 8}}},
+    "TokenIntrospectionRequest": {"type": "object", "required": ["access_token"], "properties": {"access_token": {"type": "string"}}},
+    "TokenClaims": {"type": "object", "properties": {"user_id": {"type": "string"}, "session_id": {"type": "string"}, "roles": {"type": "array", "items": {"type": "string"}}, "seller_id": {"type": "string"}}},
+    "AssignRoleRequest": {"type": "object", "required": ["user_id", "role"], "properties": {"user_id": {"type": "string"}, "role": {"type": "string"}}},
+    "RevokeRoleRequest": {"type": "object", "required": ["user_id", "role"], "properties": {"user_id": {"type": "string"}, "role": {"type": "string"}}},
+    "CreateUserRequest": {"type": "object", "required": ["auth_account_id", "email", "full_name"], "properties": {"auth_account_id": {"type": "string"}, "email": {"type": "string"}, "phone": {"type": "string"}, "full_name": {"type": "string"}}},
+    "UserProfile": {"type": "object", "properties": {"user_id": {"type": "string"}, "email": {"type": "string"}, "phone": {"type": "string"}, "full_name": {"type": "string"}, "status": {"type": "string"}, "roles": {"type": "array", "items": {"type": "string"}}}},
+    "UserListResponse": {"type": "object", "properties": {"users": {"type": "array", "items": {"$ref": "#/schemas/UserProfile"}}}},
+    "UpdateUserProfileRequest": {"type": "object", "properties": {"full_name": {"type": "string"}, "phone": {"type": "string"}, "avatar_url": {"type": "string"}}},
+    "AddressInput": {"type": "object", "required": ["name", "line1", "city", "state", "postal_code", "country"], "properties": {"name": {"type": "string"}, "phone": {"type": "string"}, "line1": {"type": "string"}, "line2": {"type": "string"}, "city": {"type": "string"}, "state": {"type": "string"}, "postal_code": {"type": "string"}, "country": {"type": "string"}, "is_default": {"type": "boolean"}}},
+    "Address": {"allOf": [{"$ref": "#/schemas/AddressInput"}, {"type": "object", "properties": {"address_id": {"type": "string"}}}]},
+    "AddressListResponse": {"type": "object", "properties": {"addresses": {"type": "array", "items": {"$ref": "#/schemas/Address"}}}},
+    "SellerProfile": {"type": "object", "properties": {"seller_id": {"type": "string"}, "user_id": {"type": "string"}, "store_name": {"type": "string"}, "status": {"type": "string"}, "gst_number": {"type": "string"}}},
+    "UpdateSellerProfileRequest": {"type": "object", "properties": {"store_name": {"type": "string"}, "display_name": {"type": "string"}, "gst_number": {"type": "string"}, "support_email": {"type": "string"}}},
+    "ProductInput": {"type": "object", "required": ["title", "category_id", "variants"], "properties": {"title": {"type": "string"}, "description": {"type": "string"}, "brand": {"type": "string"}, "category_id": {"type": "string"}, "attributes": {"type": "object"}, "images": {"type": "array", "items": {"type": "string"}}, "variants": {"type": "array", "items": {"$ref": "#/schemas/ProductVariantInput"}}}},
+    "ProductVariantInput": {"type": "object", "required": ["sku", "price", "stock_quantity"], "properties": {"sku": {"type": "string"}, "attributes": {"type": "object"}, "price": {"$ref": "#/schemas/Money"}, "stock_quantity": {"type": "integer"}}},
+    "Product": {"type": "object", "properties": {"product_id": {"type": "string"}, "seller_id": {"type": "string"}, "title": {"type": "string"}, "description": {"type": "string"}, "brand": {"type": "string"}, "category_id": {"type": "string"}, "status": {"type": "string"}, "variants": {"type": "array", "items": {"$ref": "#/schemas/ProductVariantInput"}}}},
+    "ProductListRequest": {"type": "object", "properties": {"category_id": {"type": "string"}, "seller_id": {"type": "string"}, "status": {"type": "string"}, "page": {"type": "integer"}, "page_size": {"type": "integer"}}},
+    "ProductListResponse": {"type": "object", "properties": {"products": {"type": "array", "items": {"$ref": "#/schemas/Product"}}, "total": {"type": "integer"}}},
+    "CategoryListResponse": {"type": "object", "properties": {"categories": {"type": "array", "items": {"type": "object", "properties": {"category_id": {"type": "string"}, "name": {"type": "string"}, "parent_id": {"type": "string"}}}}}},
+    "InventoryReservationRequest": {"type": "object", "required": ["order_id", "items"], "properties": {"order_id": {"type": "string"}, "items": {"type": "array", "items": {"type": "object"}}, "ttl_seconds": {"type": "integer"}}},
+    "InventoryReservationResponse": {"type": "object", "properties": {"reservation_id": {"type": "string"}, "expires_at": {"type": "string", "format": "date-time"}}},
+    "InventoryReservationActionRequest": {"type": "object", "required": ["reservation_id"], "properties": {"reservation_id": {"type": "string"}, "reason": {"type": "string"}}},
+    "SearchRequest": {"type": "object", "properties": {"q": {"type": "string"}, "filters": {"type": "object"}, "sort": {"type": "string"}, "page": {"type": "integer"}, "page_size": {"type": "integer"}}},
+    "SearchResponse": {"type": "object", "properties": {"products": {"type": "array", "items": {"$ref": "#/schemas/Product"}}, "facets": {"type": "object"}, "total": {"type": "integer"}}},
+    "AutocompleteRequest": {"type": "object", "properties": {"q": {"type": "string"}, "limit": {"type": "integer"}}},
+    "AutocompleteResponse": {"type": "object", "properties": {"suggestions": {"type": "array", "items": {"type": "string"}}}},
+    "SearchSynonymInput": {"type": "object", "properties": {"root": {"type": "string"}, "synonyms": {"type": "array", "items": {"type": "string"}}}},
+    "SearchSynonym": {"allOf": [{"$ref": "#/schemas/SearchSynonymInput"}, {"type": "object", "properties": {"synonym_id": {"type": "string"}}}]},
+    "SearchSynonymListResponse": {"type": "object", "properties": {"synonyms": {"type": "array", "items": {"$ref": "#/schemas/SearchSynonym"}}}},
+    "CartItemInput": {"type": "object", "required": ["product_id", "variant_id", "quantity"], "properties": {"product_id": {"type": "string"}, "variant_id": {"type": "string"}, "quantity": {"type": "integer", "minimum": 1}}},
+    "CartItemQuantityInput": {"type": "object", "required": ["quantity"], "properties": {"quantity": {"type": "integer", "minimum": 1}}},
+    "Cart": {"type": "object", "properties": {"cart_id": {"type": "string"}, "user_id": {"type": "string"}, "items": {"type": "array", "items": {"type": "object"}}, "subtotal": {"$ref": "#/schemas/Money"}, "discount": {"$ref": "#/schemas/Money"}, "total": {"$ref": "#/schemas/Money"}}},
+    "CartSummary": {"type": "object", "properties": {"item_count": {"type": "integer"}, "total": {"$ref": "#/schemas/Money"}}},
+    "MergeCartRequest": {"type": "object", "required": ["guest_cart_id"], "properties": {"guest_cart_id": {"type": "string"}}},
+    "CouponPreviewRequest": {"type": "object", "required": ["coupon_code"], "properties": {"coupon_code": {"type": "string"}, "cart_id": {"type": "string"}, "order_id": {"type": "string"}}},
+    "CouponPreviewResponse": {"type": "object", "properties": {"valid": {"type": "boolean"}, "coupon_id": {"type": "string"}, "discount": {"$ref": "#/schemas/Money"}, "reason": {"type": "string"}}},
+    "WishlistItemInput": {"type": "object", "required": ["product_id"], "properties": {"product_id": {"type": "string"}, "variant_id": {"type": "string"}}},
+    "Wishlist": {"type": "object", "properties": {"wishlist_id": {"type": "string"}, "user_id": {"type": "string"}, "items": {"type": "array", "items": {"type": "object"}}}},
+    "WishlistStatusResponse": {"type": "object", "properties": {"in_wishlist": {"type": "boolean"}}},
+    "CheckoutRequest": {"type": "object", "required": ["address_id", "payment_provider", "idempotency_key"], "properties": {"address_id": {"type": "string"}, "coupon_code": {"type": "string"}, "payment_provider": {"type": "string"}, "idempotency_key": {"type": "string"}}},
+    "CheckoutResponse": {"type": "object", "properties": {"order": {"$ref": "#/schemas/Order"}, "payment_intent": {"$ref": "#/schemas/PaymentIntentResponse"}}},
+    "Order": {"type": "object", "properties": {"order_id": {"type": "string"}, "user_id": {"type": "string"}, "status": {"type": "string"}, "items": {"type": "array", "items": {"type": "object"}}, "total": {"$ref": "#/schemas/Money"}, "created_at": {"type": "string", "format": "date-time"}}},
+    "OrderListResponse": {"type": "object", "properties": {"orders": {"type": "array", "items": {"$ref": "#/schemas/Order"}}, "total": {"type": "integer"}}},
+    "CancelOrderRequest": {"type": "object", "required": ["reason"], "properties": {"order_id": {"type": "string"}, "reason": {"type": "string"}}},
+    "FulfillmentUpdateRequest": {"type": "object", "properties": {"order_id": {"type": "string"}, "status": {"type": "string"}, "tracking_number": {"type": "string"}, "carrier": {"type": "string"}}},
+    "OrderPaymentUpdateRequest": {"type": "object", "required": ["order_id", "payment_id"], "properties": {"order_id": {"type": "string"}, "payment_id": {"type": "string"}, "status": {"type": "string"}}},
+    "PaymentIntentRequest": {"type": "object", "required": ["order_id", "provider"], "properties": {"order_id": {"type": "string"}, "provider": {"type": "string"}, "idempotency_key": {"type": "string"}}},
+    "RetryPaymentRequest": {"type": "object", "properties": {"payment_id": {"type": "string"}, "idempotency_key": {"type": "string"}}},
+    "PaymentIntentResponse": {"type": "object", "properties": {"payment_id": {"type": "string"}, "provider": {"type": "string"}, "client_secret": {"type": "string"}, "amount": {"$ref": "#/schemas/Money"}, "status": {"type": "string"}}},
+    "Payment": {"type": "object", "properties": {"payment_id": {"type": "string"}, "order_id": {"type": "string"}, "provider": {"type": "string"}, "status": {"type": "string"}, "amount": {"$ref": "#/schemas/Money"}}},
+    "PaymentListResponse": {"type": "object", "properties": {"payments": {"type": "array", "items": {"$ref": "#/schemas/Payment"}}}},
+    "RefundRequest": {"type": "object", "required": ["payment_id", "amount", "reason"], "properties": {"payment_id": {"type": "string"}, "amount": {"$ref": "#/schemas/Money"}, "reason": {"type": "string"}, "idempotency_key": {"type": "string"}}},
+    "Refund": {"type": "object", "properties": {"refund_id": {"type": "string"}, "payment_id": {"type": "string"}, "status": {"type": "string"}, "amount": {"$ref": "#/schemas/Money"}, "reason": {"type": "string"}}},
+    "PaymentWebhookRequest": {"type": "object", "properties": {"provider": {"type": "string"}, "headers": {"type": "object"}, "raw_body": {"type": "string"}}},
+    "CouponInput": {"type": "object", "properties": {"code": {"type": "string"}, "discount_type": {"type": "string", "enum": ["fixed", "percentage"]}, "discount_value": {"type": "integer"}, "min_cart_amount": {"$ref": "#/schemas/Money"}, "starts_at": {"type": "string"}, "ends_at": {"type": "string"}, "usage_limit": {"type": "integer"}}},
+    "Coupon": {"allOf": [{"$ref": "#/schemas/CouponInput"}, {"type": "object", "properties": {"coupon_id": {"type": "string"}, "status": {"type": "string"}}}]},
+    "CouponListResponse": {"type": "object", "properties": {"coupons": {"type": "array", "items": {"$ref": "#/schemas/Coupon"}}}},
+    "CampaignInput": {"type": "object", "properties": {"name": {"type": "string"}, "starts_at": {"type": "string"}, "ends_at": {"type": "string"}, "budget": {"$ref": "#/schemas/Money"}}},
+    "Campaign": {"allOf": [{"$ref": "#/schemas/CampaignInput"}, {"type": "object", "properties": {"campaign_id": {"type": "string"}, "status": {"type": "string"}}}]},
+    "CampaignListResponse": {"type": "object", "properties": {"campaigns": {"type": "array", "items": {"$ref": "#/schemas/Campaign"}}}},
+    "SellerSettings": {"type": "object", "properties": {"seller_id": {"type": "string"}, "return_policy": {"type": "string"}, "shipping_policy": {"type": "string"}}},
+    "SellerSettingsInput": {"type": "object", "properties": {"return_policy": {"type": "string"}, "shipping_policy": {"type": "string"}}},
+    "SellerAnalyticsResponse": {"type": "object", "properties": {"revenue": {"$ref": "#/schemas/Money"}, "orders": {"type": "integer"}, "conversion_rate": {"type": "number"}, "top_products": {"type": "array", "items": {"type": "object"}}}},
+    "CouponRedemptionInput": {"type": "object", "properties": {"coupon_id": {"type": "string"}, "order_id": {"type": "string"}, "user_id": {"type": "string"}, "discount": {"$ref": "#/schemas/Money"}}},
+    "SessionEventInput": {"type": "object", "required": ["event_type", "anonymous_id", "session_id", "occurred_at"], "properties": {"event_type": {"type": "string"}, "anonymous_id": {"type": "string"}, "session_id": {"type": "string"}, "user_id": {"type": "string"}, "occurred_at": {"type": "string", "format": "date-time"}, "path": {"type": "string"}, "properties": {"type": "object"}}},
+    "Session": {"type": "object", "properties": {"session_id": {"type": "string"}, "anonymous_id": {"type": "string"}, "user_id": {"type": "string"}, "started_at": {"type": "string"}, "last_seen_at": {"type": "string"}, "device": {"type": "object"}}},
+    "SessionListRequest": {"allOf": [{"$ref": "#/schemas/PaginationRequest"}, {"type": "object", "properties": {"user_id": {"type": "string"}, "from": {"type": "string"}, "to": {"type": "string"}}}]},
+    "SessionListResponse": {"type": "object", "properties": {"sessions": {"type": "array", "items": {"$ref": "#/schemas/Session"}}}},
+    "JourneyResponse": {"type": "object", "properties": {"session": {"$ref": "#/schemas/Session"}, "events": {"type": "array", "items": {"$ref": "#/schemas/SessionEventInput"}}}},
+    "LiveMetricsResponse": {"type": "object", "properties": {"active_users": {"type": "integer"}, "active_sessions": {"type": "integer"}, "events_per_minute": {"type": "number"}}},
+    "FunnelReportRequest": {"allOf": [{"$ref": "#/schemas/DateRangeRequest"}, {"type": "object", "properties": {"steps": {"type": "array", "items": {"type": "string"}}}}]},
+    "FunnelReportResponse": {"type": "object", "properties": {"steps": {"type": "array", "items": {"type": "object"}}}},
+    "HeatmapRequest": {"type": "object", "properties": {"path": {"type": "string"}, "device_type": {"type": "string"}, "from": {"type": "string"}, "to": {"type": "string"}}},
+    "HeatmapResponse": {"type": "object", "properties": {"points": {"type": "array", "items": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}, "weight": {"type": "integer"}}}}}},
+    "RecommendationRequest": {"type": "object", "properties": {"user_id": {"type": "string"}, "context": {"type": "string"}, "category_id": {"type": "string"}, "limit": {"type": "integer"}}},
+    "RecommendationResponse": {"type": "object", "properties": {"products": {"type": "array", "items": {"$ref": "#/schemas/Product"}}, "strategy_id": {"type": "string"}}},
+    "RecommendationEventInput": {"type": "object", "properties": {"recommendation_id": {"type": "string"}, "product_id": {"type": "string"}, "user_id": {"type": "string"}}},
+    "SendNotificationRequest": {"type": "object", "properties": {"user_id": {"type": "string"}, "channel": {"type": "string"}, "template_key": {"type": "string"}, "variables": {"type": "object"}}},
+    "NotificationDelivery": {"type": "object", "properties": {"delivery_id": {"type": "string"}, "status": {"type": "string"}, "provider": {"type": "string"}}},
+    "NotificationPreference": {"type": "object", "properties": {"email_enabled": {"type": "boolean"}, "sms_enabled": {"type": "boolean"}, "push_enabled": {"type": "boolean"}, "marketing_enabled": {"type": "boolean"}}},
+    "NotificationPreferenceInput": {"$ref": "#/schemas/NotificationPreference"},
+    "AdminUserListRequest": {"allOf": [{"$ref": "#/schemas/PaginationRequest"}, {"type": "object", "properties": {"q": {"type": "string"}, "status": {"type": "string"}}}]},
+    "AdminUserListResponse": {"type": "object", "properties": {"users": {"type": "array", "items": {"$ref": "#/schemas/UserProfile"}}}},
+    "AdminSellerListRequest": {"allOf": [{"$ref": "#/schemas/PaginationRequest"}, {"type": "object", "properties": {"q": {"type": "string"}, "status": {"type": "string"}}}]},
+    "AdminSellerListResponse": {"type": "object", "properties": {"sellers": {"type": "array", "items": {"$ref": "#/schemas/SellerProfile"}}}},
+    "AdminOrderListRequest": {"allOf": [{"$ref": "#/schemas/PaginationRequest"}, {"type": "object", "properties": {"status": {"type": "string"}, "user_id": {"type": "string"}, "seller_id": {"type": "string"}}}]},
+    "AdminPaymentListRequest": {"allOf": [{"$ref": "#/schemas/PaginationRequest"}, {"type": "object", "properties": {"status": {"type": "string"}, "provider": {"type": "string"}, "order_id": {"type": "string"}}}]},
+    "StatusUpdateRequest": {"type": "object", "required": ["status", "reason"], "properties": {"status": {"type": "string"}, "reason": {"type": "string"}}},
+    "RefundReviewRequest": {"type": "object", "required": ["decision", "reason"], "properties": {"refund_id": {"type": "string"}, "decision": {"type": "string", "enum": ["approved", "rejected"]}, "reason": {"type": "string"}}},
+    "AuditLogListRequest": {"allOf": [{"$ref": "#/schemas/PaginationRequest"}, {"type": "object", "properties": {"actor_id": {"type": "string"}, "resource_type": {"type": "string"}, "resource_id": {"type": "string"}}}]},
+    "AuditLogListResponse": {"type": "object", "properties": {"logs": {"type": "array", "items": {"type": "object"}}}},
+    "PlatformSetting": {"type": "object", "properties": {"key": {"type": "string"}, "value": {"type": "object"}, "updated_at": {"type": "string"}}},
+    "PlatformSettingInput": {"type": "object", "required": ["value", "reason"], "properties": {"value": {"type": "object"}, "reason": {"type": "string"}}},
+    "PlatformSettingsResponse": {"type": "object", "properties": {"settings": {"type": "array", "items": {"$ref": "#/schemas/PlatformSetting"}}}}
+  }
+}
