@@ -1,0 +1,76 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.*.example
+**/secrets/*
+!**/secrets/.gitkeep
+!**/secrets/README.md
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Logs and runtime files
+*.log
+logs/
+tmp/
+temp/
+*.pid
+*.seed
+
+# Go
+bin/
+vendor/
+*.test
+*.out
+coverage.out
+coverage.html
+
+# Node.js / React / TypeScript
+node_modules/
+dist/
+build/
+coverage/
+.next/
+.nuxt/
+.vite/
+.turbo/
+.parcel-cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python helpers/scripts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Docker / local infra
+docker-compose.override.yml
+.docker/
+
+# Database dumps and generated data
+*.dump
+*.backup
+*.sql.gz
+*.sqlite
+*.sqlite3
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local agent/tooling state
+.codex/
+.agents/

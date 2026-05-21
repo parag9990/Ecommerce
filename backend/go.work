@@ -1,5 +1,3 @@
 go 1.26.3
 
-use (
-	./services/auth-service
-)
+use ./services/auth-service

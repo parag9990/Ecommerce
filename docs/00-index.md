@@ -25,6 +25,7 @@ Language style: simple Hinglish with professional technical clarity.
 | 15 | Superadmin system | [09-cms-superadmin.md](./09-cms-superadmin.md) |
 | 16 | Scalability design | [12-logging-monitoring-scalability.md](./12-logging-monitoring-scalability.md) |
 | 17 | Documentation | [13-developer-guide.md](./13-developer-guide.md) |
+| 18 | Git workflow and repository management | [14-git-workflow-repository-management.md](./14-git-workflow-repository-management.md) |
 
 ## Build Order Recommendation
 
@@ -34,4 +35,3 @@ Language style: simple Hinglish with professional technical clarity.
 4. Order, Payment, Notification.
 5. Recommendation, Analytics dashboards, Superadmin.
 6. Kubernetes, CI/CD, monitoring, load testing, production hardening.
-

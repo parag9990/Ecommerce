@@ -28,6 +28,15 @@
 
 ```text
 TaskImplementation/
+├── Auth Service/
+│   ├── task1.md
+│   ├── task2.md
+│   ├── task3.md
+│   ├── task4.md
+│   ├── task5.md
+│   ├── task6.md
+│   ├── task7.md
+│   └── task8.md
 ├── Platform Foundation/
 │   ├── task1.md
 │   ├── task2.md
@@ -44,9 +53,9 @@ TaskImplementation/
 ### Why this structure?
 
 - `TaskImplementation/` project ke task-wise guides ka central folder hai.
-- Existing `Platform Foundation/` folder ko untouched rakha gaya.
-- `User Service/` folder create kiya gaya kyunki pehle present nahi tha.
+- `User Service/` folder User Service ke implementation guides ko group karega.
 - `task1.md` sirf **User Service - Task 1** ka guide hai.
+- Existing `Auth Service/` aur `Platform Foundation/` guides ko untouched rakha gaya.
 - Actual backend files, migrations, proto files, ya API implementation create nahi ki gayi, kyunki ye Task 1 ke scope ke bahar hai.
 
 ---
@@ -63,6 +72,7 @@ Is guide ko banate time project ke official docs ko source of truth maana gaya:
 | `docs/04-microservice-design.md` | User Service responsibilities, tables, APIs, internal logic |
 | `docs/05-database-design.md` | User DB table names, relationships, indexes |
 | `database/draw.sql` | Future schema fields for `users`, `user_addresses`, `seller_profiles`, `seller_kyc_documents` |
+| `api/master-api.json` | User Service REST/gRPC boundary and DTO fields |
 | `docs/06-auth-security.md` | Password/Auth ownership, JWT roles, audit/security boundaries |
 | `docs/09-cms-superadmin.md` | Seller KYC approval workflow and Superadmin interaction |
 | `docs/10-frontend-implementation.md` | Profile pages, address book, seller/admin access expectations |
@@ -136,7 +146,7 @@ User Service ka kaam authentication karna nahi hai. Iska kaam user ke profile-re
 
 ### Hinglish Explanation
 
-User Service ko ek profile manager samjho. Auth Service user ko prove karta hai, "ye banda kaun hai". User Service batata hai, "is bande ka profile kya hai". Dono ka data mix karna security aur maintainability ke liye risky hota hai.
+User Service ko ek profile manager samjho. Auth Service user ko prove karta hai, "ye user kaun hai". User Service batata hai, "is user ka profile kya hai". Dono ka data mix karna security aur maintainability ke liye risky hota hai.
 
 ---
 
@@ -697,7 +707,7 @@ backend/
 | `migrations/` | MySQL schema, future Task 2 |
 | `deploy/` | Docker/Kubernetes deploy files, future DevOps tasks |
 
-> 🟡 **Important:** Ye folder structure future target hai. Is Task 1 me create nahi kiya gaya because user ne only `TaskImplementation/User Service/task1.md` manga hai.
+> 🟡 **Important:** Ye folder structure future target hai. Is Task 1 me create nahi kiya gaya because requested output sirf `TaskImplementation/User Service/task1.md` hai.
 
 ---
 
@@ -798,6 +808,19 @@ Actual gRPC methods Task 4 me implement honge. Task 1 ke liye conceptual boundar
 | `UpdateSellerProfile` | Seller profile/KYC update | Future Task 4 |
 | `UpdateUserStatus` | Block/delete status change | Future Task 4 |
 
+### Current public route preview
+
+| REST route | gRPC target | Auth level |
+|---|---|---|
+| `GET /api/v1/me` | `UserService.GetUser` | buyer |
+| `PATCH /api/v1/me` | `UserService.UpdateUserProfile` | buyer |
+| `GET /api/v1/me/addresses` | `UserService.ListUserAddresses` | buyer |
+| `POST /api/v1/me/addresses` | `UserService.CreateAddress` | buyer |
+| `PATCH /api/v1/me/addresses/{address_id}` | `UserService.UpdateAddress` | buyer |
+| `DELETE /api/v1/me/addresses/{address_id}` | `UserService.DeleteAddress` | buyer |
+| `GET /api/v1/sellers/me` | `UserService.GetSellerProfile` | seller |
+| `PATCH /api/v1/sellers/me` | `UserService.UpdateSellerProfile` | seller |
+
 ### Conceptual proto sketch
 
 > Ye proto sirf explanation ke liye hai. Is task me `proto/` file create nahi ki gayi.
@@ -827,7 +850,7 @@ message UserProfile {
 | Tool | Used? | Why |
 |---|---:|---|
 | Markdown | ✅ | `task1.md` guide likhne ke liye |
-| Mermaid | ✅ | Architecture, flow, and ER diagrams ke liye |
+| Mermaid | ✅ | Architecture, flow, validation, and ER diagrams ke liye |
 | Shields.io badges | ✅ | Visual status/priority badges ke liye |
 
 ### Installation and usage
@@ -849,6 +872,16 @@ Mermaid diagrams GitHub/GitLab style Markdown viewers me directly render ho jate
 npm install -g @mermaid-js/mermaid-cli
 mmdc -i diagram.mmd -o diagram.png
 ```
+
+Markdown ke andar Mermaid use karne ka format:
+
+````md
+```mermaid
+flowchart LR
+    A[Client] --> B[API Gateway]
+    B --> C[User Service]
+```
+````
 
 #### Shields.io badges
 
@@ -899,7 +932,7 @@ Task 2 me SQL schema implement hoga. Task 1 me sirf mapping define ki gayi hai.
 | Requirement | Status |
 |---|---:|
 | `TaskImplementation/` exists | ✅ |
-| `TaskImplementation/User Service/` created | ✅ |
+| `TaskImplementation/User Service/` exists | ✅ |
 | `task1.md` created inside `User Service` | ✅ |
 | Step-by-step implementation in Hinglish | ✅ |
 | Buyer profile fields finalized | ✅ |
