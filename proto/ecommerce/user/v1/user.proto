@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package ecommerce.user.v1;
+
+option go_package = "github.com/parag/ecommerce/backend/shared/gen/go/ecommerce/user/v1;userv1";
+
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+
+service UserService {
+  rpc CreateUser(CreateUserRequest) returns (UserProfile);
+  rpc GetUser(GetUserRequest) returns (UserProfile);
+  rpc UpdateUserProfile(UpdateUserProfileRequest) returns (UserProfile);
+  rpc GetSellerProfile(GetSellerProfileRequest) returns (SellerProfile);
+}
+
+message CreateUserRequest {
+  string auth_account_id = 1;
+  string email = 2;
+  string phone = 3;
+  string full_name = 4;
+}
+
+message GetUserRequest {
+  string user_id = 1;
+}
+
+message UpdateUserProfileRequest {
+  string user_id = 1;
+  string full_name = 2;
+  string phone = 3;
+  string avatar_url = 4;
+  google.protobuf.FieldMask update_mask = 5;
+}
+
+message GetSellerProfileRequest {
+  string seller_id = 1;
+  string user_id = 2;
+}
+
+message UserProfile {
+  string user_id = 1;
+  string auth_account_id = 2;
+  string email = 3;
+  string phone = 4;
+  string full_name = 5;
+  string avatar_url = 6;
+  string status = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+message SellerProfile {
+  string seller_id = 1;
+  string user_id = 2;
+  string store_name = 3;
+  string display_name = 4;
+  string gst_number = 5;
+  string support_email = 6;
+  string status = 7;
+  google.protobuf.Timestamp approved_at = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
