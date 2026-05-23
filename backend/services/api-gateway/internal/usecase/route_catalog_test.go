@@ -1,0 +1,84 @@
+package usecase_test
+
+import (
+	"context"
+	"os"
+	"testing"
+
+	"ecommerce/api-gateway/internal/domain"
+	"ecommerce/api-gateway/internal/repository"
+	"ecommerce/api-gateway/internal/usecase"
+)
+
+func TestRouteCatalogLoadsMasterAPIContract(t *testing.T) {
+	repo := repository.NewJSONRouteRepository(locateMasterAPI(t))
+	catalog := usecase.NewRouteCatalogService(repo, "/api/v1")
+
+	routes, err := catalog.ListRoutes(context.Background())
+	if err != nil {
+		t.Fatalf("list routes: %v", err)
+	}
+	if got, want := len(routes), 67; got != want {
+		t.Fatalf("expected %d routes from master-api.json, got %d", want, got)
+	}
+
+	assertRoute(t, catalog, "auth.login", domain.MethodPost, "/api/v1/auth/login", "auth-service", "AuthService.Login", domain.AuthPublic)
+	assertRoute(t, catalog, "product.detail", domain.MethodGet, "/api/v1/products/{product_id}", "product-service", "ProductService.GetProduct", domain.AuthPublic)
+	assertRoute(t, catalog, "payment.webhook", domain.MethodPost, "/api/v1/webhooks/payments/{provider}", "payment-service", "PaymentService.HandleWebhook", domain.AuthWebhook)
+	assertRoute(t, catalog, "admin.setting_update", domain.MethodPatch, "/api/v1/admin/settings/{key}", "superadmin-service", "SuperadminService.UpdatePlatformSetting", domain.AuthSuperadmin)
+
+	groups, err := catalog.Groups(context.Background())
+	if err != nil {
+		t.Fatalf("groups: %v", err)
+	}
+	for _, name := range []string{"auth", "products", "cart", "orders", "seller", "admin"} {
+		if len(groups[name]) == 0 {
+			t.Fatalf("expected group %q to be populated", name)
+		}
+	}
+
+	schemas, err := catalog.Schemas(context.Background())
+	if err != nil {
+		t.Fatalf("schemas: %v", err)
+	}
+	if _, ok := schemas["CartItemInput"]; !ok {
+		t.Fatal("expected CartItemInput schema to be loaded")
+	}
+}
+
+func assertRoute(t *testing.T, catalog usecase.RouteCatalog, id string, method domain.HTTPMethod, path string, service string, grpcMethod string, auth domain.AuthLevel) {
+	t.Helper()
+	route, err := catalog.FindByID(context.Background(), id)
+	if err != nil {
+		t.Fatalf("find route %s: %v", id, err)
+	}
+	if route.Method != method || route.Path != path || route.Service != service || route.GRPCMethod != grpcMethod || route.AuthLevel != auth {
+		t.Fatalf("route %s mismatch: %+v", id, route)
+	}
+	byKey, err := catalog.FindByKey(context.Background(), method, path)
+	if err != nil {
+		t.Fatalf("find route by key %s %s: %v", method, path, err)
+	}
+	if byKey.ID != id {
+		t.Fatalf("expected route id %s by key, got %s", id, byKey.ID)
+	}
+}
+
+func locateMasterAPI(t *testing.T) string {
+	t.Helper()
+	candidates := []string{
+		"api/master-api.json",
+		"../api/master-api.json",
+		"../../api/master-api.json",
+		"../../../api/master-api.json",
+		"../../../../api/master-api.json",
+		"../../../../../api/master-api.json",
+	}
+	for _, candidate := range candidates {
+		if stat, err := os.Stat(candidate); err == nil && !stat.IsDir() {
+			return candidate
+		}
+	}
+	t.Fatal("api/master-api.json not found from test working directory")
+	return ""
+}
