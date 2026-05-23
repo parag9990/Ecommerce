@@ -224,8 +224,28 @@
       "service": "product-service",
       "grpc": "ProductService.ListCategories",
       "auth": "public",
-      "request_schema": "Empty",
+      "request_schema": "CategoryListRequest",
       "response_schema": "CategoryListResponse"
+    },
+    {
+      "id": "seller.product_list",
+      "method": "GET",
+      "path": "/api/v1/seller/products",
+      "service": "product-service",
+      "grpc": "ProductService.ListProducts",
+      "auth": "seller",
+      "request_schema": "ProductListRequest",
+      "response_schema": "ProductListResponse"
+    },
+    {
+      "id": "seller.product_detail",
+      "method": "GET",
+      "path": "/api/v1/seller/products/{product_id}",
+      "service": "product-service",
+      "grpc": "ProductService.GetProduct",
+      "auth": "seller",
+      "request_schema": "IdPathRequest",
+      "response_schema": "Product"
     },
     {
       "id": "seller.product_create",
@@ -749,6 +769,7 @@
         {"name": "GetProduct", "input_schema": "IdPathRequest", "output_schema": "Product", "auth": "public"},
         {"name": "BatchGetProducts", "input_schema": "BatchIdsRequest", "output_schema": "ProductListResponse", "auth": "internal"},
         {"name": "ListProducts", "input_schema": "ProductListRequest", "output_schema": "ProductListResponse", "auth": "public"},
+        {"name": "ListCategories", "input_schema": "CategoryListRequest", "output_schema": "CategoryListResponse", "auth": "public"},
         {"name": "ReserveInventory", "input_schema": "InventoryReservationRequest", "output_schema": "InventoryReservationResponse", "auth": "internal"},
         {"name": "ReleaseInventory", "input_schema": "InventoryReservationActionRequest", "output_schema": "SuccessResponse", "auth": "internal"},
         {"name": "CommitInventory", "input_schema": "InventoryReservationActionRequest", "output_schema": "SuccessResponse", "auth": "internal"}
@@ -907,8 +928,9 @@
     "ProductInput": {"type": "object", "required": ["title", "category_id", "variants"], "properties": {"title": {"type": "string"}, "description": {"type": "string"}, "brand": {"type": "string"}, "category_id": {"type": "string"}, "attributes": {"type": "object"}, "images": {"type": "array", "items": {"type": "string"}}, "variants": {"type": "array", "items": {"$ref": "#/schemas/ProductVariantInput"}}}},
     "ProductVariantInput": {"type": "object", "required": ["sku", "price", "stock_quantity"], "properties": {"sku": {"type": "string"}, "attributes": {"type": "object"}, "price": {"$ref": "#/schemas/Money"}, "stock_quantity": {"type": "integer"}}},
     "Product": {"type": "object", "properties": {"product_id": {"type": "string"}, "seller_id": {"type": "string"}, "title": {"type": "string"}, "description": {"type": "string"}, "brand": {"type": "string"}, "category_id": {"type": "string"}, "status": {"type": "string"}, "variants": {"type": "array", "items": {"$ref": "#/schemas/ProductVariantInput"}}}},
-    "ProductListRequest": {"type": "object", "properties": {"category_id": {"type": "string"}, "seller_id": {"type": "string"}, "status": {"type": "string"}, "page": {"type": "integer"}, "page_size": {"type": "integer"}}},
+    "ProductListRequest": {"type": "object", "properties": {"category_id": {"type": "string"}, "seller_id": {"type": "string"}, "status": {"type": "string"}, "page": {"type": "integer"}, "page_size": {"type": "integer"}, "sort": {"type": "string"}}},
     "ProductListResponse": {"type": "object", "properties": {"products": {"type": "array", "items": {"$ref": "#/schemas/Product"}}, "total": {"type": "integer"}}},
+    "CategoryListRequest": {"type": "object", "properties": {"parent_id": {"type": "string"}}},
     "CategoryListResponse": {"type": "object", "properties": {"categories": {"type": "array", "items": {"type": "object", "properties": {"category_id": {"type": "string"}, "name": {"type": "string"}, "parent_id": {"type": "string"}}}}}},
     "InventoryReservationRequest": {"type": "object", "required": ["order_id", "items"], "properties": {"order_id": {"type": "string"}, "items": {"type": "array", "items": {"type": "object"}}, "ttl_seconds": {"type": "integer"}}},
     "InventoryReservationResponse": {"type": "object", "properties": {"reservation_id": {"type": "string"}, "expires_at": {"type": "string", "format": "date-time"}}},
