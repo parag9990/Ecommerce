@@ -503,16 +503,26 @@ CREATE TABLE IF NOT EXISTS cms_audit_logs (
   audit_id VARCHAR(64) NOT NULL,
   seller_id VARCHAR(64) NOT NULL,
   actor_user_id VARCHAR(64) NOT NULL,
+  actor_roles_json JSON NULL,
   action VARCHAR(128) NOT NULL,
   resource_type VARCHAR(64) NOT NULL,
   resource_id VARCHAR(64) NOT NULL,
+  request_id VARCHAR(128) NULL,
+  trace_id VARCHAR(128) NULL,
+  decision ENUM('allowed', 'denied') NOT NULL DEFAULT 'allowed',
+  reason VARCHAR(512) NULL,
+  ip_hash CHAR(64) NULL,
+  user_agent_hash CHAR(64) NULL,
   before_json JSON NULL,
   after_json JSON NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uk_cms_audit_logs_audit_id (audit_id),
   KEY idx_cms_audit_seller_created (seller_id, created_at),
-  KEY idx_cms_audit_resource (resource_type, resource_id)
+  KEY idx_cms_audit_actor_created (actor_user_id, created_at),
+  KEY idx_cms_audit_resource (resource_type, resource_id),
+  KEY idx_cms_audit_request (request_id),
+  KEY idx_cms_audit_action_created (action, created_at)
 ) ENGINE=InnoDB;
 
 -- =========================================================
@@ -608,4 +618,3 @@ CREATE TABLE IF NOT EXISTS admin_review_tasks (
   KEY idx_review_tasks_status_type (status, task_type),
   KEY idx_review_tasks_resource (resource_type, resource_id)
 ) ENGINE=InnoDB;
-
