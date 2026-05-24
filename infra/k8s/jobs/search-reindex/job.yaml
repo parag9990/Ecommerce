@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: search-reindex-products
+  namespace: jobs
+  labels:
+    app.kubernetes.io/name: search-reindex
+    app.kubernetes.io/part-of: ecommerce-platform
+    app.kubernetes.io/component: batch-job
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 7200
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: search-reindex
+        app.kubernetes.io/part-of: ecommerce-platform
+        app.kubernetes.io/component: batch-job
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: reindex
+          image: registry.example.com/search-service:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/search-reindex"]
+          args:
+            - "--mode=alias"
+            - "--batch-size=500"
+            - "--reason=k8s_manual"
+          envFrom:
+            - configMapRef:
+                name: search-reindex-config
+            - secretRef:
+                name: search-reindex-secret
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
