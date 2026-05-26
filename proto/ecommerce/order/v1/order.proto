@@ -1,0 +1,114 @@
+syntax = "proto3";
+
+package ecommerce.order.v1;
+
+option go_package = "github.com/example/ecommerce-platform/backend/shared/gen/go/ecommerce/order/v1;orderv1";
+
+import "google/protobuf/timestamp.proto";
+
+service OrderService {
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+  rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
+  rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
+  rpc UpdateFulfillment(UpdateFulfillmentRequest) returns (UpdateFulfillmentResponse);
+}
+
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  ORDER_STATUS_CREATED = 1;
+  ORDER_STATUS_PENDING_PAYMENT = 2;
+  ORDER_STATUS_PAID = 3;
+  ORDER_STATUS_PACKED = 4;
+  ORDER_STATUS_SHIPPED = 5;
+  ORDER_STATUS_DELIVERED = 6;
+  ORDER_STATUS_CANCELLED = 7;
+  ORDER_STATUS_REFUNDED = 8;
+  ORDER_STATUS_PAYMENT_FAILED = 9;
+}
+
+message Money {
+  int64 minor_units = 1;
+  string currency = 2;
+}
+
+message AddressSnapshot {
+  string recipient_name = 1;
+  string phone = 2;
+  string line1 = 3;
+  string line2 = 4;
+  string city = 5;
+  string state = 6;
+  string postal_code = 7;
+  string country_code = 8;
+}
+
+message OrderItem {
+  string order_item_id = 1;
+  string product_id = 2;
+  string variant_id = 3;
+  string seller_id = 4;
+  string product_name = 5;
+  int32 quantity = 6;
+  Money unit_price = 7;
+  Money line_total = 8;
+}
+
+message Order {
+  string order_id = 1;
+  string user_id = 2;
+  OrderStatus status = 3;
+  repeated OrderItem items = 4;
+  Money total = 5;
+  AddressSnapshot shipping_address = 6;
+  string payment_id = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+message CreateOrderRequest {
+  string cart_id = 1;
+  AddressSnapshot shipping_address = 2;
+  string idempotency_key = 3;
+}
+
+message PaymentAction {
+  string payment_id = 1;
+  string client_action_token = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message CreateOrderResponse {
+  Order order = 1;
+  PaymentAction payment_action = 2;
+}
+
+message GetOrderRequest {
+  string order_id = 1;
+}
+
+message GetOrderResponse {
+  Order order = 1;
+}
+
+message ListOrdersRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  OrderStatus status_filter = 3;
+}
+
+message ListOrdersResponse {
+  repeated Order orders = 1;
+  string next_page_token = 2;
+}
+
+message UpdateFulfillmentRequest {
+  string order_id = 1;
+  OrderStatus target_status = 2;
+  string tracking_number = 3;
+  string carrier = 4;
+  string note = 5;
+}
+
+message UpdateFulfillmentResponse {
+  Order order = 1;
+}
