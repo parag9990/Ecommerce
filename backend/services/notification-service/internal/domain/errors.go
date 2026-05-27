@@ -1,0 +1,30 @@
+package domain
+
+import "errors"
+
+var (
+	ErrUnsupportedChannel       = errors.New("unsupported notification channel")
+	ErrInvalidRecipient         = errors.New("invalid notification recipient")
+	ErrInvalidContent           = errors.New("invalid notification content")
+	ErrInvalidTemplate          = errors.New("invalid notification template")
+	ErrInvalidDelivery          = errors.New("invalid notification delivery")
+	ErrTemplateNotFound         = errors.New("notification template not found")
+	ErrDeliveryNotFound         = errors.New("notification delivery not found")
+	ErrTemplateConflict         = errors.New("notification template already exists")
+	ErrDeliveryConflict         = errors.New("notification delivery already exists")
+	ErrInvalidRenderRequest     = errors.New("invalid notification render request")
+	ErrInvalidOTPRequest        = errors.New("invalid OTP delivery request")
+	ErrInvalidEventTrigger      = errors.New("invalid event notification trigger")
+	ErrDuplicateEventDelivery   = errors.New("event notification already claimed")
+	ErrUnsupportedTemplateKey   = errors.New("unsupported notification template key")
+	ErrTemplateRender           = errors.New("notification template rendering failed")
+	ErrInvalidRetryJob          = errors.New("invalid notification retry job")
+	ErrInvalidRetryInstruction  = errors.New("invalid notification retry instruction")
+	ErrRetryDeliveryReference   = errors.New("notification retry delivery reference is invalid")
+	ErrDurableOTPRetryForbidden = errors.New("durable OTP notification retry is forbidden")
+	ErrInvalidPreference        = errors.New("invalid notification preference")
+	ErrPreferenceNotFound       = errors.New("notification preference not found")
+	ErrDeliverySuppressed       = errors.New("notification delivery suppressed by preference")
+	ErrInvalidProviderEvent     = errors.New("invalid notification provider event")
+	ErrProviderEventNotFound    = errors.New("notification provider event delivery not found")
+)

@@ -1,0 +1,240 @@
+package events
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net"
+	"strings"
+
+	amqp "github.com/rabbitmq/amqp091-go"
+)
+
+const (
+	OrderExchange   = "order.events"
+	PaymentExchange = "payment.events"
+	UserExchange    = "user.events"
+)
+
+type QueueNames struct {
+	OrderEvents   string
+	PaymentEvents string
+	UserEvents    string
+}
+
+func (q QueueNames) Values() []string {
+	return []string{q.OrderEvents, q.PaymentEvents, q.UserEvents}
+}
+
+func (q QueueNames) Validate() error {
+	seen := make(map[string]struct{}, 3)
+	for _, queue := range q.Values() {
+		queue = strings.TrimSpace(queue)
+		if queue == "" {
+			return errors.New("notification event queue name is required")
+		}
+		if _, exists := seen[queue]; exists {
+			return errors.New("notification event queue names must be distinct")
+		}
+		seen[queue] = struct{}{}
+	}
+	return nil
+}
+
+type RabbitConsumer struct {
+	connection *amqp.Connection
+	channel    *amqp.Channel
+	handler    *Handler
+	logger     *slog.Logger
+}
+
+func OpenRabbitConsumer(
+	ctx context.Context,
+	url string,
+	prefetch int,
+	handler *Handler,
+	logger *slog.Logger,
+) (*RabbitConsumer, error) {
+	if ctx == nil {
+		return nil, errors.New("RabbitMQ startup context is required")
+	}
+	if handler == nil {
+		return nil, errors.New("notification event handler is required")
+	}
+	if prefetch < 1 {
+		return nil, errors.New("notification RabbitMQ prefetch must be greater than zero")
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	dialer := &net.Dialer{}
+	connection, err := amqp.DialConfig(strings.TrimSpace(url), amqp.Config{
+		Dial: func(network, address string) (net.Conn, error) {
+			return dialer.DialContext(ctx, network, address)
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("connect notification RabbitMQ: %w", err)
+	}
+	channel, err := connection.Channel()
+	if err != nil {
+		_ = connection.Close()
+		return nil, fmt.Errorf("open notification RabbitMQ channel: %w", err)
+	}
+	if err := channel.Qos(prefetch, 0, false); err != nil {
+		_ = channel.Close()
+		_ = connection.Close()
+		return nil, fmt.Errorf("set notification RabbitMQ prefetch: %w", err)
+	}
+	return &RabbitConsumer{connection: connection, channel: channel, handler: handler, logger: logger}, nil
+}
+
+func (c *RabbitConsumer) DeclareTopology(queues QueueNames) error {
+	if c == nil || c.channel == nil {
+		return errors.New("notification RabbitMQ consumer is not configured")
+	}
+	if err := queues.Validate(); err != nil {
+		return err
+	}
+	bindings := []struct {
+		exchange string
+		queue    string
+		types    []string
+	}{
+		{OrderExchange, queues.OrderEvents, []string{"OrderCreated", "OrderPaid", "OrderCancelled", "OrderDelivered"}},
+		{PaymentExchange, queues.PaymentEvents, []string{"PaymentSucceeded", "PaymentFailed"}},
+		{UserExchange, queues.UserEvents, []string{"UserCreated", "SellerApproved", "AddressUpdated"}},
+	}
+	for _, binding := range bindings {
+		if err := c.channel.ExchangeDeclare(binding.exchange, "topic", true, false, false, false, nil); err != nil {
+			return fmt.Errorf("declare notification exchange %q: %w", binding.exchange, err)
+		}
+		queue, err := c.channel.QueueDeclare(binding.queue, true, false, false, false, nil)
+		if err != nil {
+			return fmt.Errorf("declare notification queue %q: %w", binding.queue, err)
+		}
+		for _, eventType := range binding.types {
+			if err := c.channel.QueueBind(queue.Name, eventType, binding.exchange, false, nil); err != nil {
+				return fmt.Errorf("bind notification event %q to queue %q: %w", eventType, binding.queue, err)
+			}
+		}
+	}
+	return nil
+}
+
+func (c *RabbitConsumer) Run(ctx context.Context, queues QueueNames) error {
+	if c == nil || c.channel == nil {
+		return errors.New("notification RabbitMQ consumer is not configured")
+	}
+	if ctx == nil {
+		return errors.New("notification RabbitMQ consumer context is required")
+	}
+	if err := queues.Validate(); err != nil {
+		return err
+	}
+	consumeCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	errorsChannel := make(chan error, len(queues.Values()))
+	for _, queue := range queues.Values() {
+		queue := queue
+		go func() {
+			errorsChannel <- c.consumeQueue(consumeCtx, queue)
+		}()
+	}
+
+	var firstError error
+	for range queues.Values() {
+		if err := <-errorsChannel; err != nil && firstError == nil {
+			firstError = err
+			cancel()
+		}
+	}
+	if ctx.Err() != nil {
+		return nil
+	}
+	return firstError
+}
+
+func (c *RabbitConsumer) consumeQueue(ctx context.Context, queue string) error {
+	deliveries, err := c.channel.ConsumeWithContext(ctx, queue, "", false, false, false, false, nil)
+	if err != nil {
+		return fmt.Errorf("consume notification queue %q: %w", queue, err)
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case delivery, ok := <-deliveries:
+			if !ok {
+				if ctx.Err() != nil {
+					return nil
+				}
+				return fmt.Errorf("notification queue %q delivery stream closed", queue)
+			}
+			if err := c.handleDelivery(ctx, queue, delivery); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func (c *RabbitConsumer) handleDelivery(ctx context.Context, queue string, delivery amqp.Delivery) error {
+	outcome, err := c.handler.Handle(ctx, delivery.Body)
+	switch {
+	case err == nil:
+		c.logger.InfoContext(ctx, "notification.rabbitmq.ack",
+			slog.String("queue", queue),
+			slog.String("outcome", string(outcome)),
+			slog.Bool("redelivered", delivery.Redelivered),
+		)
+		if ackErr := delivery.Ack(false); ackErr != nil {
+			return fmt.Errorf("ack notification queue %q delivery: %w", queue, ackErr)
+		}
+	case errors.Is(err, ErrInvalidEvent), errors.Is(err, ErrNonRetryableProcessing):
+		c.logger.WarnContext(ctx, "notification.rabbitmq.reject",
+			slog.String("queue", queue),
+			slog.Bool("redelivered", delivery.Redelivered),
+		)
+		if rejectErr := delivery.Reject(false); rejectErr != nil {
+			return fmt.Errorf("reject notification queue %q delivery: %w", queue, rejectErr)
+		}
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		if ctx.Err() != nil {
+			return nil
+		}
+		c.logger.WarnContext(ctx, "notification.rabbitmq.requeue",
+			slog.String("queue", queue),
+			slog.Bool("redelivered", delivery.Redelivered),
+		)
+		if nackErr := delivery.Nack(false, true); nackErr != nil {
+			return fmt.Errorf("nack notification queue %q delivery: %w", queue, nackErr)
+		}
+	default:
+		c.logger.WarnContext(ctx, "notification.rabbitmq.requeue",
+			slog.String("queue", queue),
+			slog.Bool("redelivered", delivery.Redelivered),
+		)
+		if nackErr := delivery.Nack(false, true); nackErr != nil {
+			return fmt.Errorf("nack notification queue %q delivery: %w", queue, nackErr)
+		}
+	}
+	return nil
+}
+
+func (c *RabbitConsumer) Close() error {
+	if c == nil {
+		return nil
+	}
+	var closeErr error
+	if c.channel != nil {
+		closeErr = c.channel.Close()
+	}
+	if c.connection != nil {
+		if err := c.connection.Close(); err != nil && closeErr == nil {
+			closeErr = err
+		}
+	}
+	return closeErr
+}
