@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package ecommerce.recommendation.v1;
+
+option go_package = "github.com/example/ecommerce-platform/backend/proto-gen/go/ecommerce/recommendation/v1;recommendationv1";
+
+import "google/protobuf/timestamp.proto";
+
+service RecommendationService {
+  rpc GetRecommendations(GetRecommendationsRequest) returns (GetRecommendationsResponse);
+}
+
+enum RecommendationType {
+  RECOMMENDATION_TYPE_UNSPECIFIED = 0;
+  RECOMMENDATION_TYPE_SIMILAR_PRODUCTS = 1;
+  RECOMMENDATION_TYPE_TRENDING = 2;
+  RECOMMENDATION_TYPE_PERSONALIZED = 3;
+  RECOMMENDATION_TYPE_FREQUENTLY_BOUGHT_TOGETHER = 4;
+}
+
+enum RecommendationContext {
+  RECOMMENDATION_CONTEXT_UNSPECIFIED = 0;
+  RECOMMENDATION_CONTEXT_HOME_FEED = 1;
+  RECOMMENDATION_CONTEXT_PRODUCT_DETAIL = 2;
+  RECOMMENDATION_CONTEXT_CATEGORY_LISTING = 3;
+  RECOMMENDATION_CONTEXT_CART = 4;
+  RECOMMENDATION_CONTEXT_CHECKOUT = 5;
+  RECOMMENDATION_CONTEXT_SEARCH_RESULTS = 6;
+  RECOMMENDATION_CONTEXT_SELLER_STORE = 7;
+}
+
+message GetRecommendationsRequest {
+  string user_id = 1;
+  RecommendationContext context = 2;
+  string anonymous_id = 3;
+  string product_id = 4;
+  string category_id = 5;
+  string seller_id = 6;
+  repeated string cart_product_ids = 7;
+  int32 limit = 8;
+  RecommendationType type = 9;
+}
+
+message RecommendationItem {
+  string product_id = 1;
+  int32 rank = 2;
+  double score = 3;
+  string reason = 4;
+}
+
+message GetRecommendationsResponse {
+  string recommendation_id = 1;
+  RecommendationType type = 2;
+  string strategy_id = 3;
+  repeated RecommendationItem items = 4;
+  google.protobuf.Timestamp generated_at = 5;
+  int64 cache_ttl_seconds = 6;
+}
