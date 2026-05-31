@@ -1,0 +1,435 @@
+package usecase
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"log/slog"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/example/ecommerce-platform/backend/services/session-service/internal/domain"
+)
+
+type PrivacyRepository interface {
+	GetPrivacySettings(ctx context.Context) (domain.PrivacySettings, error)
+	UpsertPrivacySettings(ctx context.Context, settings domain.PrivacySettings) error
+	PreviewDeletion(ctx context.Context, target domain.DeletionTarget) (domain.DeletionPreview, error)
+	ApplyDeletion(ctx context.Context, target domain.DeletionTarget) (domain.DeletionPreview, error)
+	CreateDeletionRequest(ctx context.Context, request domain.DeletionRequest) error
+	UpdateDeletionRequestStatus(ctx context.Context, requestID string, status domain.DeletionRequestStatus, completedAt *time.Time, message string) error
+	ListDeletionRequests(ctx context.Context, limit int) ([]domain.DeletionRequest, error)
+	CreateAuditEvent(ctx context.Context, event domain.AuditEvent) error
+}
+
+type ActiveSessionRepository interface {
+	PreviewDeletion(ctx context.Context, target domain.DeletionTarget) (int64, error)
+	DeleteMatching(ctx context.Context, target domain.DeletionTarget) (int64, error)
+}
+
+type Clock interface {
+	Now() time.Time
+}
+
+type PrivacyConfig struct {
+	HashPepper        string
+	DeletionListLimit int
+}
+
+type PrivacyUsecase struct {
+	repo   PrivacyRepository
+	active ActiveSessionRepository
+	clock  Clock
+	config PrivacyConfig
+	logger *slog.Logger
+}
+
+type UpdatePrivacySettingsInput struct {
+	Actor     domain.Actor
+	Masking   domain.PrivacyMaskingSettings
+	RequestID string
+}
+
+type UpdateRetentionSettingsInput struct {
+	Actor     domain.Actor
+	Retention domain.RetentionSettings
+	Reason    string
+	RequestID string
+}
+
+type PreviewDeletionInput struct {
+	Actor  domain.Actor
+	Target domain.DeletionTarget
+}
+
+type CreateDeletionRequestInput struct {
+	Actor     domain.Actor
+	Target    domain.DeletionTarget
+	Reason    string
+	Confirmed bool
+	RequestID string
+}
+
+func NewPrivacyUsecase(repo PrivacyRepository, active ActiveSessionRepository, config PrivacyConfig, logger *slog.Logger) (*PrivacyUsecase, error) {
+	if repo == nil {
+		return nil, errors.New("privacy repository is required")
+	}
+	if strings.TrimSpace(config.HashPepper) == "" {
+		return nil, errors.New("privacy hash pepper is required")
+	}
+	if config.DeletionListLimit <= 0 {
+		config.DeletionListLimit = 50
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &PrivacyUsecase{
+		repo:   repo,
+		active: active,
+		clock:  realClock{},
+		config: config,
+		logger: logger,
+	}, nil
+}
+
+func (uc *PrivacyUsecase) GetPrivacySettings(ctx context.Context, actor domain.Actor) (domain.PrivacySettings, error) {
+	if err := requireAnyRole(actor, "admin", "operations_admin", "superadmin"); err != nil {
+		return domain.PrivacySettings{}, err
+	}
+
+	settings, err := uc.loadSettings(ctx)
+	if err != nil {
+		return domain.PrivacySettings{}, err
+	}
+	settings.Permissions = permissionsFor(actor)
+	return settings, nil
+}
+
+func (uc *PrivacyUsecase) UpdatePrivacySettings(ctx context.Context, input UpdatePrivacySettingsInput) (domain.PrivacySettings, error) {
+	if err := requireAnyRole(input.Actor, "operations_admin", "superadmin"); err != nil {
+		return domain.PrivacySettings{}, err
+	}
+	if err := domain.ValidateMaskingSettings(input.Masking); err != nil {
+		return domain.PrivacySettings{}, err
+	}
+
+	settings, err := uc.loadSettings(ctx)
+	if err != nil {
+		return domain.PrivacySettings{}, err
+	}
+	settings.Masking = input.Masking
+	settings.UpdatedAt = uc.clock.Now().UTC()
+	settings.UpdatedBy = input.Actor.ID
+
+	if err := uc.repo.CreateAuditEvent(ctx, domain.AuditEvent{
+		EventID:      newID("audit"),
+		ActorID:      input.Actor.ID,
+		Action:       "session_analytics.masking_updated",
+		ResourceType: "privacy_settings",
+		ResourceID:   "global",
+		RequestID:    input.RequestID,
+		Reason:       "Masking policy updated",
+		CreatedAt:    settings.UpdatedAt,
+		Metadata: map[string]any{
+			"user_id_mode":         settings.Masking.UserIDMode,
+			"anonymous_id_mode":    settings.Masking.AnonymousIDMode,
+			"session_id_mode":      settings.Masking.SessionIDMode,
+			"location_granularity": settings.Masking.LocationGranularity,
+			"show_search_queries":  settings.Masking.ShowSearchQueries,
+			"show_ip_hash":         settings.Masking.ShowIPHash,
+		},
+	}); err != nil {
+		return domain.PrivacySettings{}, err
+	}
+	if err := uc.repo.UpsertPrivacySettings(ctx, settings); err != nil {
+		return domain.PrivacySettings{}, err
+	}
+
+	settings.Permissions = permissionsFor(input.Actor)
+	uc.logger.Info("session_privacy.masking_updated", slog.String("actor_id", input.Actor.ID))
+	return settings, nil
+}
+
+func (uc *PrivacyUsecase) GetRetentionSettings(ctx context.Context, actor domain.Actor) (domain.RetentionSettings, error) {
+	if err := requireAnyRole(actor, "admin", "operations_admin", "superadmin"); err != nil {
+		return domain.RetentionSettings{}, err
+	}
+	settings, err := uc.loadSettings(ctx)
+	if err != nil {
+		return domain.RetentionSettings{}, err
+	}
+	return settings.Retention, nil
+}
+
+func (uc *PrivacyUsecase) UpdateRetentionSettings(ctx context.Context, input UpdateRetentionSettingsInput) (domain.RetentionSettings, error) {
+	if err := requireAnyRole(input.Actor, "superadmin"); err != nil {
+		return domain.RetentionSettings{}, err
+	}
+	if err := domain.ValidateRetentionSettings(input.Retention); err != nil {
+		return domain.RetentionSettings{}, err
+	}
+	reason, err := domain.ValidateReason(input.Reason)
+	if err != nil {
+		return domain.RetentionSettings{}, err
+	}
+
+	settings, err := uc.loadSettings(ctx)
+	if err != nil {
+		return domain.RetentionSettings{}, err
+	}
+	settings.Retention = input.Retention
+	settings.UpdatedAt = uc.clock.Now().UTC()
+	settings.UpdatedBy = input.Actor.ID
+
+	if err := uc.repo.CreateAuditEvent(ctx, domain.AuditEvent{
+		EventID:      newID("audit"),
+		ActorID:      input.Actor.ID,
+		Action:       "session_analytics.retention_updated",
+		ResourceType: "privacy_settings",
+		ResourceID:   "global",
+		RequestID:    input.RequestID,
+		Reason:       reason,
+		CreatedAt:    settings.UpdatedAt,
+		Metadata: map[string]any{
+			"raw_events_days":             input.Retention.RawEventsDays,
+			"journey_summaries_days":      input.Retention.JourneySummariesDays,
+			"heatmap_aggregates_days":     input.Retention.HeatmapAggregatesDays,
+			"analytics_aggregates_months": input.Retention.AnalyticsAggregatesMonths,
+			"active_session_ttl_minutes":  input.Retention.ActiveSessionTTLMinutes,
+			"deletion_request_log_days":   input.Retention.DeletionRequestLogDays,
+		},
+	}); err != nil {
+		return domain.RetentionSettings{}, err
+	}
+	if err := uc.repo.UpsertPrivacySettings(ctx, settings); err != nil {
+		return domain.RetentionSettings{}, err
+	}
+
+	uc.logger.Info("session_privacy.retention_updated", slog.String("actor_id", input.Actor.ID))
+	return settings.Retention, nil
+}
+
+func (uc *PrivacyUsecase) PreviewDeletion(ctx context.Context, input PreviewDeletionInput) (domain.DeletionPreview, error) {
+	if err := requireAnyRole(input.Actor, "operations_admin", "superadmin"); err != nil {
+		return domain.DeletionPreview{}, err
+	}
+	target, err := domain.ValidateDeletionTarget(input.Target)
+	if err != nil {
+		return domain.DeletionPreview{}, err
+	}
+
+	preview, err := uc.repo.PreviewDeletion(ctx, target)
+	if err != nil {
+		return domain.DeletionPreview{}, err
+	}
+	active, err := uc.previewActiveSessions(ctx, target)
+	if err != nil {
+		return domain.DeletionPreview{}, err
+	}
+	preview.TargetType = target.Type
+	preview.TargetValueMasked = domain.MaskIdentifier(target.Value)
+	preview.MatchedActiveSessions = active
+	preview.AggregateImpact = domain.AggregateImpactAnonymizedOrUnchanged
+	preview.EstimatedCompletionSeconds = estimateDeletionSeconds(preview)
+	return preview, nil
+}
+
+func (uc *PrivacyUsecase) CreateDeletionRequest(ctx context.Context, input CreateDeletionRequestInput) (domain.DeletionRequest, error) {
+	if err := requireAnyRole(input.Actor, "operations_admin", "superadmin"); err != nil {
+		return domain.DeletionRequest{}, err
+	}
+	if !input.Confirmed {
+		return domain.DeletionRequest{}, domain.ErrConfirmation
+	}
+	target, err := domain.ValidateDeletionTarget(input.Target)
+	if err != nil {
+		return domain.DeletionRequest{}, err
+	}
+	reason, err := domain.ValidateReason(input.Reason)
+	if err != nil {
+		return domain.DeletionRequest{}, err
+	}
+
+	preview, err := uc.PreviewDeletion(ctx, PreviewDeletionInput{
+		Actor:  input.Actor,
+		Target: target,
+	})
+	if err != nil {
+		return domain.DeletionRequest{}, err
+	}
+
+	now := uc.clock.Now().UTC()
+	request := domain.DeletionRequest{
+		RequestID:               newID("delreq"),
+		TargetType:              target.Type,
+		TargetHash:              domain.HashDeletionTarget(uc.config.HashPepper, target),
+		TargetValueMasked:       preview.TargetValueMasked,
+		Status:                  domain.DeletionStatusQueued,
+		RequestedBy:             input.Actor.ID,
+		Reason:                  reason,
+		MatchedSessions:         preview.MatchedSessions,
+		MatchedEvents:           preview.MatchedEvents,
+		MatchedJourneySummaries: preview.MatchedJourneySummaries,
+		MatchedActiveSessions:   preview.MatchedActiveSessions,
+		CreatedAt:               now,
+	}
+	if err := uc.repo.CreateDeletionRequest(ctx, request); err != nil {
+		return domain.DeletionRequest{}, err
+	}
+
+	if err := uc.repo.CreateAuditEvent(ctx, domain.AuditEvent{
+		EventID:      newID("audit"),
+		ActorID:      input.Actor.ID,
+		Action:       "session_analytics.deletion_requested",
+		ResourceType: "session_analytics",
+		ResourceID:   request.RequestID,
+		RequestID:    input.RequestID,
+		Reason:       reason,
+		CreatedAt:    now,
+		Metadata: map[string]any{
+			"target_type":               target.Type,
+			"target_hash":               request.TargetHash,
+			"matched_sessions":          request.MatchedSessions,
+			"matched_events":            request.MatchedEvents,
+			"matched_journey_summaries": request.MatchedJourneySummaries,
+			"matched_active_sessions":   request.MatchedActiveSessions,
+		},
+	}); err != nil {
+		return domain.DeletionRequest{}, err
+	}
+
+	if err := uc.repo.UpdateDeletionRequestStatus(ctx, request.RequestID, domain.DeletionStatusProcessing, nil, ""); err != nil {
+		return domain.DeletionRequest{}, err
+	}
+	request.Status = domain.DeletionStatusProcessing
+
+	applied, err := uc.repo.ApplyDeletion(ctx, target)
+	if err != nil {
+		_ = uc.markDeletionFailed(ctx, request.RequestID, err)
+		return domain.DeletionRequest{}, err
+	}
+	activeDeleted, err := uc.deleteActiveSessions(ctx, target)
+	if err != nil {
+		_ = uc.markDeletionFailed(ctx, request.RequestID, err)
+		return domain.DeletionRequest{}, err
+	}
+
+	completedAt := uc.clock.Now().UTC()
+	request.Status = domain.DeletionStatusCompleted
+	request.CompletedAt = &completedAt
+	request.MatchedSessions = applied.MatchedSessions
+	request.MatchedEvents = applied.MatchedEvents
+	request.MatchedJourneySummaries = applied.MatchedJourneySummaries
+	request.MatchedActiveSessions = activeDeleted
+
+	if err := uc.repo.UpdateDeletionRequestStatus(ctx, request.RequestID, domain.DeletionStatusCompleted, &completedAt, ""); err != nil {
+		return domain.DeletionRequest{}, err
+	}
+
+	uc.logger.Info("session_privacy.deletion_completed",
+		slog.String("request_id", request.RequestID),
+		slog.String("actor_id", input.Actor.ID),
+		slog.String("target_type", string(target.Type)),
+	)
+	return request, nil
+}
+
+func (uc *PrivacyUsecase) ListDeletionRequests(ctx context.Context, actor domain.Actor) ([]domain.DeletionRequest, error) {
+	if err := requireAnyRole(actor, "admin", "operations_admin", "superadmin"); err != nil {
+		return nil, err
+	}
+	return uc.repo.ListDeletionRequests(ctx, uc.config.DeletionListLimit)
+}
+
+func (uc *PrivacyUsecase) loadSettings(ctx context.Context) (domain.PrivacySettings, error) {
+	settings, err := uc.repo.GetPrivacySettings(ctx)
+	if errors.Is(err, domain.ErrNotFound) {
+		return domain.DefaultPrivacySettings(uc.clock.Now(), "system"), nil
+	}
+	if err != nil {
+		return domain.PrivacySettings{}, err
+	}
+	if settings.Masking.UserIDMode == "" {
+		settings.Masking = domain.DefaultMaskingSettings()
+	}
+	if settings.Retention.RawEventsDays == 0 {
+		settings.Retention = domain.DefaultRetentionSettings()
+	}
+	return settings, nil
+}
+
+func (uc *PrivacyUsecase) previewActiveSessions(ctx context.Context, target domain.DeletionTarget) (int64, error) {
+	if uc.active == nil {
+		return 0, nil
+	}
+	return uc.active.PreviewDeletion(ctx, target)
+}
+
+func (uc *PrivacyUsecase) deleteActiveSessions(ctx context.Context, target domain.DeletionTarget) (int64, error) {
+	if uc.active == nil {
+		return 0, nil
+	}
+	return uc.active.DeleteMatching(ctx, target)
+}
+
+func (uc *PrivacyUsecase) markDeletionFailed(ctx context.Context, requestID string, err error) error {
+	now := uc.clock.Now().UTC()
+	message := "deletion request failed"
+	if err != nil {
+		message = err.Error()
+	}
+	return uc.repo.UpdateDeletionRequestStatus(ctx, requestID, domain.DeletionStatusFailed, &now, message)
+}
+
+func permissionsFor(actor domain.Actor) domain.PrivacyPermissions {
+	return domain.PrivacyPermissions{
+		CanUpdateMasking:   hasAnyRole(actor, "operations_admin", "superadmin"),
+		CanRequestDeletion: hasAnyRole(actor, "operations_admin", "superadmin"),
+		CanUpdateRetention: hasAnyRole(actor, "superadmin"),
+	}
+}
+
+func requireAnyRole(actor domain.Actor, allowed ...string) error {
+	if strings.TrimSpace(actor.ID) == "" {
+		return domain.ErrUnauthenticated
+	}
+	if !hasAnyRole(actor, allowed...) {
+		return domain.ErrForbidden
+	}
+	return nil
+}
+
+func hasAnyRole(actor domain.Actor, allowed ...string) bool {
+	for _, role := range actor.Roles {
+		normalized := strings.ToLower(strings.TrimSpace(role))
+		if slices.Contains(allowed, normalized) {
+			return true
+		}
+	}
+	return false
+}
+
+func estimateDeletionSeconds(preview domain.DeletionPreview) int {
+	total := preview.MatchedEvents + preview.MatchedSessions + preview.MatchedJourneySummaries + preview.MatchedActiveSessions
+	estimate := 5 + int(total/1000)
+	if estimate > 300 {
+		return 300
+	}
+	return estimate
+}
+
+func newID(prefix string) string {
+	var bytes [12]byte
+	if _, err := rand.Read(bytes[:]); err != nil {
+		return prefix + "_" + hex.EncodeToString([]byte(time.Now().UTC().Format("20060102150405.000000000")))
+	}
+	return prefix + "_" + hex.EncodeToString(bytes[:])
+}
+
+type realClock struct{}
+
+func (realClock) Now() time.Time {
+	return time.Now()
+}
