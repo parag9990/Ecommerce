@@ -678,6 +678,46 @@
       "response_schema": "Refund"
     },
     {
+      "id": "admin.order_manual_review",
+      "method": "POST",
+      "path": "/api/v1/admin/orders/{order_id}/manual-review",
+      "service": "superadmin-service",
+      "grpc": "SuperadminService.MarkOrderManualReview",
+      "auth": "admin",
+      "request_schema": "ManualOrderReviewRequest",
+      "response_schema": "AdminReviewTask"
+    },
+    {
+      "id": "admin.order_dispute_view",
+      "method": "GET",
+      "path": "/api/v1/admin/orders/{order_id}/dispute-view",
+      "service": "superadmin-service",
+      "grpc": "SuperadminService.GetOrderDisputeView",
+      "auth": "admin",
+      "request_schema": "PathOrderIDRequest",
+      "response_schema": "OrderDisputeViewResponse"
+    },
+    {
+      "id": "admin.session_analytics_access",
+      "method": "GET",
+      "path": "/api/v1/admin/session-analytics/access",
+      "service": "superadmin-service",
+      "grpc": "SuperadminService.GetSessionAnalyticsAccess",
+      "auth": "admin",
+      "request_schema": "Empty",
+      "response_schema": "SessionDashboardAccessResponse"
+    },
+    {
+      "id": "admin.session_analytics_authorize",
+      "method": "POST",
+      "path": "/api/v1/admin/session-analytics/authorize",
+      "service": "superadmin-service",
+      "grpc": "SuperadminService.AuthorizeSessionAnalytics",
+      "auth": "admin",
+      "request_schema": "AuthorizeSessionAnalyticsRequest",
+      "response_schema": "AuthorizeSessionAnalyticsResponse"
+    },
+    {
       "id": "admin.audit_logs",
       "method": "GET",
       "path": "/api/v1/admin/audit-logs",
@@ -706,6 +746,26 @@
       "auth": "superadmin",
       "request_schema": "PlatformSettingInput",
       "response_schema": "PlatformSetting"
+    },
+    {
+      "id": "admin.search_synonyms",
+      "method": "GET",
+      "path": "/api/v1/admin/search/synonyms",
+      "service": "superadmin-service",
+      "grpc": "SuperadminService.ListSearchSynonyms",
+      "auth": "admin",
+      "request_schema": "Empty",
+      "response_schema": "SearchSynonymListResponse"
+    },
+    {
+      "id": "admin.search_synonym_upsert",
+      "method": "POST",
+      "path": "/api/v1/admin/search/synonyms",
+      "service": "superadmin-service",
+      "grpc": "SuperadminService.UpsertSearchSynonym",
+      "auth": "admin",
+      "request_schema": "SearchSynonymUpsertInput",
+      "response_schema": "SearchSynonymListResponse"
     }
   ],
   "grpc_services": {
@@ -865,8 +925,12 @@
         {"name": "ListSellersForAdmin", "input_schema": "AdminSellerListRequest", "output_schema": "AdminSellerListResponse", "auth": "admin"},
         {"name": "UpdateSellerStatus", "input_schema": "StatusUpdateRequest", "output_schema": "SuccessResponse", "auth": "admin"},
         {"name": "ReviewRefund", "input_schema": "RefundReviewRequest", "output_schema": "Refund", "auth": "admin"},
+        {"name": "GetSessionAnalyticsAccess", "input_schema": "Empty", "output_schema": "SessionDashboardAccessResponse", "auth": "admin"},
+        {"name": "AuthorizeSessionAnalytics", "input_schema": "AuthorizeSessionAnalyticsRequest", "output_schema": "AuthorizeSessionAnalyticsResponse", "auth": "admin"},
         {"name": "GetPlatformSettings", "input_schema": "Empty", "output_schema": "PlatformSettingsResponse", "auth": "admin"},
         {"name": "UpdatePlatformSetting", "input_schema": "PlatformSettingInput", "output_schema": "PlatformSetting", "auth": "superadmin"},
+        {"name": "ListSearchSynonyms", "input_schema": "Empty", "output_schema": "SearchSynonymListResponse", "auth": "admin"},
+        {"name": "UpsertSearchSynonym", "input_schema": "SearchSynonymUpsertInput", "output_schema": "SearchSynonymListResponse", "auth": "admin"},
         {"name": "ListAuditLogs", "input_schema": "AuditLogListRequest", "output_schema": "AuditLogListResponse", "auth": "admin"}
       ]
     }
@@ -918,8 +982,9 @@
     "AutocompleteRequest": {"type": "object", "properties": {"q": {"type": "string"}, "limit": {"type": "integer"}}},
     "AutocompleteResponse": {"type": "object", "properties": {"suggestions": {"type": "array", "items": {"type": "string"}}}},
     "SearchSynonymInput": {"type": "object", "properties": {"root": {"type": "string"}, "synonyms": {"type": "array", "items": {"type": "string"}}}},
+    "SearchSynonymUpsertInput": {"type": "object", "required": ["root", "synonyms", "reason"], "properties": {"root": {"type": "string"}, "synonyms": {"type": "array", "items": {"type": "string"}}, "reason": {"type": "string"}, "version": {"type": "integer"}}},
     "SearchSynonym": {"allOf": [{"$ref": "#/schemas/SearchSynonymInput"}, {"type": "object", "properties": {"synonym_id": {"type": "string"}}}]},
-    "SearchSynonymListResponse": {"type": "object", "properties": {"synonyms": {"type": "array", "items": {"$ref": "#/schemas/SearchSynonym"}}}},
+    "SearchSynonymListResponse": {"type": "object", "properties": {"synonyms": {"type": "array", "items": {"$ref": "#/schemas/SearchSynonym"}}, "version": {"type": "integer"}, "updated_at": {"type": "string"}}},
     "CartItemInput": {"type": "object", "required": ["product_id", "variant_id", "quantity"], "properties": {"product_id": {"type": "string"}, "variant_id": {"type": "string"}, "quantity": {"type": "integer", "minimum": 1}}},
     "CartItemQuantityInput": {"type": "object", "required": ["quantity"], "properties": {"quantity": {"type": "integer", "minimum": 1}}},
     "Cart": {"type": "object", "properties": {"cart_id": {"type": "string"}, "user_id": {"type": "string"}, "items": {"type": "array", "items": {"type": "object"}}, "subtotal": {"$ref": "#/schemas/Money"}, "discount": {"$ref": "#/schemas/Money"}, "total": {"$ref": "#/schemas/Money"}}},
@@ -980,10 +1045,17 @@
     "AdminPaymentListRequest": {"allOf": [{"$ref": "#/schemas/PaginationRequest"}, {"type": "object", "properties": {"status": {"type": "string"}, "provider": {"type": "string"}, "order_id": {"type": "string"}}}]},
     "StatusUpdateRequest": {"type": "object", "required": ["status", "reason"], "properties": {"status": {"type": "string"}, "reason": {"type": "string"}}},
     "RefundReviewRequest": {"type": "object", "required": ["decision", "reason"], "properties": {"refund_id": {"type": "string"}, "decision": {"type": "string", "enum": ["approved", "rejected"]}, "reason": {"type": "string"}}},
+    "ManualOrderReviewRequest": {"type": "object", "required": ["category", "reason"], "properties": {"category": {"type": "string", "enum": ["payment_mismatch", "fulfillment_delay", "refund_followup", "fraud_risk", "customer_dispute"]}, "reason": {"type": "string"}}},
+    "AdminReviewTask": {"type": "object", "properties": {"task_id": {"type": "string"}, "task_type": {"type": "string"}, "resource_type": {"type": "string"}, "resource_id": {"type": "string"}, "status": {"type": "string"}, "reason": {"type": "string"}, "metadata": {"type": "object"}}},
+    "PathOrderIDRequest": {"type": "object", "required": ["order_id"], "properties": {"order_id": {"type": "string"}}},
+    "OrderDisputeViewResponse": {"type": "object", "properties": {"order": {"$ref": "#/schemas/Order"}, "status_history": {"type": "array", "items": {"type": "object"}}, "payments": {"type": "array", "items": {"$ref": "#/schemas/Payment"}}, "refunds": {"type": "array", "items": {"$ref": "#/schemas/Refund"}}, "review_tasks": {"type": "array", "items": {"$ref": "#/schemas/AdminReviewTask"}}, "risk_flags": {"type": "array", "items": {"type": "string"}}}},
+    "AuthorizeSessionAnalyticsRequest": {"type": "object", "required": ["route"], "properties": {"route": {"type": "string", "enum": ["analytics.live", "analytics.sessions", "analytics.journey", "analytics.funnels", "analytics.heatmaps"]}, "include_risk": {"type": "boolean"}, "export": {"type": "boolean"}, "from": {"type": "string"}, "to": {"type": "string"}, "page": {"type": "integer", "minimum": 1}, "page_size": {"type": "integer", "minimum": 1, "maximum": 100}, "session_id": {"type": "string"}, "path": {"type": "string"}, "device_type": {"type": "string", "enum": ["desktop", "mobile", "tablet"]}}},
+    "AuthorizeSessionAnalyticsResponse": {"type": "object", "properties": {"allowed": {"type": "boolean"}, "route": {"type": "string"}, "permission": {"type": "string"}, "risk_permission": {"type": "string"}, "risk_allowed": {"type": "boolean"}, "mask_pii": {"type": "boolean"}, "downstream_headers": {"type": "object", "additionalProperties": {"type": "string"}}}},
+    "SessionDashboardAccessResponse": {"type": "object", "properties": {"can_view_dashboard": {"type": "boolean"}, "risk_allowed": {"type": "boolean"}, "mask_pii": {"type": "boolean"}, "modules": {"type": "array", "items": {"type": "object", "properties": {"key": {"type": "string"}, "route": {"type": "string"}, "required_permission": {"type": "string"}, "requires_risk": {"type": "boolean"}, "visible": {"type": "boolean"}}}}}},
     "AuditLogListRequest": {"allOf": [{"$ref": "#/schemas/PaginationRequest"}, {"type": "object", "properties": {"actor_id": {"type": "string"}, "resource_type": {"type": "string"}, "resource_id": {"type": "string"}}}]},
     "AuditLogListResponse": {"type": "object", "properties": {"logs": {"type": "array", "items": {"type": "object"}}}},
-    "PlatformSetting": {"type": "object", "properties": {"key": {"type": "string"}, "value": {"type": "object"}, "updated_at": {"type": "string"}}},
-    "PlatformSettingInput": {"type": "object", "required": ["value", "reason"], "properties": {"value": {"type": "object"}, "reason": {"type": "string"}}},
+    "PlatformSetting": {"type": "object", "properties": {"key": {"type": "string"}, "type": {"type": "string"}, "risk": {"type": "string"}, "value": {"type": "object"}, "version": {"type": "integer"}, "updated_at": {"type": "string"}}},
+    "PlatformSettingInput": {"type": "object", "required": ["value", "reason"], "properties": {"value": {"type": "object"}, "reason": {"type": "string"}, "version": {"type": "integer"}}},
     "PlatformSettingsResponse": {"type": "object", "properties": {"settings": {"type": "array", "items": {"$ref": "#/schemas/PlatformSetting"}}}}
   }
 }
