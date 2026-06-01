@@ -1,0 +1,20 @@
+{
+  "name": "ecommerce-frontend",
+  "private": true,
+  "packageManager": "pnpm@11.5.0",
+  "engines": {
+    "node": ">=22.13.0",
+    "pnpm": ">=11.5.0"
+  },
+  "scripts": {
+    "dev": "pnpm dev:user",
+    "dev:user": "pnpm --filter user-app dev",
+    "build": "pnpm build:user",
+    "build:user": "pnpm --filter user-app build",
+    "lint": "pnpm lint:user",
+    "lint:user": "pnpm --filter user-app lint",
+    "typecheck": "pnpm typecheck:user",
+    "typecheck:user": "pnpm --filter user-app typecheck",
+    "preview:user": "pnpm --filter user-app preview"
+  }
+}
