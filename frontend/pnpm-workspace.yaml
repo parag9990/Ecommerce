@@ -1,0 +1,4 @@
+packages:
+  - "user-app"
+  - "seller-dashboard"
+  - "packages/*"

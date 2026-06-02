@@ -1,0 +1,14 @@
+{
+  "name": "ecommerce-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build:seller": "pnpm --filter seller-dashboard build",
+    "test:seller": "pnpm --filter seller-dashboard test",
+    "typecheck:seller": "pnpm --filter seller-dashboard typecheck"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}
