@@ -1,0 +1,14 @@
+{
+  "name": "ecommerce-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "superadmin:dev": "pnpm --filter superadmin-panel dev",
+    "superadmin:test": "pnpm --filter superadmin-panel test",
+    "superadmin:typecheck": "pnpm --filter superadmin-panel typecheck",
+    "superadmin:build": "pnpm --filter superadmin-panel build"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}
