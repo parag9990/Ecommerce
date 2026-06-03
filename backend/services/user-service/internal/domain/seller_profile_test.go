@@ -14,6 +14,7 @@ func TestSellerProfileLifecycle(t *testing.T) {
 		DisplayName:  strptr("Aarav Retail"),
 		GSTNumber:    strptr("27abcde1234f1z5"),
 		SupportEmail: strptr("support@aaravretail.example"),
+		CreatedBy:    "user_123",
 		CreatedAt:    fixedTime(),
 	})
 	if err != nil {
@@ -23,16 +24,16 @@ func TestSellerProfileLifecycle(t *testing.T) {
 	if profile.GSTNumber == nil || *profile.GSTNumber != "27ABCDE1234F1Z5" {
 		t.Fatalf("expected uppercase GST number, got %#v", profile.GSTNumber)
 	}
-	if err := profile.SubmitForReview(fixedTime().Add(time.Minute)); err != nil {
+	if err := profile.SubmitForReview("user_123", fixedTime().Add(time.Minute)); err != nil {
 		t.Fatalf("SubmitForReview returned error: %v", err)
 	}
 	if err := profile.Approve("admin_123", fixedTime().Add(2*time.Minute)); err != nil {
 		t.Fatalf("Approve returned error: %v", err)
 	}
-	if err := profile.Suspend(fixedTime().Add(3 * time.Minute)); err != nil {
+	if err := profile.Suspend("admin_123", "policy violation", fixedTime().Add(3*time.Minute)); err != nil {
 		t.Fatalf("Suspend returned error: %v", err)
 	}
-	if err := profile.Reactivate(fixedTime().Add(4 * time.Minute)); err != nil {
+	if err := profile.Reactivate("admin_123", "resolved", fixedTime().Add(4*time.Minute)); err != nil {
 		t.Fatalf("Reactivate returned error: %v", err)
 	}
 
@@ -49,6 +50,7 @@ func TestSellerProfileRejectsInvalidTransition(t *testing.T) {
 		SellerID:  "seller_123",
 		UserID:    "user_123",
 		StoreName: "Aarav Retail Pvt Ltd",
+		CreatedBy: "user_123",
 		CreatedAt: fixedTime(),
 	})
 	if err != nil {

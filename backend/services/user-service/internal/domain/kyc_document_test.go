@@ -12,6 +12,7 @@ func TestKYCDocumentApprove(t *testing.T) {
 		SellerID:     "seller_123",
 		DocumentType: KYCDocumentTypeGSTCertificate,
 		StorageURL:   "s3://private-kyc/seller_123/doc_123.pdf",
+		CreatedBy:    "user_123",
 		CreatedAt:    fixedTime(),
 	})
 	if err != nil {
@@ -36,6 +37,7 @@ func TestKYCDocumentRejectRequiresReason(t *testing.T) {
 		SellerID:     "seller_123",
 		DocumentType: KYCDocumentTypePANCard,
 		StorageURL:   "s3://private-kyc/seller_123/doc_123.pdf",
+		CreatedBy:    "user_123",
 		CreatedAt:    fixedTime(),
 	})
 	if err != nil {
@@ -54,6 +56,7 @@ func TestKYCDocumentReviewIsTerminal(t *testing.T) {
 		SellerID:     "seller_123",
 		DocumentType: KYCDocumentTypeAddressProof,
 		StorageURL:   "s3://private-kyc/seller_123/doc_123.pdf",
+		CreatedBy:    "user_123",
 		CreatedAt:    fixedTime(),
 	})
 	if err != nil {

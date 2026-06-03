@@ -1,280 +1,119 @@
 # Project Dependency & Setup Guide
 
-This guide is generated for:
-
-```text
-TaskImplementation/User Service/task4.md
-```
-
-Output file:
-
-```text
-TaskImplementation/User Service/task4_Dependency.md
-```
-
-Task 4 ka scope hai User Service ka internal gRPC service setup: proto contract, generated Go code, gRPC server registration, request metadata, interceptors, reflection, and `grpcurl` based local testing.
-
-Important reuse rule:
-
-- Go install, base Go module setup, MySQL install, Docker MySQL setup, migration setup, `.env` baseline, and repository DB troubleshooting already previous dependency files me documented hai.
-- Is file me wahi content repeat nahi kiya gaya.
-- Sirf Task 4 ke new/changed setup, gRPC tooling, proto workflow, ports, env notes, and debugging steps detail me explain kiye gaye hain.
-
----
-
 ## 1. Project Overview
 
-Task 4 User Service ko internal gRPC API banata hai.
+This guide is for the implementation task referenced by these variables:
 
-Simple Hinglish:
+| Variable | Value |
+|---|---|
+| `SERVICE_NAME` | `User Service` |
+| `TASK_FILE_NAME` | `task4.md` |
+| `INPUT_FILE_PATH` | `TaskImplementation/{SERVICE_NAME}/{TASK_FILE_NAME}` |
+| `OUTPUT_FILE_NAME` | `task4_Dependency.md` |
+| `OUTPUT_FILE_PATH` | `TaskImplementation/{SERVICE_NAME}/{OUTPUT_FILE_NAME}` |
 
-gRPC ek fast service-to-service communication system hai. Browser direct gRPC call nahi karega. API Gateway, Auth Service, Order Service, Product/CMS Service jaise internal services User Service se user/seller profile data lene ke liye gRPC call karenge.
+Task 4 ka goal internal gRPC transport layer setup samajhna hai. Browser direct is service ko call nahi karega. API Gateway, Auth Service, Order/Product/CMS type internal services gRPC ke through user profile data lenge.
+
+Task 4 ke core methods:
+
+| gRPC Method | Purpose | Runtime dependency |
+|---|---|---|
+| `CreateUser` | Auth signup ke baad profile create karta hai | MySQL `users` table, caller/audit metadata |
+| `GetUser` | User profile read karta hai | MySQL `users` table |
+| `UpdateUserProfile` | Profile patch update karta hai | MySQL `users` table, `FieldMask`, caller/audit metadata |
+| `GetSellerProfile` | Seller profile read karta hai | MySQL `seller_profiles` table |
+
+Previous dependency files already cover most base setup. Is file ka focus duplicate setup repeat karna nahi hai. Yahan mainly Task 4 specific gRPC/proto/runtime notes diye gaye hain.
 
 Analyzed files:
 
-| File | Purpose |
+| File | Why checked |
 |---|---|
-| `TaskImplementation/User Service/task4.md` | Task 4 implementation guide |
-| `TaskImplementation/User Service/task1_Dependency.md` | Base Go, MySQL, Docker, env, and service run guide |
-| `TaskImplementation/User Service/task2_Dependency.md` | MySQL schema and migration setup |
-| `TaskImplementation/User Service/task3_Dependency.md` | Repository dependency and DB behavior guide |
-| `proto/ecommerce/user/v1/user.proto` | User Service gRPC contract |
-| `proto/buf.yaml` | Buf lint and breaking-change config |
-| `proto/buf.gen.yaml` | Proto to Go generated-code config |
-| `backend/shared/gen/go/ecommerce/user/v1/user.pb.go` | Generated protobuf message structs |
-| `backend/shared/gen/go/ecommerce/user/v1/user_grpc.pb.go` | Generated gRPC client/server interfaces |
-| `backend/services/user-service/internal/transport/grpc/server.go` | User gRPC method handlers |
-| `backend/services/user-service/internal/transport/grpc/metadata.go` | Incoming gRPC metadata extraction |
-| `backend/services/user-service/internal/transport/grpc/interceptors.go` | Unary logging and panic recovery interceptors |
-| `backend/services/user-service/internal/transport/grpc/errors.go` | Domain error to gRPC status mapping |
-| `backend/services/user-service/internal/transport/grpc/mapper.go` | Domain object to proto response mapping |
-| `backend/services/user-service/cmd/server/main.go` | gRPC server startup and reflection registration |
-| `backend/services/user-service/internal/config/config.go` | Runtime env variables |
-| `backend/services/user-service/go.mod` | Go dependency versions |
+| `INPUT_FILE_PATH` | Task 4 scope and intended methods |
+| `TaskImplementation/{SERVICE_NAME}/task1_Dependency.md` | Base Go, MySQL, Docker, `.env`, gRPC, grpcurl setup |
+| `TaskImplementation/{SERVICE_NAME}/task2_Dependency.md` | MySQL schema and migration setup |
+| `TaskImplementation/{SERVICE_NAME}/task3_Dependency.md` | Repository setup and DB access requirements |
+| `proto/ecommerce/user/v1/user.proto` | Actual gRPC contract |
+| `proto/buf.yaml`, `proto/buf.gen.yaml` | Proto lint/generation config |
+| `backend/shared/gen/go/ecommerce/user/v1/` | Generated Go proto/gRPC code |
+| `backend/services/user-service/internal/transport/grpc/` | gRPC server, mapper, metadata, interceptors, error mapping |
+| `backend/services/user-service/internal/config/config.go` | Runtime environment variables |
+| `backend/services/user-service/cmd/server/main.go` | Service startup, DB wiring, gRPC listener |
 
-Current Task 4 dependency status:
+Important current-repo note:
 
-| Area | Status |
-|---|---|
-| Language | Go 1.24+ |
-| Transport | gRPC unary APIs |
-| API contract | Protocol Buffers |
-| Proto tooling | Buf config present |
-| Generated Go code | Present under `backend/shared/gen/go` |
-| Database | Same MySQL from Task 1/Task 2 |
-| Repository | Same repository layer from Task 3 |
-| Redis/Kafka/RabbitMQ | Not required for Task 4 |
-| Dockerfile/docker-compose | No new project Docker files added |
-| Main new developer tools | `buf`, `protoc-gen-go`, `protoc-gen-go-grpc`, `grpcurl` |
-
----
+- Task 4 itself is gRPC transport setup.
+- Current repository has later User Service tasks also implemented, including validation, audit fields, and outbox events.
+- Because of that, running the present service code may require later migrations/settings even though those are not new Task 4 dependencies. This guide calls those spots out clearly.
 
 ## 2. Tech Stack
 
-### Task 4 Technologies
+| Technology | Required? | New for Task 4? | Beginner explanation |
+|---|---:|---:|---|
+| Go `1.24` | Yes | Reused | Go backend language hai. Service, repository, gRPC handler sab Go me likhe gaye hain. |
+| Go Modules | Yes | Reused | `go.mod` dependencies list karta hai, `go.sum` checksums lock karta hai. Setup already explained in `task1_Dependency.md`. |
+| `backend/go.work` | Local dev | Reused | Workspace multiple Go modules ko connect karta hai: user-service, api-gateway, shared generated code, shared validation. |
+| MySQL 8.x | Yes for real runtime | Reused | Profile and seller data relational tables me store hota hai. Full setup `task1_Dependency.md` and schema `task2_Dependency.md` me hai. |
+| gRPC (`google.golang.org/grpc`) | Yes | Active Task 4 surface | gRPC high-performance internal service communication framework hai. Is task me User Service methods expose hote hain. |
+| Protocol Buffers | Yes | Active Task 4 surface | Proto file ek contract hai. Request/response shape yahi define karta hai. |
+| Buf CLI | Needed when regenerating proto | Reused | `buf generate` proto se Go files banata hai. Install/setup already `task1_Dependency.md` me explained hai. |
+| `google.protobuf.FieldMask` | Yes for update calls | Task 4 specific | Partial update me kaunse fields change karne hain, ye batata hai. Empty string accidental overwrite se bachata hai. |
+| `google.protobuf.Timestamp` | Yes | Task 4 specific mapping | Go `time.Time` ko proto timestamp me convert karta hai. |
+| gRPC metadata | Yes for caller context | Task 4 specific runtime behavior | Headers jaise `x-user-id`, `x-service-name`, `x-actor-id` service ko caller/audit context dete hain. |
+| gRPC reflection | Optional local dev | Reused | `grpcurl list/describe` ko easy banata hai. Production me disable/restrict karna chahiye. |
+| `slog` structured logging | Yes | Reused/current runtime | gRPC interceptors request method, code, duration, request id log karte hain. |
 
-| Technology | Required? | What it is | Why Task 4 uses it |
-|---|---:|---|---|
-| Go 1.24+ | Yes | Go ek compiled backend language hai. | User Service backend and gRPC server Go me implemented hai. |
-| Go Modules | Yes | `go.mod` dependencies list karta hai, `go.sum` checksums lock karta hai. | gRPC/protobuf packages versioned form me manage hote hain. |
-| Go Workspace | Yes | `go.work` local Go modules ko ek workspace me connect karta hai. | `user-service` local generated proto module `backend/shared/gen/go` use karta hai. |
-| gRPC | Yes | gRPC high-performance internal API framework hai. | User Service internal services ko strongly typed methods expose karta hai. |
-| Protocol Buffers | Yes | `.proto` file request/response schema define karti hai. | Service contract stable and type-safe banta hai. |
-| Buf | Required when proto changes | Proto linting, breaking checks, and code generation tool. | `proto/buf.gen.yaml` ke through Go code generate hota hai. |
-| `protoc-gen-go` | Required when proto changes | Protobuf Go message generator. | `user.pb.go` generate karta hai. |
-| `protoc-gen-go-grpc` | Required when proto changes | Go gRPC service generator. | `user_grpc.pb.go` generate karta hai. |
-| `grpcurl` | Recommended | Terminal se gRPC call test karne ka CLI. | Local server ko browser/curl ke bina verify karne ke liye. |
-| gRPC reflection | Local dev recommended | Running gRPC service apne methods expose karta hai for discovery. | `grpcurl list/describe` commands ko easy banata hai. |
-| MySQL | Yes for runtime | Relational database. | gRPC handler usecase/repository ke through user data read/write karta hai. |
+Not required for Task 4:
 
-### Beginner Explanation
-
-`user.proto` ek contract hai. Is contract se Go code generate hota hai. Generated code me request structs, response structs, server interface, and client interface milte hain.
-
-Flow simple hai:
-
-```text
-user.proto
-  -> buf generate
-  -> backend/shared/gen/go/.../user.pb.go
-  -> backend/shared/gen/go/.../user_grpc.pb.go
-  -> User Service gRPC handler compiles against generated interfaces
-```
-
-Layer rule:
-
-| Layer | Allowed responsibility |
-|---|---|
-| Proto | Contract define karna |
-| Generated code | Type-safe messages and service interface |
-| gRPC handler | Request validation-lite, metadata read, usecase call, response mapping |
-| Usecase | Business rules and ownership checks |
-| Repository | MySQL queries |
-
-### Reused Tech From Previous Tasks
-
-Do not duplicate base setup. Use these existing docs:
-
-```text
-TaskImplementation/User Service/task1_Dependency.md
-Section: 2. Tech Stack
-Section: 3. Required Software
-Section: 4. Dependency Management
-
-TaskImplementation/User Service/task2_Dependency.md
-Section: 5. Database Setup
-
-TaskImplementation/User Service/task3_Dependency.md
-Section: 4. Dependency Management
-```
-
----
+| Service/tool | Task 4 status | Note |
+|---|---|---|
+| Redis | Not required | Current Task 4 gRPC path me Redis client/env nahi hai. |
+| Kafka | Not required for Task 4 | Current repo has later event code, but Task 4 does not need Kafka. |
+| RabbitMQ | Not required for Task 4 | Only needed if later outbox worker is enabled. |
+| MongoDB | Not used | User profile data MySQL me hai. |
+| Kubernetes | Not required locally | Production readiness topic hai, local Task 4 setup nahi. |
 
 ## 3. Required Software
 
-### Required For Task 4 Development
+Do not reinstall base tools if you already followed previous dependency guides.
 
-| Software | Required? | Why |
+| Software | Required? | Follow this setup |
 |---|---:|---|
-| Git | Yes | Repo clone/pull ke liye. |
-| Go 1.24+ | Yes | Service build/test/run ke liye. |
-| MySQL 8.x | Yes for runtime | gRPC methods repository/usecase ke through DB use karte hain. |
-| MySQL client | Recommended | Migration and table verification ke liye. |
-| Docker | Optional | MySQL container run karne ke liye. |
-| Buf CLI | Required if proto is edited/regenerated | Proto lint and generated Go code create karne ke liye. |
-| `protoc-gen-go` | Required if proto is edited/regenerated | Go protobuf structs generate karne ke liye. |
-| `protoc-gen-go-grpc` | Required if proto is edited/regenerated | Go gRPC server/client code generate karne ke liye. |
-| `grpcurl` | Recommended | Local gRPC APIs manually test karne ke liye. |
+| Go `1.24+` | Yes | `TaskImplementation/{SERVICE_NAME}/task1_Dependency.md`, section `2. Language-Specific Dependency System: Go` |
+| MySQL 8.x | Yes for running service | `TaskImplementation/{SERVICE_NAME}/task1_Dependency.md`, section `3. Database Analysis` |
+| MySQL CLI | Recommended | `TaskImplementation/{SERVICE_NAME}/task2_Dependency.md`, section `5. Database Setup` |
+| Docker | Optional | Reuse Docker MySQL setup from `task1_Dependency.md` |
+| Buf CLI | Required only when changing `.proto` | Reuse `task1_Dependency.md`, section `5. External Services Analysis -> Protobuf and Buf` |
+| grpcurl | Optional but useful | Reuse `task1_Dependency.md`, section `5. External Services Analysis -> gRPC` |
 
-### Already Documented Base Installs
-
-| Setup need | Refer |
-|---|---|
-| Install Git/Go/Docker/MySQL | `TaskImplementation/User Service/task1_Dependency.md` -> `3. Required Software` |
-| Start MySQL with Docker | `TaskImplementation/User Service/task1_Dependency.md` -> `5. Database Setup` |
-| Apply MySQL schema | `TaskImplementation/User Service/task2_Dependency.md` -> `5. Database Setup` |
-
-### Task 4 Tool Installation
-
-Task 1 mentions `buf` and `grpcurl` as optional tools. Task 4 makes them important for proto/gRPC work.
-
-Install Go-based tools:
-
-```bash
-go install github.com/bufbuild/buf/cmd/buf@latest
-go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
-```
-
-Verify:
-
-```bash
-buf --version
-protoc-gen-go --version
-protoc-gen-go-grpc --version
-grpcurl -version
-```
-
-If command not found aaye:
-
-```bash
-go env GOPATH
-```
-
-Make sure this folder is in `PATH`:
-
-```text
-$(go env GOPATH)/bin
-```
-
-Beginner note:
-
-`go install ...@latest` tool binary install karta hai. Ye app dependency nahi hoti, but developer machine par CLI available hona chahiye.
-
----
+Task 4 does not require a new Docker container, Redis, Kafka, RabbitMQ, object storage, or external SaaS credentials.
 
 ## 4. Dependency Management
 
-### Go Module Files
+### Reused Go Dependency Setup
 
-Already explained in:
+Go module basics, `go mod download`, `go mod tidy`, `go.sum`, workspace notes, and common module errors are already documented in:
 
 ```text
-TaskImplementation/User Service/task1_Dependency.md
-Section: 4. Dependency Management
+TaskImplementation/{SERVICE_NAME}/task1_Dependency.md
+Section: 2. Language-Specific Dependency System: Go
 ```
 
-Task 4 relevant files:
+Task 4 does not require beginners to manually edit `go.mod`.
 
-| File | Why important |
+Important direct dependencies already present in `backend/services/user-service/go.mod`:
+
+| Dependency | Why Task 4 needs it |
 |---|---|
-| `backend/services/user-service/go.mod` | Runtime gRPC/protobuf dependencies listed here. |
-| `backend/services/user-service/go.sum` | Dependency checksum lock file. |
-| `backend/go.work` | Connects `user-service` and generated proto module. |
-| `backend/shared/gen/go/go.mod` | Generated proto Go module. |
-| `proto/buf.yaml` | Buf module, lint, and breaking config. |
-| `proto/buf.gen.yaml` | Generated Go output config. |
+| `google.golang.org/grpc` | gRPC server, status codes, interceptors, reflection support |
+| `google.golang.org/protobuf` | Generated protobuf messages, `FieldMask`, timestamps |
+| `github.com/parag/ecommerce/backend/shared/gen/go` | Generated `UserServiceServer` interface and request/response types |
+| `github.com/go-sql-driver/mysql` | Runtime service still reaches MySQL through repository/usecase layers |
+| `github.com/DATA-DOG/go-sqlmock` | Repository tests, not required for gRPC handler tests |
 
-### Task 4 Dependency Delta
+### Proto Generation Workflow
 
-| Dependency | Type | Required at runtime? | Task 4 use |
-|---|---|---:|---|
-| `google.golang.org/grpc v1.72.2` | Go module | Yes | gRPC server, status codes, interceptors, reflection registration. |
-| `google.golang.org/protobuf v1.36.6` | Go module | Yes | Generated proto messages, `FieldMask`, `Timestamp`. |
-| `github.com/parag/ecommerce/backend/shared/gen/go v0.0.0` | Local module | Yes | Generated User Service protobuf/gRPC code. |
-| `github.com/go-sql-driver/mysql v1.9.3` | Go module | Yes | Reused DB access from previous tasks. |
-| `github.com/DATA-DOG/go-sqlmock v1.5.2` | Go module | Test only | Reused repository tests; not new in Task 4. |
-| `buf` CLI | Developer tool | No | Generate and validate proto code. |
-| `grpcurl` CLI | Developer tool | No | Manually test gRPC APIs. |
-
-### Commands
-
-Download app dependencies:
-
-```bash
-cd backend/services/user-service
-go mod download
-```
-
-Clean dependency graph only when imports change:
-
-```bash
-cd backend/services/user-service
-go mod tidy
-```
-
-Run all User Service tests:
-
-```bash
-cd backend/services/user-service
-go test ./...
-```
-
-Run only gRPC transport tests:
-
-```bash
-cd backend/services/user-service
-go test ./internal/transport/grpc
-```
-
-From workspace root:
-
-```bash
-cd backend
-go test ./services/user-service/...
-```
-
-### Proto Dependency Workflow
-
-Proto config lives under:
-
-```text
-proto/buf.yaml
-proto/buf.gen.yaml
-```
-
-Run proto generation from `proto/` folder:
+Full Buf install explanation already exists in `task1_Dependency.md`. Task 4 specific workflow:
 
 ```bash
 cd proto
@@ -282,486 +121,282 @@ buf lint
 buf generate
 ```
 
-Expected generated output:
+Expected generated files:
 
 ```text
 backend/shared/gen/go/ecommerce/user/v1/user.pb.go
 backend/shared/gen/go/ecommerce/user/v1/user_grpc.pb.go
 ```
 
-Important:
+Beginner note:
 
-- Generated files manually edit mat karo.
-- Proto change karo, phir `buf generate` run karo.
-- Generated code commit karna required hai if repo convention generated code track karta hai. Is repo me generated files already present hain.
-
-### Common Go/Proto Dependency Issues
-
-| Error | Reason | Fix |
-|---|---|---|
-| `module ... backend/shared/gen/go not found` | `backend/shared/gen/go` missing hai or workspace path wrong hai. | Full repo clone karo and `backend/go.work` verify karo. |
-| `no required module provides package .../ecommerce/user/v1` | Generated proto code missing/stale hai. | `cd proto` then `buf generate`. |
-| `buf: command not found` | Buf CLI installed nahi hai or PATH me nahi hai. | Install command run karo and `$(go env GOPATH)/bin` PATH me add karo. |
-| `protoc-gen-go: program not found` | Generator binary missing hai. | `go install google.golang.org/protobuf/cmd/protoc-gen-go@latest`. |
-| `protoc-gen-go-grpc: program not found` | gRPC generator binary missing hai. | `go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest`. |
-| Generated files changed unexpectedly | Different generator version or stale output. | Team-approved tool versions align karo, then regenerate once. |
-| `go: module requires go >= 1.24` | Local Go old version hai. | Go 1.24+ install karo. Refer Task 1 dependency doc. |
-
----
+- `.proto` file edit karo, generated Go file manually edit mat karo.
+- Agar generated code old hai, gRPC server compile error de sakta hai.
+- `buf.gen.yaml` remote plugins use karta hai. Fresh machine par first generation ke time network access required ho sakta hai.
 
 ## 5. Database Setup
 
-### Detected Database: MySQL
+### Reused Database Setup
 
-Task 4 does not add a new database.
-
-It reuses the same MySQL setup from Tasks 1 and 2 because gRPC methods call usecase and repository code that reads/writes `user_db`.
-
-Full database setup is already documented:
+MySQL installation, Docker MySQL command, DSN format, credentials placement, migration apply/rollback basics already documented hain:
 
 ```text
-TaskImplementation/User Service/task1_Dependency.md
-Section: 5. Database Setup
+TaskImplementation/{SERVICE_NAME}/task1_Dependency.md
+Section: 3. Database Analysis
 
-TaskImplementation/User Service/task2_Dependency.md
+TaskImplementation/{SERVICE_NAME}/task2_Dependency.md
 Section: 5. Database Setup
 ```
 
-Use these exact existing sections:
+Do not duplicate those steps here. Follow those first.
 
-| Need | Existing doc |
-|---|---|
-| What MySQL is | `task1_Dependency.md` -> `Detected Database: MySQL` -> `A. What It Is` |
-| Why User Service uses MySQL | `task1_Dependency.md` -> `B. Why This Project Uses It` |
-| Local MySQL installation | `task1_Dependency.md` -> `D. Local Installation` |
-| Docker MySQL setup | `task1_Dependency.md` -> `E. Docker Setup` |
-| Docker Compose example | `task1_Dependency.md` -> `F. Docker Compose Example` |
-| Start/verify MySQL | `task1_Dependency.md` -> `G. Start Commands`, `H. Verify Running` |
-| DSN format | `task1_Dependency.md` -> `J. Connection String Format` |
-| Credentials placement | `task1_Dependency.md` -> `K. Where To Place Credentials` |
-| Run migration | `task1_Dependency.md` -> `L. Run Migration` |
-| Task 2 schema verification | `task2_Dependency.md` -> `Schema-Specific Verification Queries` |
+### What Task 4 Uses In MySQL
 
-### Task 4 DB Runtime Requirement
-
-Task 4 gRPC server startup does this:
+Task 4 gRPC handler direct SQL nahi chalata. Flow ye hai:
 
 ```text
-Load env -> open MySQL -> ping MySQL -> create repositories -> create usecase -> start gRPC listener
+gRPC request -> transport/grpc handler -> usecase -> repository -> MySQL
 ```
 
-So MySQL must be available before running the service.
+| Method | Main table needed | Why |
+|---|---|---|
+| `CreateUser` | `users` | New profile row create hota hai. |
+| `GetUser` | `users` | Profile read hota hai. |
+| `UpdateUserProfile` | `users` | Profile fields patch update hote hain. |
+| `GetSellerProfile` | `seller_profiles` | Seller profile lookup hota hai. |
 
-Required database state:
+For the original Task 4 scope, the Task 2 schema is the required database setup.
 
-| Requirement | Why |
+### Current Repository Caveat
+
+Current codebase has later tasks merged after Task 4. Because of this:
+
+| Current code behavior | Setup impact |
 |---|---|
-| `user_db` database exists | DSN points to it. |
-| Task 2 migration applied | gRPC methods eventually query `users` and `seller_profiles`. |
-| `parseTime=true` in DSN | Timestamp columns map to Go `time.Time`. |
-| App DB user has SELECT/INSERT/UPDATE permissions | `CreateUser`, `GetUser`, `UpdateUserProfile`, `GetSellerProfile` need DB access. |
+| Repository queries use audit columns like `created_by`, `updated_by`, `deleted_at`, `status_changed_by` | Apply migration `002_add_user_audit_fields.up.sql` when running current code |
+| Event recorder is wired and `USER_EVENTS_ENABLED` defaults to `true` | Apply migration `003_create_user_outbox_events.up.sql` or set `USER_EVENTS_ENABLED=false` for Task 4-only smoke testing |
+| Outbox worker is disabled by default | RabbitMQ/Kafka is not needed unless `OUTBOX_WORKER_ENABLED=true` |
 
-### Connection String Reminder
+If you are only testing Task 4 gRPC handlers with unit tests, MySQL is not required. If you are starting the real current service with `go run ./cmd/server`, apply migrations in numeric order.
 
-This is not new for Task 4. It is repeated only because gRPC startup depends on DB ping.
+Minimal current-repo migration order:
 
-```env
-USER_SERVICE_DATABASE_DSN=ecommerce_user:ecommerce_password@tcp(127.0.0.1:3306)/user_db?parseTime=true&charset=utf8mb4&loc=UTC
+```bash
+mysql -h 127.0.0.1 -P 3306 -u root -p < backend/services/user-service/migrations/001_create_user_tables.up.sql
+mysql -h 127.0.0.1 -P 3306 -u root -p < backend/services/user-service/migrations/002_add_user_audit_fields.up.sql
+mysql -h 127.0.0.1 -P 3306 -u root -p < backend/services/user-service/migrations/003_create_user_outbox_events.up.sql
 ```
 
-Credential placement:
-
-```text
-backend/services/user-service/.env
-```
-
-Do not commit `.env`.
-
----
+Note: Migration `002` and `003` are later-task runtime requirements in the current repo. They are mentioned here only to avoid local setup confusion.
 
 ## 6. Redis / Queue / External Services
 
-Task 4 does not introduce Redis, Kafka, RabbitMQ, NATS, MinIO, Elasticsearch, SMTP, Stripe, Twilio, Firebase, Nginx, Kubernetes, or any new cloud service.
+Task 4 gRPC setup needs no Redis, Kafka, RabbitMQ, NATS, MinIO, Elasticsearch, SMTP, Stripe, Firebase, or OAuth provider.
 
-| Service | Required for Task 4? | Notes |
+| External service | Required for Task 4? | Explanation |
 |---|---:|---|
-| Redis | No | No Redis client/env var/cache code in current gRPC task. |
-| Kafka/RabbitMQ/NATS | No | User events are future scope, not Task 4. |
-| MinIO/S3 | No | Seller/KYC binary storage is not part of Task 4. |
-| Elasticsearch/Typesense | No | Search service is separate future area. |
-| SMTP/Twilio/Stripe/Firebase | No | No third-party integration introduced. |
-| Docker | Optional | Useful only for MySQL local setup. |
-| gRPC reflection | Yes for local debugging, optional in production | Controlled by `USER_SERVICE_GRPC_REFLECTION`. |
+| MySQL | Yes for real runtime | Existing profile/seller tables are read/written through repositories. |
+| Docker | Optional | Helpful only to run MySQL locally. |
+| grpcurl | Optional dev tool | Useful to manually verify gRPC methods. |
+| Buf | Optional unless proto changes | Needed for proto lint/generation. |
+| RabbitMQ/Kafka | No | Later event/outbox worker only. Keep worker disabled for Task 4. |
 
-Reuse previous external-service explanation:
-
-```text
-TaskImplementation/User Service/task1_Dependency.md
-Section: 6. Redis / Queue / External Services
-
-TaskImplementation/User Service/task3_Dependency.md
-Section: 6. Redis / Queue / External Services
-```
-
-### gRPC Reflection
-
-Reflection ek gRPC debugging feature hai.
-
-Simple Hinglish:
-
-Reflection on hone par `grpcurl` running server se pooch sakta hai ki kaunse services and methods available hain. Isse local debugging easy hoti hai.
-
-Current config:
-
-| Env var | Default | Meaning |
-|---|---|---|
-| `USER_SERVICE_GRPC_REFLECTION` | `true` | Local/dev me service discovery enabled. |
-
-Production recommendation:
+Current repo event safety for Task 4-only local runs:
 
 ```env
-USER_SERVICE_GRPC_REFLECTION=false
+USER_EVENTS_ENABLED=false
+OUTBOX_WORKER_ENABLED=false
 ```
 
-Why:
-
-Production me reflection se internal service contract discoverable ho sakta hai. Agar service private network me bhi hai, policy ke according reflection disable karna safer hota hai.
-
----
+Use this only when you are intentionally avoiding later Task 8 event setup. Full event setup should be documented with Task 8, not duplicated here.
 
 ## 7. Environment Variables
 
-Task 4 introduces no brand-new env variable names beyond the existing User Service config, but it makes the gRPC-related variables important.
+### Reused `.env`
 
-Base env documentation:
+Base `.env` file location, loading process, DSN, gRPC address, reflection, DB pool, shutdown timeout, and logging variables are already documented:
 
 ```text
-TaskImplementation/User Service/task1_Dependency.md
-Section: 7. Environment Variables
+TaskImplementation/{SERVICE_NAME}/task1_Dependency.md
+Section: 4. Environment Variables
 ```
 
-### Task 4 Relevant Env Variables
+Task 4 does not introduce a new required `.env` variable.
 
-| Env variable | Required? | Default | Task 4 purpose |
-|---|---:|---|---|
-| `USER_SERVICE_DATABASE_DSN` | Yes | None | MySQL DSN. Service startup fails without it. |
-| `MYSQL_DSN` | Optional fallback | None | Used only if `USER_SERVICE_DATABASE_DSN` is blank. |
-| `USER_SERVICE_GRPC_ADDRESS` | Optional | `:50052` | Address/port where gRPC server listens. |
-| `USER_SERVICE_GRPC_REFLECTION` | Optional | `true` | Enables `grpcurl list/describe` support. |
-| `USER_SERVICE_SHUTDOWN_TIMEOUT` | Optional | `10s` | Graceful gRPC shutdown wait time. |
-| `USER_SERVICE_LOG_LEVEL` | Optional | `info` | JSON log level for gRPC request logs. |
-| `USER_SERVICE_DB_MAX_OPEN_CONNS` | Optional | `25` | DB pool setting reused from Task 1. |
-| `USER_SERVICE_DB_MAX_IDLE_CONNS` | Optional | `25` | DB pool setting reused from Task 1. |
-| `USER_SERVICE_DB_CONN_MAX_LIFETIME` | Optional | `5m` | DB connection lifetime. |
-| `USER_SERVICE_DB_PING_TIMEOUT` | Optional | `5s` | Startup DB ping timeout. |
+Important reused variables for Task 4:
 
-### Task-Specific `.env` Delta
-
-Use the full base `.env` from Task 1. Add or confirm only these gRPC-specific values for Task 4:
-
-```env
-USER_SERVICE_GRPC_ADDRESS=:50052
-USER_SERVICE_GRPC_REFLECTION=true
-USER_SERVICE_SHUTDOWN_TIMEOUT=10s
-USER_SERVICE_LOG_LEVEL=debug
-```
-
-For production-like local testing:
-
-```env
-USER_SERVICE_GRPC_REFLECTION=false
-USER_SERVICE_LOG_LEVEL=info
-```
-
-Important:
-
-- `USER_SERVICE_DATABASE_DSN` is still required.
-- `USER_SERVICE_GRPC_ADDRESS=:50052` means listen on all interfaces on port `50052`.
-- If port `50052` is busy, use another port like `:50053` and update all `grpcurl` commands.
-
-### gRPC Metadata Headers
-
-Task 4 reads incoming gRPC metadata:
-
-| Metadata key | Required? | Used for |
+| Variable | Required? | Task 4 usage |
 |---|---:|---|
-| `x-user-id` | Required for user ownership checks on user-facing calls | Current user identity from API Gateway/Auth boundary. |
-| `x-service-name` | Recommended | Internal caller identity, for logs/policy. |
-| `x-roles` | Optional now | Future RBAC behavior. Supports comma-separated roles. |
-| `x-request-id` | Recommended | Request tracing in logs. |
+| `USER_SERVICE_DATABASE_DSN` | Yes for real service | MySQL connection used by repositories behind gRPC methods |
+| `USER_SERVICE_GRPC_ADDRESS` | Optional | gRPC listen address, default `:50052` |
+| `USER_SERVICE_GRPC_REFLECTION` | Optional | Enables `grpcurl list/describe` locally |
+| `USER_SERVICE_SHUTDOWN_TIMEOUT` | Optional | Graceful shutdown wait time |
+| `USER_SERVICE_LOG_LEVEL` | Optional | Controls structured log verbosity |
+
+### Task 4 Runtime Metadata
+
+These are not `.env` variables. They are gRPC metadata headers sent by internal callers.
+
+| Metadata key | Required? | Purpose |
+|---|---:|---|
+| `x-request-id` | Recommended | Trace one request across services/logs |
+| `x-user-id` | Required for user-owned update flows | Current user identity for ownership checks |
+| `x-service-name` | Recommended for service callers | Identifies Auth/API Gateway/internal service |
+| `x-actor-id` | Required for writes if no user/service fallback is available | Audit actor id |
+| `x-actor-type` | Required with `x-actor-id` when type cannot be inferred | Valid values: `user`, `admin`, `service`, `system` |
+| `x-roles` | Optional/currently useful for future RBAC | Comma-separated roles like `buyer,seller` |
 
 Beginner note:
 
-Metadata gRPC ka header system hai. REST me jaise headers hote hain, gRPC me metadata hota hai.
-
-Example `grpcurl` metadata:
-
-```bash
-grpcurl -plaintext \
-  -H 'x-user-id: user_123' \
-  -H 'x-service-name: api-gateway' \
-  -H 'x-roles: buyer,seller' \
-  -H 'x-request-id: req_local_001' \
-  -d '{"user_id":"user_123"}' \
-  localhost:50052 ecommerce.user.v1.UserService/GetUser
-```
-
-Security note:
-
-Local testing me metadata manually bhej sakte ho. Production me API Gateway/service mesh ko trusted metadata inject karna chahiye. Public clients ko direct User Service gRPC access nahi milna chahiye.
-
----
+Writes like `CreateUser` and `UpdateUserProfile` may fail with `audit actor is required` if caller metadata is missing. This is setup/caller-context issue, not a MySQL issue.
 
 ## 8. Docker Setup
 
-Task 4 adds no Dockerfile, docker-compose service, volume, network, or container image.
+No new Dockerfile, `docker-compose.yml`, container, volume, network, or health check is introduced by Task 4.
 
-Docker remains useful only for MySQL, same as earlier tasks.
-
-Reuse:
+Use previous Docker setup:
 
 ```text
-TaskImplementation/User Service/task1_Dependency.md
-Section: 8. Docker Setup
-Section: 5. Database Setup -> E. Docker Setup
-
-TaskImplementation/User Service/task2_Dependency.md
-Section: 8. Docker Setup
+TaskImplementation/{SERVICE_NAME}/task1_Dependency.md
+Section: 7. Docker and DevOps Setup
 ```
 
-### Task 4 Docker Impact
+Current repo status:
 
-| Docker item | New in Task 4? | Notes |
-|---|---:|---|
-| User Service Dockerfile | No | Service still runs with `go run` locally. |
-| gRPC container port | No Docker mapping yet | If Dockerfile is added later, expose `50052`. |
-| MySQL container | Reused | Same setup from Task 1/Task 2. |
-| MySQL volume | Reused | Preserve DB data and schema. |
-| Docker network | Not added | Needed only when app and DB both run in containers. |
-| Healthcheck | Not added for User Service | Recommended future improvement. |
+| Docker item | Status |
+|---|---|
+| User service Dockerfile | Not found |
+| Project docker-compose | Not found |
+| MySQL container | Optional local setup from previous docs |
+| gRPC app container | Not available yet |
+| Queue containers | Not required for Task 4 |
 
-### Future Docker Notes
+Recommended beginner path remains:
 
-If a future Dockerfile is added for User Service, it should:
-
-- Build Go binary from `backend/services/user-service`.
-- Include generated proto module from `backend/shared/gen/go`.
-- Expose gRPC port `50052`.
-- Read all secrets from env, not baked image files.
-- Use non-root runtime user.
-- Have a health check strategy, such as gRPC health checking.
-
-No such Dockerfile exists in current Task 4 implementation.
-
----
+1. Run MySQL locally or through Docker.
+2. Run Go service directly with `go run`.
+3. Use `grpcurl` from host machine against `localhost:50052`.
 
 ## 9. Local Development Setup
 
-This is the Task 4 clone-to-test flow with previous docs reused for common setup.
+### Step 1: Read Previous Dependency Documentation
 
-### Step 1: Clone Repository
+Follow these first:
 
-Follow:
+| Step | File | Why |
+|---:|---|---|
+| 1 | `TaskImplementation/{SERVICE_NAME}/task1_Dependency.md` | Go, MySQL, Docker, `.env`, ports, grpcurl |
+| 2 | `TaskImplementation/{SERVICE_NAME}/task2_Dependency.md` | MySQL schema and migration |
+| 3 | `TaskImplementation/{SERVICE_NAME}/task3_Dependency.md` | Repository layer DB expectations |
 
-```text
-TaskImplementation/User Service/task1_Dependency.md
-Section: 9. Local Development Setup -> Step 1: Clone Repository
-```
+### Step 2: Go To Project Directory
 
-### Step 2: Install Base Tools
-
-Follow:
-
-```text
-TaskImplementation/User Service/task1_Dependency.md
-Section: 3. Required Software
-```
-
-You need:
-
-```text
-Go 1.24+
-MySQL 8.x or Docker
-MySQL client
-```
-
-### Step 3: Install Task 4 gRPC/Proto Tools
+For service commands:
 
 ```bash
-go install github.com/bufbuild/buf/cmd/buf@latest
-go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
+cd backend/services/user-service
 ```
 
-Verify:
+For workspace-wide commands:
 
 ```bash
-buf --version
-grpcurl -version
+cd backend
 ```
 
-### Step 4: Download Go Dependencies
+### Step 3: Install Only Needed Dependencies
+
+No new Task 4 dependency install is needed if previous docs were followed.
+
+Fresh clone command:
 
 ```bash
 cd backend/services/user-service
 go mod download
 ```
 
-### Step 5: Start MySQL And Apply Migration
+### Step 4: Generate Proto Only If Needed
 
-Do not repeat DB setup. Follow:
+If `proto/ecommerce/user/v1/user.proto` changed:
 
-```text
-TaskImplementation/User Service/task1_Dependency.md
-Section: Step 4: Start MySQL
-
-TaskImplementation/User Service/task2_Dependency.md
-Section: Step 3: Apply Task 2 Up Migration
-Section: Step 4: Verify Tables, Indexes, And FKs
+```bash
+cd proto
+buf lint
+buf generate
 ```
 
-### Step 6: Configure `.env`
+If generated files are already present and up to date, skip this.
 
-Use base `.env` from:
+### Step 5: Run Task 4 gRPC Handler Tests
 
-```text
-TaskImplementation/User Service/task1_Dependency.md
-Section: 7. Environment Variables
+These tests use fake usecases and do not need MySQL:
+
+```bash
+cd backend/services/user-service
+go test ./internal/transport/grpc
 ```
 
-Confirm these Task 4 values:
+This is the fastest Task 4 setup verification.
+
+### Step 6: Setup Database For Real Runtime
+
+For original Task 4 runtime, use Task 2 migration setup.
+
+For current repo runtime, apply migrations in numeric order as noted in section 5.
+
+### Step 7: Add Environment Variables
+
+Reuse `.env` from `task1_Dependency.md`.
+
+For Task 4-only local smoke testing on current repo, optional event isolation:
 
 ```env
-USER_SERVICE_GRPC_ADDRESS=:50052
+USER_EVENTS_ENABLED=false
+OUTBOX_WORKER_ENABLED=false
+```
+
+### Step 8: Start Backend Service
+
+```bash
+cd backend/services/user-service
+set -a
+. ./.env
+set +a
+go run ./cmd/server
+```
+
+Expected log signal:
+
+```text
+user_service_grpc_listening
+```
+
+## 10. Running the Project
+
+### Verify Reflection
+
+Reflection must be enabled locally:
+
+```env
 USER_SERVICE_GRPC_REFLECTION=true
-USER_SERVICE_SHUTDOWN_TIMEOUT=10s
 ```
 
-### Step 7: Validate Proto Files
-
-Run from `proto/`:
-
-```bash
-cd proto
-buf lint
-```
-
-If proto changed, regenerate:
-
-```bash
-cd proto
-buf generate
-```
-
-Then run Go tests:
-
-```bash
-cd ../backend/services/user-service
-go test ./...
-```
-
-### Step 8: Run gRPC Transport Tests
-
-```bash
-cd backend/services/user-service
-go test ./internal/transport/grpc
-```
-
-These tests verify:
-
-| Test area | Meaning |
-|---|---|
-| Required request fields | Missing IDs return `InvalidArgument`. |
-| Error mapping | Domain errors become correct gRPC status codes. |
-| FieldMask mapping | `update_mask.paths` pass to usecase. |
-| Metadata extraction | `x-user-id`, `x-service-name`, roles reach usecase caller input. |
-
-### Step 9: Run User Service
-
-Load env using the method from Task 1, then:
-
-```bash
-cd backend/services/user-service
-go run ./cmd/server
-```
-
-Expected behavior:
-
-```text
-Service loads config
-Service pings MySQL
-Service starts gRPC listener on :50052
-Service logs JSON messages to stdout
-```
-
-### Step 10: Verify gRPC Reflection
-
-In another terminal:
-
-```bash
-grpcurl -plaintext localhost:50052 list
-```
-
-Expected service:
-
-```text
-ecommerce.user.v1.UserService
-```
-
-Describe:
-
-```bash
-grpcurl -plaintext localhost:50052 describe ecommerce.user.v1.UserService
-```
-
-If reflection is disabled, `list` and `describe` may fail. You can still call methods if you provide proto descriptors or enable reflection locally.
-
----
-
-## 10. Running The Project
-
-### Run Order
-
-| Order | Action | Why |
-|---:|---|---|
-| 1 | Start MySQL | Service startup pings DB. |
-| 2 | Apply Task 2 migration | gRPC calls need tables. |
-| 3 | Set `USER_SERVICE_DATABASE_DSN` | Service needs DB credentials. |
-| 4 | Set/confirm `USER_SERVICE_GRPC_ADDRESS` | Service needs listen port. |
-| 5 | Run `go run ./cmd/server` | Starts gRPC server. |
-| 6 | Test with `grpcurl` | Confirms gRPC endpoint is reachable. |
-
-### Quick Commands
-
-Common setup commands are in previous docs. Task 4-specific commands:
-
-```bash
-cd proto
-buf lint
-buf generate
-```
-
-```bash
-cd backend/services/user-service
-go test ./internal/transport/grpc
-go test ./...
-go run ./cmd/server
-```
+Then run:
 
 ```bash
 grpcurl -plaintext localhost:50052 list
 grpcurl -plaintext localhost:50052 describe ecommerce.user.v1.UserService
 ```
 
-### Manual gRPC Calls
+### Verify Task 4 Methods
 
-Create user:
+Create user with service caller metadata:
 
 ```bash
 grpcurl -plaintext \
+  -H 'x-request-id: local-task4-create-user' \
   -H 'x-service-name: auth-service' \
-  -H 'x-request-id: req_create_user_001' \
+  -H 'x-actor-id: auth-service' \
+  -H 'x-actor-type: service' \
   -d '{"auth_account_id":"auth_123","email":"buyer@example.com","phone":"+919999999999","full_name":"Aarav Sharma"}' \
   localhost:50052 ecommerce.user.v1.UserService/CreateUser
 ```
@@ -770,20 +405,20 @@ Get user:
 
 ```bash
 grpcurl -plaintext \
-  -H 'x-user-id: user_123' \
+  -H 'x-request-id: local-task4-get-user' \
   -H 'x-service-name: api-gateway' \
-  -H 'x-request-id: req_get_user_001' \
   -d '{"user_id":"user_123"}' \
   localhost:50052 ecommerce.user.v1.UserService/GetUser
 ```
 
-Update user profile:
+Update user profile with `FieldMask`:
 
 ```bash
 grpcurl -plaintext \
+  -H 'x-request-id: local-task4-update-user' \
   -H 'x-user-id: user_123' \
-  -H 'x-service-name: api-gateway' \
-  -H 'x-request-id: req_update_user_001' \
+  -H 'x-actor-id: user_123' \
+  -H 'x-actor-type: user' \
   -d '{"user_id":"user_123","full_name":"Aarav S.","update_mask":{"paths":["full_name"]}}' \
   localhost:50052 ecommerce.user.v1.UserService/UpdateUserProfile
 ```
@@ -792,474 +427,106 @@ Get seller profile:
 
 ```bash
 grpcurl -plaintext \
+  -H 'x-request-id: local-task4-get-seller' \
   -H 'x-service-name: product-service' \
-  -H 'x-request-id: req_seller_001' \
   -d '{"seller_id":"seller_123"}' \
   localhost:50052 ecommerce.user.v1.UserService/GetSellerProfile
 ```
 
-Beginner note:
+Important:
 
-These calls need matching DB rows. If user/seller does not exist, response `NotFound` aayega. That is expected behavior, not setup failure.
-
-### Ports & Networking
-
-| Service | Port | Purpose | New in Task 4? |
-|---|---:|---|---:|
-| User Service gRPC | `50052` | Internal gRPC API | Yes, Task 4 focuses on this API |
-| MySQL host port | `3306` | Local DB access | No, reused |
-| MySQL alternate host port | `3307` | Avoid local conflict | No, reused from Task 2 docs |
-| Redis | `6379` | Not used | No |
-| Kafka | `9092` | Not used | No |
-
-Port rule:
-
-- If `:50052` is busy, set `USER_SERVICE_GRPC_ADDRESS=:50053`.
-- Update `grpcurl` host to `localhost:50053`.
-- MySQL port and gRPC port are different. Do not put MySQL port in `grpcurl`.
-
----
+- IDs in examples must exist in your local database.
+- `CreateUser` creates a new generated `user_id`; use the returned id for later calls.
+- `GetSellerProfile` needs a seeded seller row unless your local flow already created one.
 
 ## 11. Common Errors & Fixes
 
-Base errors already documented:
-
-```text
-TaskImplementation/User Service/task1_Dependency.md
-Section: 11. Common Errors & Fixes
-
-TaskImplementation/User Service/task2_Dependency.md
-Section: 11. Common Errors & Fixes
-
-TaskImplementation/User Service/task3_Dependency.md
-Section: 11. Common Errors & Fixes
-```
-
-Task 4-specific errors:
-
-### `grpcurl: command not found`
-
-Cause:
-
-`grpcurl` installed nahi hai or Go bin folder `PATH` me nahi hai.
-
-Fix:
-
-```bash
-go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
-go env GOPATH
-```
-
-Add this to shell PATH:
-
-```text
-$(go env GOPATH)/bin
-```
-
-### `Failed to list services: server does not support the reflection API`
-
-Cause:
-
-`USER_SERVICE_GRPC_REFLECTION=false` hai or reflection register nahi hui.
-
-Fix for local:
-
-```env
-USER_SERVICE_GRPC_REFLECTION=true
-```
-
-Restart service, then:
-
-```bash
-grpcurl -plaintext localhost:50052 list
-```
-
-Production note:
-
-Production me reflection intentionally disabled ho sakti hai. Ye error production setup me normal ho sakta hai.
-
-### `connection refused` on `localhost:50052`
-
-Cause:
-
-Service running nahi hai, wrong port use ho raha hai, or startup DB ping fail hua.
-
-Fix:
-
-1. Service terminal logs check karo.
-2. `USER_SERVICE_DATABASE_DSN` valid hai ya nahi check karo.
-3. MySQL running hai ya nahi verify karo.
-4. `USER_SERVICE_GRPC_ADDRESS` ka port confirm karo.
-
-### `listen tcp :50052: bind: address already in use`
-
-Cause:
-
-Port `50052` already occupied hai.
-
-Fix:
-
-```env
-USER_SERVICE_GRPC_ADDRESS=:50053
-```
-
-Then:
-
-```bash
-grpcurl -plaintext localhost:50053 list
-```
-
-### `rpc error: code = InvalidArgument desc = user_id is required`
-
-Cause:
-
-Request payload me `user_id` missing/blank hai.
-
-Fix:
-
-```bash
-grpcurl -plaintext \
-  -d '{"user_id":"user_123"}' \
-  localhost:50052 ecommerce.user.v1.UserService/GetUser
-```
-
-### `rpc error: code = InvalidArgument desc = invalid request` during update
-
-Cause:
-
-`update_mask.paths` missing hai or unsupported field diya gaya hai.
-
-Allowed update mask paths:
-
-```text
-full_name
-phone
-avatar_url
-```
-
-Fix:
-
-```bash
-grpcurl -plaintext \
-  -H 'x-user-id: user_123' \
-  -d '{"user_id":"user_123","full_name":"Aarav S.","update_mask":{"paths":["full_name"]}}' \
-  localhost:50052 ecommerce.user.v1.UserService/UpdateUserProfile
-```
-
-### `rpc error: code = PermissionDenied desc = permission denied`
-
-Cause:
-
-`x-user-id` metadata request ke `user_id` se match nahi karta.
-
-Current usecase rule:
-
-```text
-If x-user-id is blank, service-level calls pass.
-If x-user-id is present, it must match requested user_id.
-```
-
-Fix for user-facing call:
-
-```bash
-grpcurl -plaintext \
-  -H 'x-user-id: user_123' \
-  -d '{"user_id":"user_123"}' \
-  localhost:50052 ecommerce.user.v1.UserService/GetUser
-```
-
-Security note:
-
-Blank `x-user-id` being treated as service-level access is a trust-boundary assumption. Production should enforce service identity at gateway/service mesh/interceptor level.
-
-### `rpc error: code = NotFound desc = user not found`
-
-Cause:
-
-Setup can be fine, but DB me requested user row nahi hai.
-
-Fix:
-
-- Confirm Task 2 migration applied.
-- Create user via `CreateUser` first.
-- Check `users` table in MySQL.
-
-### `buf: command not found`
-
-Cause:
-
-Buf CLI missing or PATH issue.
-
-Fix:
-
-```bash
-go install github.com/bufbuild/buf/cmd/buf@latest
-```
-
-Confirm Go bin path in `PATH`.
-
-### `Failure: plugin protoc-gen-go: could not find protoc plugin`
-
-Cause:
-
-Go protobuf generator missing.
-
-Fix:
-
-```bash
-go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-```
-
-### Generated Code Stale After Proto Change
-
-Symptoms:
-
-- Go compile errors in `internal/transport/grpc`.
-- Method exists in proto but not generated interface.
-- Request field not found in Go struct.
-
-Fix:
-
-```bash
-cd proto
-buf generate
-cd ../backend/services/user-service
-go test ./...
-```
-
-### `go test ./internal/transport/grpc` Fails With Import Error
-
-Cause:
-
-Generated proto module missing or workspace not resolved.
-
-Fix:
-
-```bash
-cd backend
-go test ./services/user-service/internal/transport/grpc
-```
-
-Also verify:
-
-```text
-backend/go.work
-backend/shared/gen/go/go.mod
-backend/shared/gen/go/ecommerce/user/v1/user.pb.go
-```
-
----
+Generic Go/MySQL/Docker/gRPC errors already exist in `task1_Dependency.md` and `task2_Dependency.md`. Task 4 specific additions:
+
+| Error | Cause | Fix | Prevention |
+|---|---|---|---|
+| `audit actor is required` | Write call missing caller/audit metadata | Add `x-actor-id` + `x-actor-type`, or at least `x-user-id`/`x-service-name` | Keep grpcurl examples with metadata headers |
+| `permission denied` | `x-user-id` does not match target `user_id` | Use same user id for self-service update or call as trusted service | Gateway should inject correct user id |
+| `validation failed` | Current repo validation rejects email/phone/name format | Send valid email, E.164-ish phone, non-empty names | Reuse realistic test data |
+| `Table 'user_db.users' doesn't exist` | Task 2 migration not applied | Apply `001_create_user_tables.up.sql` | Run migration before real runtime |
+| `Unknown column 'created_by'` or `Unknown column 'deleted_at'` | Current repo audit migration missing | Apply `002_add_user_audit_fields.up.sql` | Apply migrations in numeric order on current repo |
+| `Table 'user_db.user_outbox_events' doesn't exist` | Current repo event recorder enabled but outbox migration missing | Apply `003_create_user_outbox_events.up.sql` or set `USER_EVENTS_ENABLED=false` for Task 4-only smoke | Decide whether you are testing Task 4 only or full current service |
+| `server does not support reflection` | `USER_SERVICE_GRPC_REFLECTION=false` | Set it to `true` locally and restart service | Keep reflection local-only |
+| `unknown service ecommerce.user.v1.UserService` | Generated proto/service registration mismatch or wrong server | Run `buf generate`, rebuild, confirm correct port | Do not edit generated files manually |
+| `InvalidArgument` for `update_mask` | Empty/invalid mask in profile update | Send `{"paths":["full_name"]}` or the field you want to patch | Always include update mask for patch calls |
+| `DeadlineExceeded` | Caller deadline too short or DB slow | Increase local timeout and check MySQL | Use realistic client timeouts and DB indexes |
 
 ## 12. Security & Best Practices
 
-### Secrets
-
-Reuse:
+Reuse previous security notes for `.env`, DB credentials, root user, Docker, reflection, and plaintext gRPC:
 
 ```text
-TaskImplementation/User Service/task1_Dependency.md
-Section: 12. Security & Best Practices -> Secrets
+TaskImplementation/{SERVICE_NAME}/task1_Dependency.md
+Section: 10. Security and Configuration Audit
 ```
 
-Task 4-specific:
+Task 4 specific best practices:
 
-- Do not put DB passwords in proto files, generated code, or task docs with real values.
-- Keep `.env` local and uncommitted.
-- gRPC metadata can contain user IDs and request IDs. Avoid logging full tokens or secrets.
-
-### gRPC Access Boundary
-
-User Service gRPC should be internal-only.
-
-Best practices:
-
-- Public internet se `50052` expose mat karo.
-- API Gateway/Auth Service should validate JWT before calling User Service.
-- Service-to-service auth should be added in production, usually mTLS, service mesh identity, or signed internal token.
-- Reflection local/dev me useful hai, production me disable karna safer hai unless there is a clear ops requirement.
-
-### Metadata Trust
-
-Current code reads:
-
-```text
-x-user-id
-x-service-name
-x-roles
-x-request-id
-```
-
-Best practices:
-
-- Metadata trusted source se aaye, such as API Gateway.
-- Client-provided metadata directly trust mat karo.
-- `x-request-id` log-friendly rakho, secret data mat rakho.
-- `x-roles` future RBAC ke liye validate/sign hona chahiye.
-
-### Error Handling
-
-Current code maps domain errors to gRPC status codes:
-
-| Domain/error type | gRPC code |
-|---|---|
-| `context.Canceled` | `Canceled` |
-| `context.DeadlineExceeded` | `DeadlineExceeded` |
-| `ErrUserNotFound`, `ErrSellerNotFound` | `NotFound` |
-| `ErrDuplicateUser`, `ErrDuplicateSeller` | `AlreadyExists` |
-| `ErrForbidden` | `PermissionDenied` |
-| `ErrDeletedResource` | `FailedPrecondition` |
-| validation/invalid argument | `InvalidArgument` |
-| unknown error | `Internal` |
-
-Best practice:
-
-Internal SQL details caller ko leak nahi karne. Detailed error logs server side me rakho.
-
-### Deadlines And Timeouts
-
-Clients should use deadlines:
-
-| Method | Suggested local timeout |
-|---|---:|
-| `GetUser` | `300ms-700ms` |
-| `CreateUser` | `1s-1.5s` |
-| `UpdateUserProfile` | `700ms-1s` |
-| `GetSellerProfile` | `300ms-700ms` |
-
-Why:
-
-Deadline nahi hoga to stuck network/DB issue resources hold kar sakta hai.
-
-### Proto Best Practices
-
-- Existing field numbers delete/reuse mat karo.
-- Field rename carefully karo because JSON name/client behavior impact ho sakta hai.
-- Breaking changes ke liye future `v2` package use karo.
-- Generated files manually edit mat karo.
-- `FieldMask` use karo for partial updates.
-
-### Logging
-
-Current interceptors log:
-
-```text
-method
-code
-duration
-request_id
-```
-
-Best practices:
-
-- Email/phone/KYC document values logs me avoid/mask karo.
-- Panic recovery enabled hai, but root cause fix karna still required hai.
-- `USER_SERVICE_LOG_LEVEL=debug` local me ok hai; production me `info` or stricter use karo.
-
----
+- Keep this gRPC service internal-only. Public browser clients should go through API Gateway.
+- Do not trust metadata from public traffic. Gateway/service mesh should authenticate caller identity before forwarding metadata.
+- Disable or restrict gRPC reflection outside local/dev networks.
+- Do not log raw email, phone, address, KYC URLs, tokens, or DB DSNs.
+- Keep domain errors mapped to safe gRPC status codes. Raw SQL/internal errors should not leak to callers.
+- Add client deadlines for every gRPC call. Handler should pass `ctx` through to usecase/repository.
+- Do not import proto packages inside domain/usecase layers. Proto belongs at transport boundary.
+- Do not return gRPC `status.Error` from repository or domain. Map errors in `internal/transport/grpc/errors.go`.
+- Regenerate proto code with `buf generate`; never hand-edit generated `*.pb.go` files.
+- Use TLS/mTLS or private network/service mesh for production gRPC traffic.
 
 ## 13. Missing or Misconfigured Things
 
-This section is an audit of setup/devops gaps found while inspecting Task 4 and current code.
-
-| Area | Current status | Risk | Suggested fix |
-|---|---|---|---|
-| `.env.example` | Not present | New developers may not know required vars. | Add sanitized `backend/services/user-service/.env.example`. |
-| User Service Dockerfile | Not present | Containerized local/prod run not documented as actual file. | Add Dockerfile in future DevOps task. |
-| Project docker-compose | Not present | Beginners must run MySQL manually or create temporary compose. | Add local compose with MySQL and optional service container. |
-| gRPC health check | Not implemented | Load balancer/orchestrator cannot easily check service health. | Add standard gRPC health service. |
-| Service-to-service auth interceptor | Not implemented | Metadata can be spoofed if network boundary is weak. | Add mTLS/internal auth interceptor before production. |
-| Reflection default | `true` | Useful locally, risky if exposed in prod. | Set false in production env. |
-| Migration runner | Plain SQL only | Service startup does not auto-migrate. | Add migration tool or documented migration command in deployment pipeline. |
-| Buf breaking check baseline | Config present, baseline not documented | Breaking changes may slip if CI does not run `buf breaking`. | Add CI step for `buf lint` and `buf breaking`. |
-| Tool version pinning | Uses latest install commands | Different dev machines can generate different output. | Pin tool versions in docs or tool manifest. |
-| Public port exposure policy | Not enforced by code | `:50052` could be exposed accidentally. | Restrict network, firewall, compose/K8s service type. |
-
-### Hardcoded Credentials Audit
-
-No hardcoded DB credentials were found in Task 4 gRPC implementation files.
-
-Credential source:
-
-```text
-USER_SERVICE_DATABASE_DSN
-MYSQL_DSN fallback
-```
-
-Risk:
-
-The DSN contains username/password, so logs and docs should not print real production DSNs.
-
-### Config Audit
-
-Current config validates:
-
-| Config | Validation |
-|---|---|
-| `USER_SERVICE_DATABASE_DSN` | Required |
-| `USER_SERVICE_DB_MAX_OPEN_CONNS` | Must be greater than zero |
-| `USER_SERVICE_DB_MAX_IDLE_CONNS` | Cannot be negative |
-| `USER_SERVICE_SHUTDOWN_TIMEOUT` | Must be positive |
-| `USER_SERVICE_DB_PING_TIMEOUT` | Must be positive |
-
-Potential improvement:
-
-Invalid int/bool/duration env values currently fall back silently. For production, fail-fast validation is usually better because typoed env vars should be visible.
-
----
+| Finding | Impact | Suggested fix |
+|---|---|---|
+| No committed `.env.example` found | Beginners can miss required env names | Add sanitized `.env.example` with fake DSN and local gRPC settings |
+| No User Service Dockerfile found | App cannot be containerized directly yet | Add Dockerfile in DevOps task |
+| No project `docker-compose.yml` found | Beginners manually start MySQL/migrations | Add local compose with MySQL healthcheck and optional service container |
+| No standard gRPC health service found | Orchestrators cannot check gRPC readiness cleanly | Add `grpc_health_v1` health service |
+| gRPC metadata is trusted in app layer | Spoofed headers are risky if service exposed publicly | Enforce gateway-only/private network/mTLS and auth interceptors |
+| Reflection defaults useful locally but risky publicly | Method discovery exposure | Set `USER_SERVICE_GRPC_REFLECTION=false` in production |
+| Current repo has later event defaults | Task 4 local setup can fail due outbox table | For Task 4-only smoke use `USER_EVENTS_ENABLED=false`, or apply migration `003` |
+| `docs/04-microservice-design.md` mentions `BatchGetUsers`, but proto currently does not include it | Potential future contract mismatch | Add only when a future task explicitly needs it |
 
 ## 14. References to Previous Dependency Files
 
-Use these files instead of duplicating setup:
-
-| Topic | Reference |
-|---|---|
-| Base project overview | `TaskImplementation/User Service/task1_Dependency.md` -> `1. Project Overview` |
-| Go install | `TaskImplementation/User Service/task1_Dependency.md` -> `3. Required Software` |
-| Go modules, `go.mod`, `go.sum`, `go.work` | `TaskImplementation/User Service/task1_Dependency.md` -> `4. Dependency Management` |
-| MySQL local install | `TaskImplementation/User Service/task1_Dependency.md` -> `5. Database Setup` |
-| Docker MySQL setup | `TaskImplementation/User Service/task1_Dependency.md` -> `5. Database Setup -> E. Docker Setup` |
-| Docker Compose example | `TaskImplementation/User Service/task1_Dependency.md` -> `5. Database Setup -> F. Docker Compose Example` |
-| Base `.env` | `TaskImplementation/User Service/task1_Dependency.md` -> `7. Environment Variables` |
-| Base run commands | `TaskImplementation/User Service/task1_Dependency.md` -> `10. Running The Project` |
-| Base common errors | `TaskImplementation/User Service/task1_Dependency.md` -> `11. Common Errors & Fixes` |
-| MySQL schema | `TaskImplementation/User Service/task2_Dependency.md` -> `5. Database Setup` |
-| Migration verification | `TaskImplementation/User Service/task2_Dependency.md` -> `Schema-Specific Verification Queries` |
-| Repository dependencies | `TaskImplementation/User Service/task3_Dependency.md` -> `4. Dependency Management` |
-| Repository DB requirements | `TaskImplementation/User Service/task3_Dependency.md` -> `5. Database Setup` |
-| Repository troubleshooting | `TaskImplementation/User Service/task3_Dependency.md` -> `11. Common Errors & Fixes` |
-
----
+| Previous Dependency File | Section / Topic Reused | Why Reused |
+|---|---|---|
+| `TaskImplementation/{SERVICE_NAME}/task1_Dependency.md` | `1. Project Tech Stack Analysis` | Base Go/MySQL/gRPC stack already explained |
+| `TaskImplementation/{SERVICE_NAME}/task1_Dependency.md` | `2. Language-Specific Dependency System: Go` | Go modules, `go.mod`, `go.sum`, `go.work`, commands already documented |
+| `TaskImplementation/{SERVICE_NAME}/task1_Dependency.md` | `3. Database Analysis` | MySQL install, Docker setup, DSN, credentials, default port already documented |
+| `TaskImplementation/{SERVICE_NAME}/task1_Dependency.md` | `4. Environment Variables` | Base `.env`, gRPC address, reflection, shutdown, DB pool, logging already documented |
+| `TaskImplementation/{SERVICE_NAME}/task1_Dependency.md` | `5. External Services Analysis -> gRPC / Protobuf and Buf` | grpcurl, gRPC reflection, Buf generation already explained |
+| `TaskImplementation/{SERVICE_NAME}/task1_Dependency.md` | `6. Ports and Networking` | User Service gRPC `50052`, MySQL `3306`, alternate MySQL port already documented |
+| `TaskImplementation/{SERVICE_NAME}/task1_Dependency.md` | `7. Docker and DevOps Setup` | Docker MySQL and missing app Dockerfile already covered |
+| `TaskImplementation/{SERVICE_NAME}/task1_Dependency.md` | `9. Common Errors and Fixes` | Generic `.env`, MySQL, Docker, reflection, Go module errors already covered |
+| `TaskImplementation/{SERVICE_NAME}/task2_Dependency.md` | `5. Database Setup` | Table creation, migration, rollback, verification queries already covered |
+| `TaskImplementation/{SERVICE_NAME}/task2_Dependency.md` | `11. Common Errors & Fixes` | Missing tables, FK errors, migration permission issues already covered |
+| `TaskImplementation/{SERVICE_NAME}/task3_Dependency.md` | `7. Database Setup Required For Task 3` | Repository layer depends on migrated MySQL schema |
+| `TaskImplementation/{SERVICE_NAME}/task3_Dependency.md` | `12. Repository-Specific Common Errors And Fixes` | Timestamp scan, duplicate key, foreign key, schema mismatch issues already explained |
 
 ## 15. Final Checklist
 
-Task 4 setup checklist:
-
-- [ ] Read `TaskImplementation/User Service/task1_Dependency.md` for base Go/MySQL/Docker/env setup.
-- [ ] Read `TaskImplementation/User Service/task2_Dependency.md` for migration setup.
-- [ ] Read `TaskImplementation/User Service/task3_Dependency.md` for repository DB requirements.
-- [ ] Install Go 1.24+.
-- [ ] Install Task 4 tools: `buf`, `protoc-gen-go`, `protoc-gen-go-grpc`, `grpcurl`.
-- [ ] Confirm `proto/ecommerce/user/v1/user.proto` exists.
-- [ ] Confirm `proto/buf.yaml` and `proto/buf.gen.yaml` exist.
-- [ ] Run `cd proto` and `buf lint`.
-- [ ] If proto changed, run `buf generate`.
-- [ ] Confirm generated files exist under `backend/shared/gen/go/ecommerce/user/v1/`.
-- [ ] Start MySQL.
-- [ ] Apply Task 2 migration.
-- [ ] Create/load `.env` with `USER_SERVICE_DATABASE_DSN`.
-- [ ] Confirm `USER_SERVICE_GRPC_ADDRESS=:50052`.
-- [ ] Keep `USER_SERVICE_GRPC_REFLECTION=true` for local `grpcurl` testing.
-- [ ] Run `cd backend/services/user-service` and `go mod download`.
-- [ ] Run `go test ./internal/transport/grpc`.
-- [ ] Run `go test ./...`.
-- [ ] Run `go run ./cmd/server`.
-- [ ] Verify `grpcurl -plaintext localhost:50052 list`.
-- [ ] Test `CreateUser`, `GetUser`, `UpdateUserProfile`, and `GetSellerProfile` with metadata.
-- [ ] For production, disable reflection unless explicitly needed.
-- [ ] Do not expose port `50052` publicly.
-- [ ] Do not commit `.env` or real DSN credentials.
-
-Final beginner rule:
-
-Task 4 ka setup tab successful maana jayega jab MySQL running ho, migration applied ho, service `:50052` par start ho, `grpcurl list` User Service show kare, and `go test ./internal/transport/grpc` pass ho.
+- [ ] Previous dependency documentation checked first.
+- [ ] `INPUT_FILE_PATH` reviewed for Task 4 scope.
+- [ ] No duplicate Go/MySQL/Docker setup copied from previous files.
+- [ ] Go `1.24+` available.
+- [ ] `go mod download` completed if this is a fresh clone.
+- [ ] `proto/ecommerce/user/v1/user.proto` checked.
+- [ ] `buf lint` and `buf generate` run only if proto changed.
+- [ ] Generated Go proto files present under `backend/shared/gen/go/ecommerce/user/v1/`.
+- [ ] Task 4 handler tests pass with `go test ./internal/transport/grpc`.
+- [ ] MySQL running if starting real service.
+- [ ] Required migrations applied for the runtime version being tested.
+- [ ] `.env` sourced before `go run ./cmd/server`.
+- [ ] `USER_SERVICE_GRPC_REFLECTION=true` for local grpcurl testing.
+- [ ] Event/outbox settings intentionally chosen for current repo local run.
+- [ ] gRPC service lists with `grpcurl -plaintext localhost:50052 list`.
+- [ ] `CreateUser`, `GetUser`, `UpdateUserProfile`, and `GetSellerProfile` verified with correct metadata.
+- [ ] Reflection disabled/restricted for non-local environments.
+- [ ] No secrets committed in `.env`.
+- [ ] Logs checked for `user_service_grpc_listening`.
+- [ ] No original implementation file modified.

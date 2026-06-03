@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/parag/ecommerce/backend/services/user-service/internal/audit"
 	grpcgo "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -15,8 +16,18 @@ func ServerOptions(logger *slog.Logger) []grpcgo.ServerOption {
 	return []grpcgo.ServerOption{
 		grpcgo.ChainUnaryInterceptor(
 			UnaryRecoveryInterceptor(logger),
+			UnaryAuditActorInterceptor(),
 			UnaryLoggingInterceptor(logger),
 		),
+	}
+}
+
+func UnaryAuditActorInterceptor() grpcgo.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, info *grpcgo.UnaryServerInfo, handler grpcgo.UnaryHandler) (any, error) {
+		if actor, ok := actorFromMetadata(ctx); ok {
+			ctx = audit.WithActor(ctx, actor)
+		}
+		return handler(ctx, req)
 	}
 }
 

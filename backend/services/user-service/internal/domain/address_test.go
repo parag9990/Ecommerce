@@ -18,13 +18,14 @@ func TestAddressSoftDeleteClearsDefault(t *testing.T) {
 		PostalCode: "400001",
 		Country:    "India",
 		IsDefault:  true,
+		CreatedBy:  "user_123",
 		CreatedAt:  fixedTime(),
 	})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
 
-	if err := address.MarkDeleted(fixedTime().Add(time.Minute)); err != nil {
+	if err := address.MarkDeleted("user_123", fixedTime().Add(time.Minute)); err != nil {
 		t.Fatalf("MarkDeleted returned error: %v", err)
 	}
 
@@ -46,18 +47,20 @@ func TestDeletedAddressCannotBePatched(t *testing.T) {
 		State:      "Maharashtra",
 		PostalCode: "400001",
 		Country:    "India",
+		CreatedBy:  "user_123",
 		CreatedAt:  fixedTime(),
 	})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
 
-	if err := address.MarkDeleted(fixedTime().Add(time.Minute)); err != nil {
+	if err := address.MarkDeleted("user_123", fixedTime().Add(time.Minute)); err != nil {
 		t.Fatalf("MarkDeleted returned error: %v", err)
 	}
 
 	err = address.ApplyPatch(AddressPatch{
 		City:      strptr("Pune"),
+		UpdatedBy: "user_123",
 		UpdatedAt: fixedTime().Add(2 * time.Minute),
 	})
 	if !errors.Is(err, ErrDeletedResource) {

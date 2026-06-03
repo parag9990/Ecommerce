@@ -15,6 +15,7 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/parag/ecommerce/backend/services/user-service/internal/config"
+	"github.com/parag/ecommerce/backend/services/user-service/internal/events"
 	"github.com/parag/ecommerce/backend/services/user-service/internal/repository"
 	transportgrpc "github.com/parag/ecommerce/backend/services/user-service/internal/transport/grpc"
 	"github.com/parag/ecommerce/backend/services/user-service/internal/usecase"
@@ -53,9 +54,55 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	userService, err := usecase.NewService(userRepo, sellerRepo, usecase.WithLogger(logger))
+	addressRepo, err := repository.NewMySQLAddressRepository(db, repository.WithLogger(logger))
 	if err != nil {
 		return err
+	}
+	outboxRepo, err := repository.NewMySQLOutboxRepository(db, repository.WithLogger(logger))
+	if err != nil {
+		return err
+	}
+	recorderConfig := events.RecorderConfig{
+		Enabled: cfg.Events.Enabled,
+		Topic:   cfg.Events.Topic,
+		Logger:  logger,
+	}
+	eventRecorder, err := events.NewOutboxRecorder(outboxRepo, recorderConfig)
+	if err != nil {
+		return err
+	}
+	unitOfWork, err := repository.NewMySQLUnitOfWork(db, recorderConfig, repository.WithLogger(logger))
+	if err != nil {
+		return err
+	}
+	userService, err := usecase.NewService(
+		userRepo,
+		addressRepo,
+		sellerRepo,
+		usecase.WithLogger(logger),
+		usecase.WithValidationPhoneRegion(cfg.Validation.PhoneRegion),
+		usecase.WithEventRecorder(eventRecorder),
+		usecase.WithUnitOfWork(unitOfWork),
+	)
+	if err != nil {
+		return err
+	}
+
+	runCtx, cancelRun := context.WithCancel(ctx)
+	defer cancelRun()
+
+	workerDone, publisher, err := startOutboxWorker(runCtx, cfg, outboxRepo, logger)
+	if err != nil {
+		return err
+	}
+	if publisher != nil {
+		defer func() {
+			if closer, ok := publisher.(events.ClosePublisher); ok {
+				if err := closer.Close(); err != nil {
+					logger.WarnContext(ctx, "event_publisher_close_failed", slog.String("error_type", fmt.Sprintf("%T", err)))
+				}
+			}
+		}()
 	}
 
 	listener, err := net.Listen("tcp", cfg.GRPC.Address)
@@ -82,12 +129,71 @@ func run(ctx context.Context) error {
 	select {
 	case sig := <-signals:
 		logger.InfoContext(ctx, "user_service_shutdown_requested", slog.String("signal", sig.String()))
+		cancelRun()
+		waitForOutboxWorker(ctx, workerDone, cfg.GRPC.ShutdownTimeout, logger)
 		return gracefulStop(grpcServer, cfg.GRPC.ShutdownTimeout)
 	case err := <-serveErr:
+		cancelRun()
+		waitForOutboxWorker(ctx, workerDone, cfg.GRPC.ShutdownTimeout, logger)
 		if errors.Is(err, grpcgo.ErrServerStopped) {
 			return nil
 		}
 		return fmt.Errorf("serve grpc: %w", err)
+	}
+}
+
+func startOutboxWorker(ctx context.Context, cfg config.Config, outboxRepo events.OutboxRepository, logger *slog.Logger) (<-chan error, events.Publisher, error) {
+	if !cfg.OutboxWorker.Enabled {
+		return nil, nil, nil
+	}
+
+	publisher, err := events.NewPublisher(cfg.Events.Provider, cfg.RabbitMQ.URL, cfg.Kafka.Brokers, cfg.Events.Topic, cfg.Events.DeadLetterTopic)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	worker, err := events.NewOutboxWorker(outboxRepo, publisher, events.WorkerConfig{
+		BatchSize:       cfg.OutboxWorker.BatchSize,
+		PollInterval:    cfg.OutboxWorker.PollInterval,
+		LockTTL:         cfg.OutboxWorker.LockTTL,
+		MaxAttempts:     cfg.OutboxWorker.MaxAttempts,
+		PublishTimeout:  cfg.OutboxWorker.PublishTimeout,
+		DeadLetterTopic: cfg.Events.DeadLetterTopic,
+		Logger:          logger,
+	})
+	if err != nil {
+		if closer, ok := publisher.(events.ClosePublisher); ok {
+			_ = closer.Close()
+		}
+		return nil, nil, err
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		logger.InfoContext(ctx, "user_outbox_worker_started",
+			slog.String("provider", cfg.Events.Provider),
+			slog.String("topic", cfg.Events.Topic),
+		)
+		done <- worker.Run(ctx)
+	}()
+	return done, publisher, nil
+}
+
+func waitForOutboxWorker(ctx context.Context, done <-chan error, timeout time.Duration, logger *slog.Logger) {
+	if done == nil {
+		return
+	}
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	select {
+	case err := <-done:
+		if err != nil && !errors.Is(err, context.Canceled) {
+			logger.WarnContext(ctx, "user_outbox_worker_stopped_with_error", slog.String("error_type", fmt.Sprintf("%T", err)))
+		}
+	case <-timer.C:
+		logger.WarnContext(ctx, "user_outbox_worker_shutdown_timeout")
 	}
 }
 

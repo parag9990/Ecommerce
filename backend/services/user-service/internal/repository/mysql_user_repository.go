@@ -15,8 +15,8 @@ import (
 var _ usecase.UserRepository = (*MySQLUserRepository)(nil)
 
 type MySQLUserRepository struct {
-	db     *sql.DB
-	logger *slog.Logger
+	executor sqlExecutor
+	logger   *slog.Logger
 }
 
 func NewMySQLUserRepository(db *sql.DB, options ...Option) (*MySQLUserRepository, error) {
@@ -24,8 +24,12 @@ func NewMySQLUserRepository(db *sql.DB, options ...Option) (*MySQLUserRepository
 		return nil, errors.New("db is required")
 	}
 
+	return newMySQLUserRepository(db, options...), nil
+}
+
+func newMySQLUserRepository(executor sqlExecutor, options ...Option) *MySQLUserRepository {
 	configured := newRepositoryOptions(options)
-	return &MySQLUserRepository{db: db, logger: configured.logger}, nil
+	return &MySQLUserRepository{executor: executor, logger: configured.logger}
 }
 
 func (r *MySQLUserRepository) CreateUser(ctx context.Context, user domain.User) (domain.User, error) {
@@ -34,7 +38,7 @@ func (r *MySQLUserRepository) CreateUser(ctx context.Context, user domain.User) 
 		status = domain.UserStatusActive
 	}
 
-	_, err := r.db.ExecContext(ctx, `
+	_, err := r.executor.ExecContext(ctx, `
 		INSERT INTO users (
 			user_id,
 			auth_account_id,
@@ -42,8 +46,14 @@ func (r *MySQLUserRepository) CreateUser(ctx context.Context, user domain.User) 
 			phone,
 			full_name,
 			avatar_url,
-			status
-		) VALUES (?, ?, ?, ?, ?, ?, ?)
+			status,
+			created_by,
+			updated_by,
+			status_changed_by,
+			status_changed_at,
+			created_at,
+			updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		user.UserID,
 		user.AuthAccountID,
@@ -52,6 +62,12 @@ func (r *MySQLUserRepository) CreateUser(ctx context.Context, user domain.User) 
 		user.FullName,
 		nullableCleanStringPtr(user.AvatarURL),
 		status,
+		user.CreatedBy,
+		user.UpdatedBy,
+		nullableCleanStringPtr(user.StatusChangedBy),
+		nullableTimePtr(user.StatusChangedAt),
+		user.CreatedAt,
+		user.UpdatedAt,
 	)
 	if err != nil {
 		if isDuplicateKey(err) {
@@ -65,7 +81,7 @@ func (r *MySQLUserRepository) CreateUser(ctx context.Context, user domain.User) 
 }
 
 func (r *MySQLUserRepository) FindUserByID(ctx context.Context, userID string) (domain.User, error) {
-	row := r.db.QueryRowContext(ctx, `
+	row := r.executor.QueryRowContext(ctx, `
 		SELECT
 			user_id,
 			auth_account_id,
@@ -74,10 +90,18 @@ func (r *MySQLUserRepository) FindUserByID(ctx context.Context, userID string) (
 			full_name,
 			avatar_url,
 			status,
+			created_by,
+			updated_by,
+			status_changed_by,
+			status_changed_at,
+			deleted_by,
+			deleted_at,
 			created_at,
 			updated_at
 		FROM users
 		WHERE user_id = ?
+		  AND status <> 'deleted'
+		  AND deleted_at IS NULL
 		LIMIT 1
 	`, userID)
 
@@ -93,7 +117,7 @@ func (r *MySQLUserRepository) FindUserByID(ctx context.Context, userID string) (
 }
 
 func (r *MySQLUserRepository) FindUserByAuthAccountID(ctx context.Context, authAccountID string) (domain.User, error) {
-	row := r.db.QueryRowContext(ctx, `
+	row := r.executor.QueryRowContext(ctx, `
 		SELECT
 			user_id,
 			auth_account_id,
@@ -102,10 +126,18 @@ func (r *MySQLUserRepository) FindUserByAuthAccountID(ctx context.Context, authA
 			full_name,
 			avatar_url,
 			status,
+			created_by,
+			updated_by,
+			status_changed_by,
+			status_changed_at,
+			deleted_by,
+			deleted_at,
 			created_at,
 			updated_at
 		FROM users
 		WHERE auth_account_id = ?
+		  AND status <> 'deleted'
+		  AND deleted_at IS NULL
 		LIMIT 1
 	`, authAccountID)
 
@@ -139,14 +171,22 @@ func (r *MySQLUserRepository) BatchFindUsers(ctx context.Context, userIDs []stri
 			full_name,
 			avatar_url,
 			status,
+			created_by,
+			updated_by,
+			status_changed_by,
+			status_changed_at,
+			deleted_by,
+			deleted_at,
 			created_at,
 			updated_at
 		FROM users
 		WHERE user_id IN (` + placeholders(len(userIDs)) + `)
+		  AND status <> 'deleted'
+		  AND deleted_at IS NULL
 		ORDER BY user_id
 	`
 
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	rows, err := r.executor.QueryContext(ctx, query, args...)
 	if err != nil {
 		logRepositoryError(ctx, r.logger, "batch_find_users", err)
 		return nil, fmt.Errorf("query batch users: %w", err)
@@ -191,10 +231,11 @@ func (r *MySQLUserRepository) UpdateUserProfile(ctx context.Context, userID stri
 		return r.FindUserByID(ctx, userID)
 	}
 
-	sets = append(sets, "updated_at = CURRENT_TIMESTAMP")
+	sets = append(sets, "updated_by = ?", "updated_at = ?")
+	args = append(args, patch.UpdatedBy, patch.UpdatedAt)
 	args = append(args, userID)
 
-	result, err := r.db.ExecContext(ctx, `
+	result, err := r.executor.ExecContext(ctx, `
 		UPDATE users
 		SET `+strings.Join(sets, ", ")+`
 		WHERE user_id = ?
@@ -222,13 +263,51 @@ func (r *MySQLUserRepository) UpdateUserProfile(ctx context.Context, userID stri
 	return r.FindUserByID(ctx, userID)
 }
 
+func (r *MySQLUserRepository) UpdateUserStatus(ctx context.Context, user domain.User) (domain.User, error) {
+	result, err := r.executor.ExecContext(ctx, `
+		UPDATE users
+		SET
+			status = ?,
+			status_changed_by = ?,
+			status_changed_at = ?,
+			deleted_by = ?,
+			deleted_at = ?,
+			updated_by = ?,
+			updated_at = ?
+		WHERE user_id = ?
+		  AND deleted_at IS NULL
+	`,
+		user.Status,
+		nullableCleanStringPtr(user.StatusChangedBy),
+		nullableTimePtr(user.StatusChangedAt),
+		nullableCleanStringPtr(user.DeletedBy),
+		nullableTimePtr(user.DeletedAt),
+		user.UpdatedBy,
+		user.UpdatedAt,
+		user.UserID,
+	)
+	if err != nil {
+		logRepositoryError(ctx, r.logger, "update_user_status", err)
+		return domain.User{}, fmt.Errorf("update user status: %w", err)
+	}
+	if err := ensureAffected(result, domain.ErrUserNotFound); err != nil {
+		return domain.User{}, err
+	}
+
+	if user.Status == domain.UserStatusDeleted {
+		return user, nil
+	}
+	return r.FindUserByID(ctx, user.UserID)
+}
+
 func (r *MySQLUserRepository) activeUserExists(ctx context.Context, userID string) (bool, error) {
 	var exists int
-	err := r.db.QueryRowContext(ctx, `
+	err := r.executor.QueryRowContext(ctx, `
 		SELECT 1
 		FROM users
 		WHERE user_id = ?
 		  AND status <> 'deleted'
+		  AND deleted_at IS NULL
 		LIMIT 1
 	`, userID).Scan(&exists)
 	if err != nil {
@@ -243,10 +322,14 @@ func (r *MySQLUserRepository) activeUserExists(ctx context.Context, userID strin
 
 func scanUser(row sqlScanner) (domain.User, error) {
 	var (
-		user      domain.User
-		phone     sql.NullString
-		avatarURL sql.NullString
-		status    string
+		user            domain.User
+		phone           sql.NullString
+		avatarURL       sql.NullString
+		status          string
+		statusChangedBy sql.NullString
+		statusChangedAt sql.NullTime
+		deletedBy       sql.NullString
+		deletedAt       sql.NullTime
 	)
 
 	err := row.Scan(
@@ -257,6 +340,12 @@ func scanUser(row sqlScanner) (domain.User, error) {
 		&user.FullName,
 		&avatarURL,
 		&status,
+		&user.CreatedBy,
+		&user.UpdatedBy,
+		&statusChangedBy,
+		&statusChangedAt,
+		&deletedBy,
+		&deletedAt,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -267,6 +356,10 @@ func scanUser(row sqlScanner) (domain.User, error) {
 	user.Phone = nullStringPtr(phone)
 	user.AvatarURL = nullStringPtr(avatarURL)
 	user.Status = domain.UserStatus(status)
+	user.StatusChangedBy = nullStringPtr(statusChangedBy)
+	user.StatusChangedAt = nullTimePtr(statusChangedAt)
+	user.DeletedBy = nullStringPtr(deletedBy)
+	user.DeletedAt = nullTimePtr(deletedAt)
 	user.CreatedAt = user.CreatedAt.UTC()
 	user.UpdatedAt = user.UpdatedAt.UTC()
 

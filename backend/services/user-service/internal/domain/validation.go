@@ -1,35 +1,27 @@
 package domain
 
 import (
-	"net/mail"
-	"net/url"
-	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	sharedvalidation "github.com/parag/ecommerce/backend/shared/validation"
 )
 
 const (
-	maxIDLength              = 64
-	maxEmailLength           = 255
-	maxPhoneLength           = 32
-	maxNameLength            = 255
-	maxAvatarURLLength       = 1024
-	maxAddressLineLength     = 255
-	maxCityStateLength       = 128
-	maxPostalCodeLength      = 32
-	maxCountryLength         = 64
+	maxIDLength              = sharedvalidation.MaxIDLength
+	maxEmailLength           = sharedvalidation.MaxEmailLength
+	maxPhoneLength           = sharedvalidation.MaxE164PhoneLength
+	maxNameLength            = sharedvalidation.MaxShortNameLength
+	maxAvatarURLLength       = sharedvalidation.MaxAvatarURLLength
+	maxAddressLineLength     = sharedvalidation.MaxAddressLineLength
+	maxCityStateLength       = sharedvalidation.MaxCityStateLength
+	maxPostalCodeLength      = sharedvalidation.MaxPostalCodeLength
+	maxCountryLength         = sharedvalidation.MaxCountryLength
 	maxGSTNumberLength       = 64
 	maxDocumentTypeLength    = 64
-	maxStorageURLLength      = 1024
+	maxStorageURLLength      = sharedvalidation.MaxAvatarURLLength
 	maxRejectionReasonLength = 512
-)
-
-var (
-	idPattern      = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]*$`)
-	phonePattern   = regexp.MustCompile(`^\+?[0-9][0-9 .()\-]{6,31}$`)
-	gstPattern     = regexp.MustCompile(`^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$`)
-	controlPattern = regexp.MustCompile(`[\x00-\x1F\x7F]`)
 )
 
 func trim(value string) string {
@@ -50,13 +42,7 @@ func cleanOptional(value *string) *string {
 }
 
 func validateRequiredString(v *validationCollector, field string, value string, maxLength int) {
-	if value == "" {
-		v.add(field, "is required")
-		return
-	}
-
-	validateMaxRunes(v, field, value, maxLength)
-	validateNoControlChars(v, field, value)
+	validateRequiredSafeText(v, field, value, 1, maxLength)
 }
 
 func validateOptionalString(v *validationCollector, field string, value *string, maxLength int) {
@@ -64,8 +50,19 @@ func validateOptionalString(v *validationCollector, field string, value *string,
 		return
 	}
 
-	validateMaxRunes(v, field, *value, maxLength)
-	validateNoControlChars(v, field, *value)
+	validateOptionalSafeText(v, field, *value, 0, maxLength)
+}
+
+func validateRequiredSafeText(v *validationCollector, field string, value string, minLength int, maxLength int) {
+	var validationErr sharedvalidation.Error
+	sharedvalidation.ValidateRequiredSafeText(&validationErr, field, value, minLength, maxLength)
+	v.addAll(validationErr.Fields)
+}
+
+func validateOptionalSafeText(v *validationCollector, field string, value string, minLength int, maxLength int) {
+	var validationErr sharedvalidation.Error
+	sharedvalidation.ValidateOptionalSafeText(&validationErr, field, value, minLength, maxLength)
+	v.addAll(validationErr.Fields)
 }
 
 func validateMaxRunes(v *validationCollector, field string, value string, maxLength int) {
@@ -75,16 +72,15 @@ func validateMaxRunes(v *validationCollector, field string, value string, maxLen
 }
 
 func validateNoControlChars(v *validationCollector, field string, value string) {
-	if controlPattern.MatchString(value) {
-		v.add(field, "contains control characters")
+	if !sharedvalidation.IsSafeText(value) {
+		v.add(field, "contains unsupported characters")
 	}
 }
 
 func validateID(v *validationCollector, field string, value string) {
-	validateRequiredString(v, field, value, maxIDLength)
-	if value != "" && !idPattern.MatchString(value) {
-		v.add(field, "contains unsupported characters")
-	}
+	var validationErr sharedvalidation.Error
+	sharedvalidation.ValidateID(&validationErr, field, value)
+	v.addAll(validationErr.Fields)
 }
 
 func validateOptionalID(v *validationCollector, field string, value *string) {
@@ -96,15 +92,9 @@ func validateOptionalID(v *validationCollector, field string, value *string) {
 }
 
 func validateEmail(v *validationCollector, field string, value string) {
-	validateRequiredString(v, field, value, maxEmailLength)
-	if value == "" {
-		return
-	}
-
-	address, err := mail.ParseAddress(value)
-	if err != nil || address.Address != value {
-		v.add(field, "must be a valid email address")
-	}
+	var validationErr sharedvalidation.Error
+	sharedvalidation.ValidateEmail(&validationErr, field, value)
+	v.addAll(validationErr.Fields)
 }
 
 func validateOptionalEmail(v *validationCollector, field string, value *string) {
@@ -112,7 +102,9 @@ func validateOptionalEmail(v *validationCollector, field string, value *string) 
 		return
 	}
 
-	validateEmail(v, field, *value)
+	var validationErr sharedvalidation.Error
+	sharedvalidation.ValidateOptionalEmail(&validationErr, field, *value)
+	v.addAll(validationErr.Fields)
 }
 
 func validateOptionalPhone(v *validationCollector, field string, value *string) {
@@ -120,10 +112,9 @@ func validateOptionalPhone(v *validationCollector, field string, value *string) 
 		return
 	}
 
-	validateOptionalString(v, field, value, maxPhoneLength)
-	if *value != "" && !phonePattern.MatchString(*value) {
-		v.add(field, "must be a valid phone number")
-	}
+	var validationErr sharedvalidation.Error
+	sharedvalidation.ValidateOptionalPhone(&validationErr, field, *value, sharedvalidation.DefaultPhoneRegion)
+	v.addAll(validationErr.Fields)
 }
 
 func validateOptionalHTTPURL(v *validationCollector, field string, value *string, maxLength int) {
@@ -131,16 +122,20 @@ func validateOptionalHTTPURL(v *validationCollector, field string, value *string
 		return
 	}
 
-	validateOptionalString(v, field, value, maxLength)
-	parsed, err := url.ParseRequestURI(*value)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		v.add(field, "must be an absolute URL")
+	var validationErr sharedvalidation.Error
+	sharedvalidation.ValidateOptionalHTTPSURL(&validationErr, field, *value, maxLength)
+	v.addAll(validationErr.Fields)
+}
+
+func validateRequiredHTTPSURL(v *validationCollector, field string, value string, maxLength int) {
+	if strings.TrimSpace(value) == "" {
+		v.add(field, "is required")
 		return
 	}
 
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		v.add(field, "must use http or https")
-	}
+	var validationErr sharedvalidation.Error
+	sharedvalidation.ValidateOptionalHTTPSURL(&validationErr, field, value, maxLength)
+	v.addAll(validationErr.Fields)
 }
 
 func validateOptionalGSTNumber(v *validationCollector, field string, value *string) {
@@ -148,10 +143,16 @@ func validateOptionalGSTNumber(v *validationCollector, field string, value *stri
 		return
 	}
 
-	validateOptionalString(v, field, value, maxGSTNumberLength)
-	if *value != strings.ToUpper(*value) || !gstPattern.MatchString(*value) {
-		v.add(field, "must be a valid GST number")
-	}
+	validateMaxRunes(v, field, *value, maxGSTNumberLength)
+	var validationErr sharedvalidation.Error
+	sharedvalidation.ValidateOptionalGSTIN(&validationErr, field, *value)
+	v.addAll(validationErr.Fields)
+}
+
+func validatePostalCode(v *validationCollector, field string, postalCode string, country string) {
+	var validationErr sharedvalidation.Error
+	sharedvalidation.ValidatePostalCode(&validationErr, field, postalCode, country)
+	v.addAll(validationErr.Fields)
 }
 
 func validateTimestamp(v *validationCollector, field string, value time.Time) {

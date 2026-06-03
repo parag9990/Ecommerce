@@ -14,8 +14,9 @@ import (
 var _ usecase.AddressRepository = (*MySQLAddressRepository)(nil)
 
 type MySQLAddressRepository struct {
-	db     *sql.DB
-	logger *slog.Logger
+	executor sqlExecutor
+	beginner txBeginner
+	logger   *slog.Logger
 }
 
 func NewMySQLAddressRepository(db *sql.DB, options ...Option) (*MySQLAddressRepository, error) {
@@ -23,8 +24,12 @@ func NewMySQLAddressRepository(db *sql.DB, options ...Option) (*MySQLAddressRepo
 		return nil, errors.New("db is required")
 	}
 
+	return newMySQLAddressRepository(db, db, options...), nil
+}
+
+func newMySQLAddressRepository(executor sqlExecutor, beginner txBeginner, options ...Option) *MySQLAddressRepository {
 	configured := newRepositoryOptions(options)
-	return &MySQLAddressRepository{db: db, logger: configured.logger}, nil
+	return &MySQLAddressRepository{executor: executor, beginner: beginner, logger: configured.logger}
 }
 
 func (r *MySQLAddressRepository) ListAddresses(ctx context.Context, userID string, limit int, offset int) ([]domain.Address, error) {
@@ -35,7 +40,7 @@ func (r *MySQLAddressRepository) ListAddresses(ctx context.Context, userID strin
 		offset = 0
 	}
 
-	rows, err := r.db.QueryContext(ctx, `
+	rows, err := r.executor.QueryContext(ctx, `
 		SELECT
 			address_id,
 			user_id,
@@ -48,11 +53,16 @@ func (r *MySQLAddressRepository) ListAddresses(ctx context.Context, userID strin
 			postal_code,
 			country,
 			is_default,
+			status,
+			created_by,
+			updated_by,
+			deleted_by,
 			created_at,
 			updated_at,
 			deleted_at
 		FROM user_addresses
 		WHERE user_id = ?
+		  AND status = 'active'
 		  AND deleted_at IS NULL
 		ORDER BY is_default DESC, updated_at DESC
 		LIMIT ? OFFSET ?
@@ -80,19 +90,23 @@ func (r *MySQLAddressRepository) ListAddresses(ctx context.Context, userID strin
 	return addresses, nil
 }
 
+func (r *MySQLAddressRepository) FindAddress(ctx context.Context, userID string, addressID string) (domain.Address, error) {
+	return r.findAddress(ctx, userID, addressID)
+}
+
 func (r *MySQLAddressRepository) CreateAddress(ctx context.Context, address domain.Address) (domain.Address, error) {
 	if address.IsDefault {
 		return r.createDefaultAddress(ctx, address)
 	}
 
-	if err := r.insertAddress(ctx, r.db, address); err != nil {
+	if err := r.insertAddress(ctx, r.executor, address); err != nil {
 		return domain.Address{}, err
 	}
 	return r.findAddress(ctx, address.UserID, address.AddressID)
 }
 
 func (r *MySQLAddressRepository) UpdateAddress(ctx context.Context, address domain.Address) (domain.Address, error) {
-	result, err := r.db.ExecContext(ctx, `
+	result, err := r.executor.ExecContext(ctx, `
 		UPDATE user_addresses
 		SET
 			name = ?,
@@ -103,9 +117,11 @@ func (r *MySQLAddressRepository) UpdateAddress(ctx context.Context, address doma
 			state = ?,
 			postal_code = ?,
 			country = ?,
-			updated_at = CURRENT_TIMESTAMP
+			updated_by = ?,
+			updated_at = ?
 		WHERE user_id = ?
 		  AND address_id = ?
+		  AND status = 'active'
 		  AND deleted_at IS NULL
 	`,
 		address.Name,
@@ -116,6 +132,8 @@ func (r *MySQLAddressRepository) UpdateAddress(ctx context.Context, address doma
 		address.State,
 		address.PostalCode,
 		address.Country,
+		address.UpdatedBy,
+		address.UpdatedAt,
 		address.UserID,
 		address.AddressID,
 	)
@@ -144,17 +162,21 @@ func (r *MySQLAddressRepository) UpdateAddress(ctx context.Context, address doma
 	return r.findAddress(ctx, address.UserID, address.AddressID)
 }
 
-func (r *MySQLAddressRepository) DeleteAddress(ctx context.Context, userID string, addressID string) error {
-	result, err := r.db.ExecContext(ctx, `
+func (r *MySQLAddressRepository) DeleteAddress(ctx context.Context, userID string, addressID string, audit domain.MutationAudit) error {
+	result, err := r.executor.ExecContext(ctx, `
 		UPDATE user_addresses
 		SET
-			deleted_at = CURRENT_TIMESTAMP,
+			status = 'deleted',
+			deleted_by = ?,
+			deleted_at = ?,
 			is_default = FALSE,
-			updated_at = CURRENT_TIMESTAMP
+			updated_by = ?,
+			updated_at = ?
 		WHERE user_id = ?
 		  AND address_id = ?
+		  AND status = 'active'
 		  AND deleted_at IS NULL
-	`, userID, addressID)
+	`, audit.ActorID, audit.At, audit.ActorID, audit.At, userID, addressID)
 	if err != nil {
 		logRepositoryError(ctx, r.logger, "delete_address", err)
 		return fmt.Errorf("soft delete address: %w", err)
@@ -162,8 +184,12 @@ func (r *MySQLAddressRepository) DeleteAddress(ctx context.Context, userID strin
 	return ensureAffected(result, domain.ErrAddressNotFound)
 }
 
-func (r *MySQLAddressRepository) SetDefaultAddress(ctx context.Context, userID string, addressID string) error {
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: defaultAddressTransactionIsoLevel})
+func (r *MySQLAddressRepository) SetDefaultAddress(ctx context.Context, userID string, addressID string, audit domain.MutationAudit) error {
+	if r.beginner == nil {
+		return r.setDefaultAddress(ctx, r.executor, userID, addressID, audit)
+	}
+
+	tx, err := r.beginner.BeginTx(ctx, &sql.TxOptions{Isolation: defaultAddressTransactionIsoLevel})
 	if err != nil {
 		logRepositoryError(ctx, r.logger, "begin_set_default_address", err)
 		return fmt.Errorf("begin set default address: %w", err)
@@ -172,12 +198,25 @@ func (r *MySQLAddressRepository) SetDefaultAddress(ctx context.Context, userID s
 		_ = tx.Rollback()
 	}()
 
+	if err := r.setDefaultAddress(ctx, tx, userID, addressID, audit); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		logRepositoryError(ctx, r.logger, "commit_set_default_address", err)
+		return fmt.Errorf("commit set default address: %w", err)
+	}
+	return nil
+}
+
+func (r *MySQLAddressRepository) setDefaultAddress(ctx context.Context, executor sqlExecutor, userID string, addressID string, audit domain.MutationAudit) error {
 	var lockedAddressID string
-	err = tx.QueryRowContext(ctx, `
+	err := executor.QueryRowContext(ctx, `
 		SELECT address_id
 		FROM user_addresses
 		WHERE user_id = ?
 		  AND address_id = ?
+		  AND status = 'active'
 		  AND deleted_at IS NULL
 		LIMIT 1
 		FOR UPDATE
@@ -190,25 +229,29 @@ func (r *MySQLAddressRepository) SetDefaultAddress(ctx context.Context, userID s
 		return fmt.Errorf("lock address: %w", err)
 	}
 
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := executor.ExecContext(ctx, `
 		UPDATE user_addresses
 		SET is_default = FALSE,
-		    updated_at = CURRENT_TIMESTAMP
+		    updated_by = ?,
+		    updated_at = ?
 		WHERE user_id = ?
+		  AND status = 'active'
 		  AND deleted_at IS NULL
-	`, userID); err != nil {
+	`, audit.ActorID, audit.At, userID); err != nil {
 		logRepositoryError(ctx, r.logger, "clear_default_addresses", err)
 		return fmt.Errorf("clear default addresses: %w", err)
 	}
 
-	result, err := tx.ExecContext(ctx, `
+	result, err := executor.ExecContext(ctx, `
 		UPDATE user_addresses
 		SET is_default = TRUE,
-		    updated_at = CURRENT_TIMESTAMP
+		    updated_by = ?,
+		    updated_at = ?
 		WHERE user_id = ?
 		  AND address_id = ?
+		  AND status = 'active'
 		  AND deleted_at IS NULL
-	`, userID, addressID)
+	`, audit.ActorID, audit.At, userID, addressID)
 	if err != nil {
 		logRepositoryError(ctx, r.logger, "set_default_address", err)
 		return fmt.Errorf("set default address: %w", err)
@@ -216,16 +259,18 @@ func (r *MySQLAddressRepository) SetDefaultAddress(ctx context.Context, userID s
 	if err := ensureAffected(result, domain.ErrAddressNotFound); err != nil {
 		return err
 	}
-
-	if err := tx.Commit(); err != nil {
-		logRepositoryError(ctx, r.logger, "commit_set_default_address", err)
-		return fmt.Errorf("commit set default address: %w", err)
-	}
 	return nil
 }
 
 func (r *MySQLAddressRepository) createDefaultAddress(ctx context.Context, address domain.Address) (domain.Address, error) {
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: defaultAddressTransactionIsoLevel})
+	if r.beginner == nil {
+		if err := r.insertDefaultAddress(ctx, r.executor, address); err != nil {
+			return domain.Address{}, err
+		}
+		return r.findAddress(ctx, address.UserID, address.AddressID)
+	}
+
+	tx, err := r.beginner.BeginTx(ctx, &sql.TxOptions{Isolation: defaultAddressTransactionIsoLevel})
 	if err != nil {
 		logRepositoryError(ctx, r.logger, "begin_create_default_address", err)
 		return domain.Address{}, fmt.Errorf("begin create default address: %w", err)
@@ -234,18 +279,7 @@ func (r *MySQLAddressRepository) createDefaultAddress(ctx context.Context, addre
 		_ = tx.Rollback()
 	}()
 
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE user_addresses
-		SET is_default = FALSE,
-		    updated_at = CURRENT_TIMESTAMP
-		WHERE user_id = ?
-		  AND deleted_at IS NULL
-	`, address.UserID); err != nil {
-		logRepositoryError(ctx, r.logger, "clear_default_addresses_for_create", err)
-		return domain.Address{}, fmt.Errorf("clear default addresses: %w", err)
-	}
-
-	if err := r.insertAddress(ctx, tx, address); err != nil {
+	if err := r.insertDefaultAddress(ctx, tx, address); err != nil {
 		return domain.Address{}, err
 	}
 
@@ -255,6 +289,26 @@ func (r *MySQLAddressRepository) createDefaultAddress(ctx context.Context, addre
 	}
 
 	return r.findAddress(ctx, address.UserID, address.AddressID)
+}
+
+func (r *MySQLAddressRepository) insertDefaultAddress(ctx context.Context, executor sqlExecutor, address domain.Address) error {
+	if _, err := executor.ExecContext(ctx, `
+		UPDATE user_addresses
+		SET is_default = FALSE,
+		    updated_by = ?,
+		    updated_at = ?
+		WHERE user_id = ?
+		  AND status = 'active'
+		  AND deleted_at IS NULL
+	`, address.UpdatedBy, address.UpdatedAt, address.UserID); err != nil {
+		logRepositoryError(ctx, r.logger, "clear_default_addresses_for_create", err)
+		return fmt.Errorf("clear default addresses: %w", err)
+	}
+
+	if err := r.insertAddress(ctx, executor, address); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (r *MySQLAddressRepository) insertAddress(ctx context.Context, execer sqlExecer, address domain.Address) error {
@@ -270,8 +324,13 @@ func (r *MySQLAddressRepository) insertAddress(ctx context.Context, execer sqlEx
 			state,
 			postal_code,
 			country,
-			is_default
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			is_default,
+			status,
+			created_by,
+			updated_by,
+			created_at,
+			updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		address.AddressID,
 		address.UserID,
@@ -284,6 +343,11 @@ func (r *MySQLAddressRepository) insertAddress(ctx context.Context, execer sqlEx
 		address.PostalCode,
 		address.Country,
 		address.IsDefault,
+		address.Status,
+		address.CreatedBy,
+		address.UpdatedBy,
+		address.CreatedAt,
+		address.UpdatedAt,
 	)
 	if err != nil {
 		if isDuplicateKey(err) {
@@ -299,7 +363,7 @@ func (r *MySQLAddressRepository) insertAddress(ctx context.Context, execer sqlEx
 }
 
 func (r *MySQLAddressRepository) findAddress(ctx context.Context, userID string, addressID string) (domain.Address, error) {
-	row := r.db.QueryRowContext(ctx, `
+	row := r.executor.QueryRowContext(ctx, `
 		SELECT
 			address_id,
 			user_id,
@@ -312,12 +376,17 @@ func (r *MySQLAddressRepository) findAddress(ctx context.Context, userID string,
 			postal_code,
 			country,
 			is_default,
+			status,
+			created_by,
+			updated_by,
+			deleted_by,
 			created_at,
 			updated_at,
 			deleted_at
 		FROM user_addresses
 		WHERE user_id = ?
 		  AND address_id = ?
+		  AND status = 'active'
 		  AND deleted_at IS NULL
 		LIMIT 1
 	`, userID, addressID)
@@ -335,11 +404,12 @@ func (r *MySQLAddressRepository) findAddress(ctx context.Context, userID string,
 
 func (r *MySQLAddressRepository) activeAddressExists(ctx context.Context, userID string, addressID string) (bool, error) {
 	var exists int
-	err := r.db.QueryRowContext(ctx, `
+	err := r.executor.QueryRowContext(ctx, `
 		SELECT 1
 		FROM user_addresses
 		WHERE user_id = ?
 		  AND address_id = ?
+		  AND status = 'active'
 		  AND deleted_at IS NULL
 		LIMIT 1
 	`, userID, addressID).Scan(&exists)
@@ -358,6 +428,8 @@ func scanAddress(row sqlScanner) (domain.Address, error) {
 		address   domain.Address
 		phone     sql.NullString
 		line2     sql.NullString
+		status    string
+		deletedBy sql.NullString
 		deletedAt sql.NullTime
 	)
 
@@ -373,6 +445,10 @@ func scanAddress(row sqlScanner) (domain.Address, error) {
 		&address.PostalCode,
 		&address.Country,
 		&address.IsDefault,
+		&status,
+		&address.CreatedBy,
+		&address.UpdatedBy,
+		&deletedBy,
 		&address.CreatedAt,
 		&address.UpdatedAt,
 		&deletedAt,
@@ -383,6 +459,8 @@ func scanAddress(row sqlScanner) (domain.Address, error) {
 
 	address.Phone = nullStringPtr(phone)
 	address.Line2 = nullStringPtr(line2)
+	address.Status = domain.AddressStatus(status)
+	address.DeletedBy = nullStringPtr(deletedBy)
 	address.CreatedAt = address.CreatedAt.UTC()
 	address.UpdatedAt = address.UpdatedAt.UTC()
 	address.DeletedAt = nullTimePtr(deletedAt)

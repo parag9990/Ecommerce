@@ -1,120 +1,112 @@
 # Project Dependency & Setup Guide
 
-This guide is generated for:
+Generated for:
 
 ```text
-TaskImplementation/User Service/task2.md
+SERVICE_NAME=User Service
+TASK_FILE_NAME=task2.md
+INPUT_FILE_PATH=TaskImplementation/User Service/task2.md
+OUTPUT_FILE_PATH=TaskImplementation/User Service/task2_Dependency.md
 ```
 
-Output file:
+Is guide ka goal hai Task 2 ke MySQL schema setup ko beginner-friendly way me explain karna: DB kaise ready karni hai, migration kaise apply/rollback karni hai, schema kaise verify karna hai, aur Task 2 se related setup issues kaise debug karne hain.
 
-```text
-TaskImplementation/User Service/task2_Dependency.md
-```
+Important reuse note:
 
-Is document ka goal hai ki beginner developer Task 2 ke MySQL schema setup ko clearly samajh sake: database kaise ready karna hai, migration kaise run karni hai, schema kaise verify karna hai, aur common DB setup issues kaise debug karne hain.
-
-Important reuse rule:
-
-- Same User Service folder me already `task1_Dependency.md` present hai.
-- Go install, Docker install, MySQL install, base `.env`, base service run, and common startup troubleshooting already detail me documented hai.
-- Is file me repeated setup copy-paste nahi kiya gaya. Jahan setup same hai, wahan previous dependency file ka exact reference diya gaya hai.
+- Same folder me previous dependency guide already present hai: `TaskImplementation/User Service/task1_Dependency.md`.
+- Go install, Go modules, MySQL local install, Docker MySQL setup, base `.env`, gRPC run commands, and generic troubleshooting already wahan detail me documented hain.
+- Is file me sirf Task 2 ke new/incremental setup details explain kiye gaye hain. Same setup repeat nahi kiya gaya.
 
 ---
 
 ## 1. Project Overview
 
-Task 2 ka scope hai User Service ke domain ko MySQL schema me convert karna.
+Task 2 ka scope hai User Service domain ko MySQL schema me convert karna.
 
 Simple Hinglish me:
 
-Task 1 ne ye define kiya tha ki User Service profile data own karega. Task 2 ka kaam hai us profile data ke liye MySQL database tables, indexes, foreign keys, charset, migration files, rollback, and verification steps ko setup-ready banana.
+Task 1 ne define kiya tha ki User Service profile, address, seller profile, aur KYC metadata own karega. Task 2 us domain ke liye actual MySQL database structure ready karta hai: tables, indexes, foreign keys, up migration, down migration, and verification queries.
 
 Analyzed files:
 
-| File | Purpose |
+| File | Why checked |
 |---|---|
-| `TaskImplementation/User Service/task2.md` | MySQL schema implementation guide |
-| `TaskImplementation/User Service/task1_Dependency.md` | Existing full setup guide reused by this file |
-| `backend/services/user-service/migrations/001_create_user_tables.up.sql` | Actual up migration file |
-| `backend/services/user-service/migrations/001_create_user_tables.down.sql` | Actual rollback migration file |
-| `backend/services/user-service/internal/config/config.go` | Runtime env variables and DB DSN loading |
-| `backend/services/user-service/cmd/server/main.go` | MySQL connection and gRPC startup |
-| `backend/services/user-service/go.mod` | Go dependencies; no new Task 2 Go dependency added |
-| `backend/services/user-service/internal/repository/*.go` | Repository SQL depends on these tables |
+| `TaskImplementation/User Service/task2.md` | Task 2 ka implementation/schema guide |
+| `TaskImplementation/User Service/task1_Dependency.md` | Previous dependency documentation reused to avoid duplicate setup |
+| `backend/services/user-service/migrations/001_create_user_tables.up.sql` | Actual schema creation migration |
+| `backend/services/user-service/migrations/001_create_user_tables.down.sql` | Actual rollback migration |
+| `backend/services/user-service/internal/config/config.go` | DB DSN and runtime environment variables |
+| `backend/services/user-service/cmd/server/main.go` | MySQL ping and gRPC startup behavior |
+| `backend/services/user-service/go.mod` | Confirms no new Go package was added for Task 2 |
+| `backend/go.work` | Local Go workspace linking service and generated proto module |
 
-Current Task 2 dependency status:
+Task 2 dependency summary:
 
 | Area | Status |
 |---|---|
-| Language/runtime | Same as Task 1: Go 1.24+ |
-| Database | MySQL required |
-| Schema files | Present in `backend/services/user-service/migrations/` |
-| Migration runner | No dedicated migration tool configured in repo yet |
-| Docker Compose | No project-level compose file present yet |
-| Redis | Not required for Task 2 |
-| Kafka/RabbitMQ | Not required for Task 2 |
-| Object storage | Not required to run migration, but `storage_url` column is prepared for future KYC file storage |
-| New env variables | None; same DB DSN variables from Task 1 |
+| New Go dependency | None |
+| New environment variable | None |
+| New database requirement | MySQL schema tables are required |
+| New migration files | `001_create_user_tables.up.sql`, `001_create_user_tables.down.sql` |
+| New Docker service | None |
+| Redis/Kafka/RabbitMQ | Not required for Task 2 |
+| Object storage | Not required to run Task 2; `storage_url` column is future metadata only |
 
 ---
 
 ## 2. Tech Stack
 
-For full User Service tech stack, refer:
+Full tech stack already explained in:
 
 ```text
+Refer:
 TaskImplementation/User Service/task1_Dependency.md
-Section: 2. Tech Stack
+
+Section:
+1. Project Tech Stack Analysis
 ```
 
-Task 2-specific technologies:
+Task 2-specific technology focus:
 
-| Technology | Required? | What it is | Why Task 2 uses it |
+| Technology | Required? | Beginner explanation | Why Task 2 uses it |
 |---|---:|---|---|
-| MySQL 8.x | Yes | MySQL ek relational database hai jisme rows, columns, indexes, constraints hote hain. | User profile, addresses, seller profile, and KYC metadata structured relational data hai. |
-| SQL migration files | Yes | Migration file ek repeatable SQL script hoti hai jo DB schema create/update karti hai. | Fresh developer machine par same tables create karne ke liye. |
-| InnoDB engine | Yes | InnoDB MySQL ka transactional storage engine hai. | Foreign keys, transactions, row-level locking, and rollback support ke liye. |
-| `utf8mb4` charset | Yes | Full Unicode character storage support. | Names, addresses, store names multilingual ho sakte hain. |
-| MySQL foreign keys | Yes | Parent-child table relationship enforce karte hain. | Address without user, KYC without seller jaise invalid data ko block karne ke liye. |
-| MySQL indexes | Yes | Query ko fast banane ke liye lookup structure. | `user_id`, `seller_id`, `status`, and default address lookups fast karne ke liye. |
-| MySQL client CLI | Recommended | Terminal se SQL run/verify karne ka tool. | Migration apply, tables inspect, and troubleshooting ke liye. |
-| Docker | Optional but recommended | Database ko container me run karne ka easy way. | Beginner local setup me MySQL install complexity kam karta hai. |
-| golang-migrate CLI | Optional | Versioned migrations run karne ka tool. | Repo me currently wired nahi hai, but future production-style migrations ke liye useful hai. |
+| MySQL 8.x | Yes | MySQL ek relational database hai jisme data tables ke form me store hota hai. | User, address, seller, and KYC metadata relational data hai. |
+| SQL migration files | Yes | Migration ek repeatable SQL script hoti hai jo DB schema create ya rollback karti hai. | Fresh setup me same tables reliably create karne ke liye. |
+| InnoDB | Yes | InnoDB MySQL ka engine hai jo transactions and foreign keys support karta hai. | Parent-child relationships enforce karne ke liye. |
+| `utf8mb4` | Yes | Full Unicode charset, names/address text safely store karne ke liye. | Multilingual user/store/address data avoid corruption. |
+| Foreign keys | Yes | FK ensure karta hai ki child row ka parent row exist kare. | Address without user and KYC without seller block hota hai. |
+| Indexes | Yes | Index query lookup ko fast banata hai. | `user_id`, `seller_id`, `status`, default address lookups fast karne ke liye. |
+| MySQL CLI | Recommended | Terminal se SQL run/verify karne ka tool. | Migration apply and schema verification ke liye. |
 
-Beginner explanation:
-
-- MySQL data ko tables me rakhta hai.
-- Migration file table banati hai.
-- Index search ko fast karta hai.
-- Foreign key data ko clean rakhti hai.
-- Docker optional hai, but local MySQL quickly run karne ke liye easiest path hai.
+No Redis, Kafka, RabbitMQ, MongoDB, Elasticsearch, Stripe, Firebase, SMTP, or Kubernetes dependency is introduced by this task.
 
 ---
 
 ## 3. Required Software
 
-Base software installation already explained here:
+Base software setup already explained in:
 
 ```text
+Refer:
 TaskImplementation/User Service/task1_Dependency.md
-Section: 3. Required Software
+
+Sections:
+2. Language-Specific Dependency System: Go
+3. Database Analysis
+7. Docker and DevOps Setup
 ```
 
-Task 2 ke liye required tools:
+Task 2 does not introduce new mandatory software beyond Task 1.
 
-| Software | Required? | Why needed |
+| Software | Required? | Task 2 reason |
 |---|---:|---|
-| Git | Yes | Repository clone karne ke liye |
-| Go 1.24+ | Yes | User Service run/build/test ke liye |
+| Git | Yes | Repo clone karne ke liye |
+| Go 1.24+ | Yes for service run/test | Service code Go me hai |
 | MySQL 8.x | Yes | Task 2 schema yahi create hota hai |
-| MySQL client | Yes for manual setup | Migration file run and schema verify karne ke liye |
+| MySQL client CLI | Yes for manual migration | `mysql < migration.sql` and verification queries ke liye |
 | Docker | Optional | MySQL container run karne ke liye |
-| Docker Compose | Optional | Future local stack simplify karne ke liye |
-| grpcurl | Optional | Service run ke baad gRPC verify karne ke liye |
-| golang-migrate | Optional | Manual SQL ke bajay versioned migrations run karne ke liye |
-
-No new software is introduced beyond Task 1. Agar aapne Task 1 dependency guide follow kar liya hai, Task 2 ke liye main extra kaam migration run and verify karna hai.
+| grpcurl | Optional | Service start ke baad gRPC reflection verify karne ke liye |
+| `golang-migrate` / `goose` | Optional future improvement | Repo me abhi wired nahi hai; future migration tracking ke liye useful |
 
 ---
 
@@ -122,126 +114,91 @@ No new software is introduced beyond Task 1. Agar aapne Task 1 dependency guide 
 
 ### Go Dependencies
 
-Task 2 ne koi new Go package add nahi kiya.
+Task 2 ne `go.mod` me koi new package add nahi kiya.
 
-Reuse:
+Reuse Go module setup from:
 
 ```text
+Refer:
 TaskImplementation/User Service/task1_Dependency.md
-Section: 4. Dependency Management
+
+Section:
+2. Language-Specific Dependency System: Go
 ```
 
-Important existing dependency for Task 2 runtime:
+Existing dependencies relevant to Task 2:
 
-| Dependency | Why it matters for schema setup |
+| Dependency | Why relevant |
 |---|---|
 | `github.com/go-sql-driver/mysql` | Go service MySQL DSN se connect karta hai. |
-| `database/sql` | Connection pool and DB ping manage karta hai. |
-| `github.com/DATA-DOG/go-sqlmock` | Repository tests real MySQL ke bina SQL behavior test karte hain. |
+| `database/sql` | Standard connection pool and ping flow use hota hai. |
+| `github.com/DATA-DOG/go-sqlmock` | Repository SQL tests real MySQL ke bina run karne me help karta hai. |
 
 ### SQL Migration Dependency
 
-Task 2 ka actual dependency code nahi, SQL schema files hain:
+Task 2 ka main non-code dependency SQL migration files hain:
 
 ```text
 backend/services/user-service/migrations/001_create_user_tables.up.sql
 backend/services/user-service/migrations/001_create_user_tables.down.sql
 ```
 
-Simple rule:
+Beginner rule:
 
-- `up.sql` schema create karta hai.
-- `down.sql` schema rollback/drop karta hai.
-- App startup currently migration automatically run nahi karta.
-- Developer ko DB ready karni hogi before service APIs ko exercise karna.
-
-### Common Go Dependency Issues
-
-Already covered:
-
-```text
-TaskImplementation/User Service/task1_Dependency.md
-Section: Common Go Dependency Issues
-```
-
-No new Go module issue introduced by Task 2.
+- `up.sql` DB/tables create karta hai.
+- `down.sql` tables drop karta hai.
+- Service startup DB ko ping karta hai, lekin migration automatically run nahi karta.
+- Isliye service flows test karne se pehle migration manually apply karni hogi.
 
 ---
 
 ## 5. Database Setup
 
-### Detected Database: MySQL
+### Reused MySQL Setup
 
-MySQL required hai.
-
-Base MySQL explanation, local install, Docker install, Docker Compose, start commands, connection string, credentials placement, and app permissions are already documented:
+MySQL explanation, local installation, Docker command, Docker Compose example, DSN format, credentials placement, and base migration command already documented hain:
 
 ```text
+Refer:
 TaskImplementation/User Service/task1_Dependency.md
-Section: 5. Database Setup
+
+Sections:
+3. Database Analysis
+3. Database Analysis -> D. Local Installation
+3. Database Analysis -> E. Docker Setup
+3. Database Analysis -> F. Docker Compose Example
+3. Database Analysis -> J. Connection String Format
+3. Database Analysis -> K. Where To Place Credentials
+3. Database Analysis -> L. Run Migration
 ```
 
-Use these exact existing sections:
+### Task 2 Database Objects
 
-| Need | Refer previous file section |
-|---|---|
-| What MySQL is | `Detected Database: MySQL` -> `A. What It Is` |
-| Why User Service uses MySQL | `B. Why This Project Uses It` |
-| Required or optional | `C. Required Or Optional` |
-| Local installation | `D. Local Installation` |
-| Docker MySQL container | `E. Docker Setup` |
-| Docker Compose example | `F. Docker Compose Example` |
-| Start MySQL | `G. Start Commands` |
-| Verify MySQL running | `H. Verify Running` |
-| Default port | `I. Default Port` |
-| DSN format | `J. Connection String Format` |
-| Credential placement | `K. Where To Place Credentials` |
-| Run migration | `L. Run Migration` |
-| App user permissions | `M. App User Permissions` |
-
-### Task 2 Schema Files
-
-Actual migration files currently present:
+Task 2 creates/uses database:
 
 ```text
-backend/services/user-service/migrations/001_create_user_tables.up.sql
-backend/services/user-service/migrations/001_create_user_tables.down.sql
+user_db
 ```
 
-The up migration does these setup actions:
-
-| Step | What it does | Why it matters |
-|---:|---|---|
-| 1 | `SET NAMES utf8mb4` | MySQL connection ko full Unicode mode me rakhta hai. |
-| 2 | `SET time_zone = '+00:00'` | Session timestamps UTC me consistent rehte hain. |
-| 3 | `CREATE DATABASE IF NOT EXISTS user_db` | User Service DB create karta hai if missing. |
-| 4 | `USE user_db` | Table creation correct database me hoti hai. |
-| 5 | Create `users` | Base profile table. |
-| 6 | Create `user_addresses` | User address book table. |
-| 7 | Create `seller_profiles` | Seller business profile table. |
-| 8 | Create `seller_kyc_documents` | Seller KYC metadata table. |
-
-### Tables Created By Task 2
+Tables created by the up migration:
 
 | Table | Required? | Purpose | Parent dependency |
 |---|---:|---|---|
-| `users` | Yes | Buyer/seller/admin base profile | None |
+| `users` | Yes | Base user profile | None |
 | `user_addresses` | Yes | Shipping/billing address book | `users(user_id)` |
-| `seller_profiles` | Yes | Seller store and approval profile | `users(user_id)` |
-| `seller_kyc_documents` | Yes | KYC document metadata | `seller_profiles(seller_id)` |
+| `seller_profiles` | Yes | Seller store/profile review state | `users(user_id)` |
+| `seller_kyc_documents` | Yes | Seller KYC metadata, not binary files | `seller_profiles(seller_id)` |
 
-### Schema Creation Order
+Creation order matters:
 
-Creation order important hai because foreign keys parent table pe depend karti hain:
-
-| Order | Table | Reason |
+| Order | Table | Why |
 |---:|---|---|
 | 1 | `users` | Parent table |
 | 2 | `user_addresses` | References `users(user_id)` |
 | 3 | `seller_profiles` | References `users(user_id)` |
 | 4 | `seller_kyc_documents` | References `seller_profiles(seller_id)` |
 
-Rollback order reverse hai:
+Rollback order is reverse:
 
 | Order | Table |
 |---:|---|
@@ -250,39 +207,41 @@ Rollback order reverse hai:
 | 3 | `user_addresses` |
 | 4 | `users` |
 
-Reason:
+Reason: Foreign key child tables pehle drop karne padte hain. Parent pehle drop karoge to MySQL FK error de sakta hai.
 
-Child tables pehle drop hote hain, parent table baad me. Warna MySQL foreign key error de sakta hai.
+### Apply Migration
 
-### Database Name
-
-Task 2 expects:
+Use the command from previous dependency guide:
 
 ```text
-user_db
+Refer:
+TaskImplementation/User Service/task1_Dependency.md
+
+Section:
+3. Database Analysis -> L. Run Migration
 ```
 
-Connection string me bhi same DB name hona chahiye:
+Task-specific file to apply:
 
-```env
-USER_SERVICE_DATABASE_DSN=ecommerce_user:ecommerce_password@tcp(127.0.0.1:3306)/user_db?parseTime=true&charset=utf8mb4&loc=UTC
+```text
+backend/services/user-service/migrations/001_create_user_tables.up.sql
 ```
 
-If you follow Task 2's optional isolated Docker example using host port `3307`, use:
+### Rollback Migration
 
-```env
-USER_SERVICE_DATABASE_DSN=ecommerce_user:ecommerce_password@tcp(127.0.0.1:3307)/user_db?parseTime=true&charset=utf8mb4&loc=UTC
+Rollback file:
+
+```text
+backend/services/user-service/migrations/001_create_user_tables.down.sql
 ```
 
-Important:
+Warning:
 
-- MySQL container internal port is still `3306`.
-- Host port can be `3306` or `3307`.
-- DSN must use the host port you exposed.
+Down migration drops all four Task 2 tables. Local/test DB me use karo. Production/staging me accidental rollback data loss kar sakta hai.
 
-### Schema-Specific Verification Queries
+### Schema Verification Queries
 
-After migration, connect to MySQL and run:
+Migration ke baad MySQL me ye checks run karo:
 
 ```sql
 SHOW DATABASES LIKE 'user_db';
@@ -299,7 +258,7 @@ user_addresses
 users
 ```
 
-Check charset and collation:
+Check charset/collation:
 
 ```sql
 SELECT
@@ -327,7 +286,7 @@ WHERE table_schema = 'user_db'
   AND referenced_table_name IS NOT NULL;
 ```
 
-Expected:
+Expected relationship:
 
 | Table | References |
 |---|---|
@@ -346,140 +305,136 @@ SHOW INDEX FROM seller_kyc_documents;
 
 ### Credentials Placement
 
-Same as Task 1:
+No new credentials are introduced by Task 2.
+
+Use existing local file:
 
 ```text
 backend/services/user-service/.env
 ```
 
-Refer:
+Main DSN must point to `user_db`:
 
-```text
-TaskImplementation/User Service/task1_Dependency.md
-Section: K. Where To Place Credentials
+```env
+USER_SERVICE_DATABASE_DSN=ecommerce_user:change_me_local_password@tcp(127.0.0.1:3306)/user_db?parseTime=true&charset=utf8mb4&loc=UTC
 ```
 
-Task 2 does not add new credentials. It only requires that the existing MySQL DSN points to the database where this schema was created.
+Security note: DSN contains password. `.env` commit mat karo.
 
 ---
 
 ## 6. Redis / Queue / External Services
 
-Task 2 does not require Redis, Kafka, RabbitMQ, NATS, Elasticsearch, SMTP, Stripe, Twilio, Firebase, or Kubernetes.
-
-Reuse previous external-service explanation:
+Reusable external-service analysis:
 
 ```text
+Refer:
 TaskImplementation/User Service/task1_Dependency.md
-Section: 6. Redis / Queue / External Services
+
+Section:
+5. External Services Analysis
 ```
 
-Task 2-specific note:
+Task 2-specific status:
 
-| Service | Required now? | Why mentioned |
+| Service | Required for Task 2? | Reason |
 |---|---:|---|
-| Redis | No | No Redis connection in current User Service startup. |
-| Kafka/RabbitMQ | No | User events are future scope, not Task 2 schema setup. |
-| Object storage / S3 / MinIO | No for migration | `seller_kyc_documents.storage_url` stores future document location, but no object storage service is needed just to create tables. |
-| Docker | Optional | Useful only for running MySQL locally. |
+| MySQL | Yes | Schema migration yahi run hoti hai. |
+| Docker | Optional | MySQL container ke liye useful. |
+| Redis | No | Current User Service code me Redis client/env nahi mila. |
+| Kafka/RabbitMQ/NATS | No | Events later task/future scope hain. |
+| S3/MinIO/Object storage | No for migration | `storage_url` column exists, but upload/storage integration wired nahi hai. |
+| Kubernetes | No | Local Task 2 setup ke liye required nahi. |
 
-Important KYC storage note:
+KYC storage note:
 
-`storage_url` should be treated as sensitive metadata. In production, prefer private object keys or signed URL flow. Public permanent URLs for KYC documents are unsafe.
+`seller_kyc_documents.storage_url` ko sensitive metadata treat karo. Future me actual KYC files private bucket/object storage me hone chahiye, public permanent URLs me nahi.
 
 ---
 
 ## 7. Environment Variables
 
-Task 2 introduces no new env variables.
-
-Use the existing env docs:
+Complete env setup already documented:
 
 ```text
+Refer:
 TaskImplementation/User Service/task1_Dependency.md
-Section: 7. Environment Variables
+
+Section:
+4. Environment Variables
 ```
 
-Existing variables still relevant:
+Task 2 introduces no new env variables.
 
-| Env variable | Required? | Task 2 relevance |
+Existing variables still important:
+
+| Variable | Required? | Task 2 relevance |
 |---|---:|---|
-| `USER_SERVICE_DATABASE_DSN` | Yes | Must point to `user_db` where Task 2 schema exists. |
-| `MYSQL_DSN` | Optional fallback | Used only if `USER_SERVICE_DATABASE_DSN` is blank. |
-| `USER_SERVICE_GRPC_ADDRESS` | Optional | Service port; default `:50052`. |
-| `USER_SERVICE_DB_MAX_OPEN_CONNS` | Optional | DB connection pool tuning. |
-| `USER_SERVICE_DB_MAX_IDLE_CONNS` | Optional | DB connection pool tuning. |
-| `USER_SERVICE_DB_CONN_MAX_LIFETIME` | Optional | DB connection reuse lifetime. |
+| `USER_SERVICE_DATABASE_DSN` | Yes | Must point to MySQL `user_db` where Task 2 tables exist. |
+| `MYSQL_DSN` | Conditional fallback | Used only when `USER_SERVICE_DATABASE_DSN` is blank. |
+| `USER_SERVICE_GRPC_ADDRESS` | Optional | Reused service port; default `:50052`. |
+| `USER_SERVICE_GRPC_REFLECTION` | Optional | Useful for local grpcurl verification. |
+| `USER_SERVICE_DB_MAX_OPEN_CONNS` | Optional | DB pool tuning. |
+| `USER_SERVICE_DB_MAX_IDLE_CONNS` | Optional | DB pool tuning. |
+| `USER_SERVICE_DB_CONN_MAX_LIFETIME` | Optional | Connection lifetime tuning. |
 | `USER_SERVICE_DB_PING_TIMEOUT` | Optional | Startup DB ping timeout. |
-| `USER_SERVICE_LOG_LEVEL` | Optional | Log verbosity. |
+| `USER_SERVICE_LOG_LEVEL` | Optional | Local debugging/log verbosity. |
 
-### Task-Specific `.env` Variant
+Common Task 2 `.env` mistake:
 
-Only use this if you run MySQL on host port `3307` as shown in Task 2's isolated Docker example:
-
-```env
-USER_SERVICE_DATABASE_DSN=ecommerce_user:ecommerce_password@tcp(127.0.0.1:3307)/user_db?parseTime=true&charset=utf8mb4&loc=UTC
-```
-
-If you use Task 1's standard Docker setup on host port `3306`, keep:
-
-```env
-USER_SERVICE_DATABASE_DSN=ecommerce_user:ecommerce_password@tcp(127.0.0.1:3306)/user_db?parseTime=true&charset=utf8mb4&loc=UTC
-```
-
-Beginner warning:
-
-`parseTime=true` remove mat karo. Without this, Go code timestamp columns ko `time.Time` me scan karte time error de sakta hai.
+DB can be reachable but schema missing. `USER_SERVICE_DATABASE_DSN` correct hone ke baad bhi agar tables nahi hain, service/API flows fail karenge. Migration run karna separate step hai.
 
 ---
 
 ## 8. Docker Setup
 
-Full Docker installation and MySQL container setup already exists:
+Docker install, MySQL container command, volume, health check, and useful Docker commands already covered:
 
 ```text
+Refer:
 TaskImplementation/User Service/task1_Dependency.md
-Section: 8. Docker Setup
-Section: 5. Database Setup -> E. Docker Setup
+
+Sections:
+3. Database Analysis -> E. Docker Setup
+7. Docker and DevOps Setup
 ```
 
-Task 2 adds only one practical choice:
+Task 2 Docker changes:
 
-| Choice | Host port | When to use |
-|---|---:|---|
-| Standard Task 1 setup | `3306` | Agar machine par MySQL already nahi chal raha. |
-| Task 2 isolated setup | `3307` | Agar `3306` already occupied hai by local MySQL or another container. |
+| Docker item | Status |
+|---|---|
+| New User Service Dockerfile | Not added by Task 2 |
+| New docker-compose file | Not added by Task 2 |
+| New container | None, reuse MySQL container from Task 1 |
+| New volume | None |
+| New network | None |
+| New health check | None |
 
-If using `3307`, Docker port mapping should expose:
-
-```text
-3307:3306
-```
-
-Meaning:
-
-- Left side `3307` is your laptop/host port.
-- Right side `3306` is MySQL container port.
-- DSN must use `127.0.0.1:3307`.
-
-No new Dockerfile, Docker Compose service, volume, or network has been added by Task 2.
+If host port `3306` is busy, use the alternate MySQL port pattern already explained in Task 1 and update DSN to the mapped host port, for example `127.0.0.1:3307`.
 
 ---
 
 ## 9. Local Development Setup
 
-For complete clone-to-run onboarding, refer:
+Complete clone-to-run flow is reused from:
+
+```text
+Refer:
+TaskImplementation/User Service/task1_Dependency.md
+
+Section:
+8. Project Run Instructions
+```
+
+Task 2 incremental onboarding flow:
+
+1. Read previous dependency documentation first:
 
 ```text
 TaskImplementation/User Service/task1_Dependency.md
-Section: 9. Local Development Setup
 ```
 
-Task 2 incremental setup flow:
-
-### Step 1: Confirm Migration Files Exist
-
-From repo root:
+2. Go to repository root and confirm migration files:
 
 ```bash
 ls backend/services/user-service/migrations
@@ -492,294 +447,176 @@ Expected:
 001_create_user_tables.up.sql
 ```
 
-### Step 2: Start MySQL
+3. Start MySQL using Task 1 setup.
 
-Use the MySQL setup from Task 1:
-
-```text
-TaskImplementation/User Service/task1_Dependency.md
-Section: Step 4: Start MySQL
-```
-
-### Step 3: Apply Task 2 Up Migration
-
-Use the migration command already documented in Task 1:
-
-```text
-TaskImplementation/User Service/task1_Dependency.md
-Section: L. Run Migration
-```
-
-Make sure you apply this file:
+4. Apply Task 2 up migration:
 
 ```text
 backend/services/user-service/migrations/001_create_user_tables.up.sql
 ```
 
-### Step 4: Verify Tables, Indexes, And FKs
+5. Verify tables, indexes, and foreign keys using section `5. Database Setup -> Schema Verification Queries` in this file.
 
-Run the schema-specific verification queries from this file:
+6. Create/source `.env` using Task 1 guide.
 
-```text
-Section: 5. Database Setup -> Schema-Specific Verification Queries
-```
+7. Start backend service using Task 1 run commands.
 
-### Step 5: Configure `.env`
+8. Verify Task 2 functionality indirectly:
 
-Use existing `.env` guidance:
-
-```text
-TaskImplementation/User Service/task1_Dependency.md
-Section: Step 6: Create .env
-```
-
-Only adjust host port if you used `3307`.
-
-### Step 6: Run User Service
-
-Use existing run commands:
-
-```text
-TaskImplementation/User Service/task1_Dependency.md
-Section: 10. Running The Project
-```
-
-Important:
-
-The Go service pings MySQL on startup, but it does not automatically create tables. A DB can be reachable while tables are still missing. Migration is still required before APIs/repository flows work correctly.
+- Service starts without MySQL ping failure.
+- `SHOW TABLES` shows all four schema tables.
+- Repository/service tests can run against mocked SQL.
+- gRPC methods that use `users`/`seller_profiles` have required tables available.
 
 ---
 
-## 10. Running The Project
+## 10. Running the Project
 
-Task 2 does not introduce a new executable service. Running flow is same as Task 1:
+Task 2 does not add a new executable. Running flow is the same backend service flow from Task 1.
 
-```text
-TaskImplementation/User Service/task1_Dependency.md
-Section: 10. Running The Project
-```
-
-Task 2-specific run order:
+Correct order:
 
 | Order | Action | Why |
 |---:|---|---|
-| 1 | Start MySQL | Database must accept connections. |
-| 2 | Apply `001_create_user_tables.up.sql` | Required tables must exist. |
-| 3 | Set `USER_SERVICE_DATABASE_DSN` | Service must know DB credentials and database name. |
-| 4 | Run User Service | gRPC service starts and connects to MySQL. |
-| 5 | Verify gRPC/reflection/tests | Confirms service process is healthy. |
+| 1 | Start MySQL | DB must accept connections. |
+| 2 | Apply `001_create_user_tables.up.sql` | Tables must exist before DB-backed flows. |
+| 3 | Export `.env` variables | Service needs DSN and runtime config. |
+| 4 | Start User Service | gRPC server connects to MySQL. |
+| 5 | Verify with MySQL queries/grpcurl/tests | Confirms schema and service are usable. |
 
-### Ports And Networking
+Ports and networking:
 
-| Service | Port | Purpose | Notes |
+| Service | Port | Purpose | Status |
 |---|---:|---|---|
-| User Service gRPC | `50052` | Internal gRPC API | Default from `USER_SERVICE_GRPC_ADDRESS=:50052`. |
-| MySQL container internal | `3306` | MySQL server inside container | Always `3306` inside MySQL container. |
-| MySQL host standard | `3306` | Local app connects to MySQL | Used by Task 1 standard setup. |
-| MySQL host alternate | `3307` | Avoid local port conflict | Used by Task 2 example if `3306` is busy. |
+| User Service gRPC | `50052` | Internal gRPC API | Reused from Task 1 |
+| MySQL | `3306` | Database connection | Reused from Task 1 |
+| MySQL alternate | `3307` | Local conflict workaround | Optional reused pattern |
+| Redis | `6379` | Not used by current User Service | Not required |
+| Kafka | `9092` | Future eventing only | Not required |
+| RabbitMQ | `5672` | Not used by current User Service | Not required |
 
-Port rule:
+Important:
 
-If Docker says port already allocated, either stop the other MySQL service or expose this container on `3307` and update the DSN.
+The Go service checks DB connectivity with `PingContext`, but it does not verify every table on startup. MySQL ping success does not guarantee migration was applied.
 
 ---
 
 ## 11. Common Errors & Fixes
 
-Base errors already documented:
+Generic setup errors are already covered:
 
 ```text
+Refer:
 TaskImplementation/User Service/task1_Dependency.md
-Section: 11. Common Errors & Fixes
+
+Section:
+9. Common Errors and Fixes
 ```
 
-Task 2-specific errors:
+Task 2-specific issues:
 
-### `ERROR 1452: Cannot add or update a child row`
+| Error | Cause | Fix | Prevention |
+|---|---|---|---|
+| `Table 'user_db.users' doesn't exist` | MySQL running hai but migration apply nahi hui. | Run `001_create_user_tables.up.sql`. | Always run migration before service API testing. |
+| `ERROR 1452: Cannot add or update a child row` | Child row insert ho raha hai without parent, e.g. address before user. | Parent `users`/`seller_profiles` row pehle insert karo. | Respect migration relationship order and app workflows. |
+| `ERROR 1062: Duplicate entry` | Unique key duplicate, e.g. same `email`, `user_id`, `seller_id`. | Existing row check karo, then update or use new ID. | Treat unique IDs as immutable. |
+| `Cannot drop table 'users' referenced by a foreign key constraint` | Manual rollback wrong order me hua. | Provided down migration use karo. | Child tables first, parent tables last. |
+| `ERROR 1049: Unknown database 'user_db'` | DB create nahi hui ya wrong DSN/database name. | Up migration run karo or DSN me DB name fix karo. | DSN and migration database name same rakho. |
+| Timestamp scan error | DSN me `parseTime=true` missing. | DSN me `parseTime=true&charset=utf8mb4&loc=UTC` add karo. | Copy Task 1 DSN format exactly. |
+| Migration user cannot create database | Up migration has `CREATE DATABASE`, but user lacks permission. | Local me admin/root se migration run karo; prod me infra pipeline DB create kare. | Runtime app user and migration/admin user separate rakho. |
 
-Cause:
-
-Foreign key fail ho rahi hai. Example: address insert kar rahe ho but `users` table me matching `user_id` nahi hai.
-
-Fix:
-
-```sql
-SELECT user_id FROM users WHERE user_id = 'user_123';
-```
-
-Parent row pehle insert karo, child row baad me.
-
-### `ERROR 1062: Duplicate entry`
-
-Cause:
-
-Unique key violate ho rahi hai. Example same `user_id`, `auth_account_id`, `email`, `seller_id`, or `document_id` dobara insert karna.
-
-Fix:
-
-Check existing row:
-
-```sql
-SELECT user_id, auth_account_id, email FROM users WHERE email = 'buyer@example.com';
-```
-
-Use a new unique identifier or update existing row instead of insert.
-
-### `Cannot drop table 'users' referenced by a foreign key constraint`
-
-Cause:
-
-Manual rollback wrong order me run hua. Parent table `users` drop karne se pehle child tables exist kar rahi hain.
-
-Fix:
-
-Use the provided down migration:
-
-```text
-backend/services/user-service/migrations/001_create_user_tables.down.sql
-```
-
-It drops child tables first.
-
-### `ERROR 1049: Unknown database 'user_db'` while rollback
-
-Cause:
-
-Down migration me `USE user_db` hai, but DB create hi nahi hui ya delete ho chuki hai.
-
-Fix:
-
-For local dev, either run up migration first or connect to MySQL and confirm:
+Quick debug SQL:
 
 ```sql
 SHOW DATABASES LIKE 'user_db';
+USE user_db;
+SHOW TABLES;
+SHOW CREATE TABLE users;
 ```
-
-### Service starts but API fails with `Table ... doesn't exist`
-
-Cause:
-
-MySQL reachable hai, but Task 2 migration run nahi hui.
-
-Fix:
-
-Run:
-
-```text
-TaskImplementation/User Service/task1_Dependency.md
-Section: L. Run Migration
-```
-
-Then verify tables using this file's schema verification queries.
-
-### Timestamp scan error in Go
-
-Cause:
-
-DSN me `parseTime=true` missing hai.
-
-Fix:
-
-Use:
-
-```env
-USER_SERVICE_DATABASE_DSN=ecommerce_user:ecommerce_password@tcp(127.0.0.1:3306)/user_db?parseTime=true&charset=utf8mb4&loc=UTC
-```
-
-### Migration user cannot create database
-
-Cause:
-
-`001_create_user_tables.up.sql` has `CREATE DATABASE IF NOT EXISTS user_db`. Production/staging DB user ke paas `CREATE` permission nahi ho sakti.
-
-Fix:
-
-- Local dev me root/admin user se migration run kar sakte ho.
-- Production me DBA/infra pipeline DB create kare.
-- App runtime user ko limited table permissions do.
 
 ---
 
 ## 12. Security & Best Practices
 
-Base security guidance already exists:
+General security guidance reused from:
 
 ```text
+Refer:
 TaskImplementation/User Service/task1_Dependency.md
-Section: 12. Security & Best Practices
+
+Sections:
+10. Security and Configuration Audit
+11. Best Practices
 ```
 
 Task 2-specific best practices:
 
 | Area | Recommendation |
 |---|---|
-| DB credentials | `.env` commit mat karo. Production me secret manager/Kubernetes Secret use karo. |
-| Migration user | Migration/admin user and runtime app user separate rakho. |
-| Runtime DB permissions | App user ko only needed permissions do: `SELECT`, `INSERT`, `UPDATE`, maybe controlled `DELETE` if required. |
+| DB credentials | `.env` local-only rakho; real passwords commit mat karo. |
+| Runtime permissions | App user ko DDL permissions mat do; runtime ke liye scoped CRUD grants better hain. |
+| Migration permissions | Migration/admin user separate rakho because schema changes powerful hote hain. |
 | KYC metadata | `storage_url`, `gst_number`, `rejection_reason` logs me plain text dump mat karo. |
-| Address PII | Address lines and phone numbers sensitive hain; logs and analytics me mask karo. |
-| Public MySQL port | Production me MySQL internet par expose mat karo. Private network/VPC use karo. |
-| Rollback | Down migration drops data. Local/test ke alawa carefully use karo. |
-| Charset | `utf8mb4` keep karo so names and addresses corrupt na hon. |
-| Timezone | UTC timestamps maintain karo for multi-region consistency. |
+| Address PII | Address lines, phone, postal code sensitive hain; logs and analytics me mask karo. |
+| Rollback safety | Down migration drops data; production me approval/protection ke bina run mat karo. |
+| Charset | `utf8mb4_unicode_ci` keep karo so multilingual text safe rahe. |
+| Timezone | UTC use karo to multi-region/debugging easier rahe. |
+| Cross-service boundaries | Auth DB par foreign key mat banao; `auth_account_id` string reference enough hai. |
 
-Beginner rule:
+Beginner note:
 
-Database password code me hardcode nahi karna. Hamesha env variable or secret manager se load karo.
+Database schema security ka matlab sirf password secure karna nahi hota. PII fields, permissions, rollback scripts, and logs bhi security ka part hain.
 
 ---
 
 ## 13. Missing or Misconfigured Things
 
-These are setup/devops gaps found while inspecting Task 2 and current User Service files:
+Setup/DevOps gaps found while analyzing Task 2:
 
-| Gap | Impact | Suggested fix |
+| Gap | Current impact | Suggested fix |
 |---|---|---|
-| No project-level `docker-compose.yml` | Beginners ko MySQL start karne ke liye manual Docker command follow karna padega. | Future me root/local compose file add karo with MySQL healthcheck. |
-| No `.env.example` | Fresh developer ko required env vars guess karne pad sakte hain. | `backend/services/user-service/.env.example` add karo with safe placeholder values. |
-| No migration runner wired | App startup DB ping karta hai but schema auto-create nahi karta. | Add documented migration command or CI/CD migration job. |
-| No schema version table | Plain SQL files applied manually hain; applied migration tracking missing hai. | `golang-migrate`, `goose`, or similar tool standardize karo. |
-| Up migration includes `CREATE DATABASE` | Production migration user may not have CREATE permission. | Infra should create DB; table migrations can run with scoped migration user. |
-| Down migration drops all user tables | Accidental run se local/staging data loss ho sakta hai. | Protect production rollback and require manual approval. |
-| Object storage not configured | `storage_url` column exists but actual KYC upload/storage service not configured in Task 2. | Future task should add MinIO/S3 env variables and private file access policy. |
-| One default address not DB-enforced | Direct SQL can set multiple `is_default=true` rows for same user. | Keep repository transaction, and consider stricter DB strategy if direct writes become possible. |
-| No DB healthcheck endpoint in service | Orchestrators cannot check DB-backed readiness directly. | Add gRPC health/reflection/readiness pattern in future devops task. |
-| Task 2 doc says migration file is future, but repo currently has files | Docs may look slightly stale to beginner. | Keep dependency guide pointing to actual current files. |
+| No checked-in `.env.example` | New developer required env vars guess kar sakta hai. | Add sanitized `.env.example` with fake DSN. |
+| No project-level `docker-compose.yml` | MySQL startup manual Docker command par depend karta hai. | Add local compose with MySQL healthcheck. |
+| No migration runner wired | Manual SQL apply karna padta hai; applied migration tracking missing hai. | Standardize `golang-migrate`, `goose`, or CI/CD migration job. |
+| No schema version table | Team ko pata nahi chalega migration already applied hai ya nahi. | Migration tool se version table maintain karo. |
+| Up migration creates database | Production migration user may not have `CREATE DATABASE` permission. | Infra/DBA pipeline DB create kare; table migration scoped user se run ho. |
+| Down migration drops all Task 2 tables | Accidental rollback data loss kar sakta hai. | Production rollback approvals and backups mandatory rakho. |
+| Object storage not configured | `storage_url` column exists, but file storage integration absent. | Future KYC task me private S3/MinIO setup add karo. |
+| One default address not fully DB-enforced | Direct SQL multiple default addresses set kar sakta hai. | Repository transaction/usecase validation maintain karo; stricter DB constraint consider karo. |
+| No DB-backed readiness health endpoint | Orchestrators ko schema readiness directly nahi pata chalega. | Future me gRPC health/readiness add karo. |
 
 Hardcoded credential audit:
 
-- No password is hardcoded in Go config.
-- Migration files do not contain DB usernames/passwords.
-- Example credentials appear only in documentation; use local-only placeholders and never commit real secrets.
+- Go config me DB username/password hardcoded nahi mila.
+- Migration SQL files me credentials nahi hain.
+- Documentation examples placeholder password use karte hain.
+- Real secrets `.env`, CI secrets, or secret manager se aane chahiye.
 
 ---
 
 ## 14. References to Previous Dependency Files
 
-Previous dependency files found in same folder:
+Previous dependency files found in the same folder:
 
 ```text
 TaskImplementation/User Service/task1_Dependency.md
 ```
 
-No other `task*_Dependency.md` files were present at generation time.
-
 Reuse map:
 
-| Reused topic | Previous file reference |
-|---|---|
-| Project overview and service startup context | `task1_Dependency.md` -> `1. Project Overview` |
-| Full tech stack | `task1_Dependency.md` -> `2. Tech Stack` |
-| Go/Docker/MySQL installation | `task1_Dependency.md` -> `3. Required Software` |
-| Go modules and dependency commands | `task1_Dependency.md` -> `4. Dependency Management` |
-| MySQL install and Docker setup | `task1_Dependency.md` -> `5. Database Setup` |
-| Base migration command | `task1_Dependency.md` -> `L. Run Migration` |
-| Env variable list and `.env` loading | `task1_Dependency.md` -> `7. Environment Variables` |
-| Docker status and useful Docker commands | `task1_Dependency.md` -> `8. Docker Setup` |
-| Clone-to-run onboarding | `task1_Dependency.md` -> `9. Local Development Setup` |
-| Run service and grpcurl verification | `task1_Dependency.md` -> `10. Running The Project` |
-| Common startup/debug errors | `task1_Dependency.md` -> `11. Common Errors & Fixes` |
-| General security and best practices | `task1_Dependency.md` -> `12. Security & Best Practices` |
+| Previous Dependency File | Section / Topic Reused | Why Reused |
+|---|---|---|
+| `task1_Dependency.md` | `1. Project Tech Stack Analysis` | Same Go/MySQL/gRPC stack already explained. |
+| `task1_Dependency.md` | `2. Language-Specific Dependency System: Go` | Same `go.mod`, `go.sum`, `go.work`, and Go commands. |
+| `task1_Dependency.md` | `3. Database Analysis` | MySQL install, Docker setup, DSN, credentials, and base migration flow already documented. |
+| `task1_Dependency.md` | `4. Environment Variables` | Task 2 adds no new env variables. |
+| `task1_Dependency.md` | `5. External Services Analysis` | Redis/Kafka/Object storage status unchanged. |
+| `task1_Dependency.md` | `6. Ports and Networking` | Ports are reused: gRPC `50052`, MySQL `3306`/optional `3307`. |
+| `task1_Dependency.md` | `7. Docker and DevOps Setup` | Docker/MySQL local setup unchanged. |
+| `task1_Dependency.md` | `8. Project Run Instructions` | Clone, dependency install, `.env`, service start, and grpcurl flow unchanged. |
+| `task1_Dependency.md` | `9. Common Errors and Fixes` | Generic setup errors already covered. |
+| `task1_Dependency.md` | `10. Security and Configuration Audit` | Base secrets/reflection/healthcheck guidance unchanged. |
+| `task1_Dependency.md` | `11. Best Practices` | General Go/MySQL/Docker practices already covered. |
 
 ---
 
@@ -787,24 +624,26 @@ Reuse map:
 
 Task 2 setup checklist:
 
-| Check | Done |
-|---|---|
-| Repository cloned using Task 1 guide |  |
-| Go 1.24+ installed |  |
-| MySQL 8.x running locally or via Docker |  |
-| Correct MySQL host port selected: `3306` or `3307` |  |
-| `USER_SERVICE_DATABASE_DSN` points to `user_db` |  |
-| DSN includes `parseTime=true` |  |
-| Up migration file exists |  |
-| Down migration file exists |  |
-| `001_create_user_tables.up.sql` applied |  |
-| `SHOW TABLES` shows all four Task 2 tables |  |
-| Foreign keys verified in `information_schema` |  |
-| Indexes verified with `SHOW INDEX` |  |
-| Runtime app user has appropriate DB permissions |  |
-| `.env` is local-only and not committed |  |
-| User Service starts after DB setup |  |
+- [ ] Previous dependency documentation checked: `task1_Dependency.md`
+- [ ] Repository cloned and full folder structure present
+- [ ] Go 1.24+ available if service will be run/tested
+- [ ] MySQL 8.x running locally or via Docker
+- [ ] Correct MySQL host port selected: `3306` or `3307`
+- [ ] `USER_SERVICE_DATABASE_DSN` points to `user_db`
+- [ ] DSN includes `parseTime=true`
+- [ ] Up migration file exists
+- [ ] Down migration file exists
+- [ ] `001_create_user_tables.up.sql` applied
+- [ ] `SHOW TABLES` shows `users`, `user_addresses`, `seller_profiles`, `seller_kyc_documents`
+- [ ] Foreign keys verified in `information_schema`
+- [ ] Indexes verified with `SHOW INDEX`
+- [ ] `.env` remains local-only and is not committed
+- [ ] Runtime app user permissions reviewed
+- [ ] Down migration understood as destructive
+- [ ] User Service starts after DB setup
+- [ ] Logs checked for DB connection/schema errors
+- [ ] No duplicate setup documentation added
 
-Quick beginner reminder:
+Quick reminder:
 
-First DB run karo, then migration run karo, then `.env` set karo, then Go service start karo. Agar service MySQL se connect ho rahi hai but table errors aa rahe hain, migration step missing hai.
+First MySQL start karo, then Task 2 migration apply karo, then `.env` export karo, then Go service run karo. Agar MySQL connect ho raha hai but table errors aa rahe hain, almost always migration step missing hai.

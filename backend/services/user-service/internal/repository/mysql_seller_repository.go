@@ -15,8 +15,8 @@ import (
 var _ usecase.SellerRepository = (*MySQLSellerRepository)(nil)
 
 type MySQLSellerRepository struct {
-	db     *sql.DB
-	logger *slog.Logger
+	executor sqlExecutor
+	logger   *slog.Logger
 }
 
 func NewMySQLSellerRepository(db *sql.DB, options ...Option) (*MySQLSellerRepository, error) {
@@ -24,8 +24,12 @@ func NewMySQLSellerRepository(db *sql.DB, options ...Option) (*MySQLSellerReposi
 		return nil, errors.New("db is required")
 	}
 
+	return newMySQLSellerRepository(db, options...), nil
+}
+
+func newMySQLSellerRepository(executor sqlExecutor, options ...Option) *MySQLSellerRepository {
 	configured := newRepositoryOptions(options)
-	return &MySQLSellerRepository{db: db, logger: configured.logger}, nil
+	return &MySQLSellerRepository{executor: executor, logger: configured.logger}
 }
 
 func (r *MySQLSellerRepository) CreateSellerProfile(ctx context.Context, seller domain.SellerProfile) (domain.SellerProfile, error) {
@@ -34,7 +38,7 @@ func (r *MySQLSellerRepository) CreateSellerProfile(ctx context.Context, seller 
 		status = domain.SellerStatusDraft
 	}
 
-	_, err := r.db.ExecContext(ctx, `
+	_, err := r.executor.ExecContext(ctx, `
 		INSERT INTO seller_profiles (
 			seller_id,
 			user_id,
@@ -44,8 +48,15 @@ func (r *MySQLSellerRepository) CreateSellerProfile(ctx context.Context, seller 
 			support_email,
 			status,
 			approved_by,
-			approved_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			approved_at,
+			created_by,
+			updated_by,
+			status_changed_by,
+			status_changed_at,
+			status_reason,
+			created_at,
+			updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		seller.SellerID,
 		seller.UserID,
@@ -56,6 +67,13 @@ func (r *MySQLSellerRepository) CreateSellerProfile(ctx context.Context, seller 
 		status,
 		nullableCleanStringPtr(seller.ApprovedBy),
 		nullableTimePtr(seller.ApprovedAt),
+		seller.CreatedBy,
+		seller.UpdatedBy,
+		nullableCleanStringPtr(seller.StatusChangedBy),
+		nullableTimePtr(seller.StatusChangedAt),
+		nullableCleanStringPtr(seller.StatusReason),
+		seller.CreatedAt,
+		seller.UpdatedAt,
 	)
 	if err != nil {
 		if isDuplicateKey(err) {
@@ -72,7 +90,7 @@ func (r *MySQLSellerRepository) CreateSellerProfile(ctx context.Context, seller 
 }
 
 func (r *MySQLSellerRepository) GetSellerProfileByUserID(ctx context.Context, userID string) (domain.SellerProfile, error) {
-	row := r.db.QueryRowContext(ctx, `
+	row := r.executor.QueryRowContext(ctx, `
 		SELECT
 			seller_id,
 			user_id,
@@ -83,6 +101,11 @@ func (r *MySQLSellerRepository) GetSellerProfileByUserID(ctx context.Context, us
 			status,
 			approved_by,
 			approved_at,
+			created_by,
+			updated_by,
+			status_changed_by,
+			status_changed_at,
+			status_reason,
 			created_at,
 			updated_at
 		FROM seller_profiles
@@ -102,7 +125,7 @@ func (r *MySQLSellerRepository) GetSellerProfileByUserID(ctx context.Context, us
 }
 
 func (r *MySQLSellerRepository) GetSellerProfileBySellerID(ctx context.Context, sellerID string) (domain.SellerProfile, error) {
-	row := r.db.QueryRowContext(ctx, `
+	row := r.executor.QueryRowContext(ctx, `
 		SELECT
 			seller_id,
 			user_id,
@@ -113,6 +136,11 @@ func (r *MySQLSellerRepository) GetSellerProfileBySellerID(ctx context.Context, 
 			status,
 			approved_by,
 			approved_at,
+			created_by,
+			updated_by,
+			status_changed_by,
+			status_changed_at,
+			status_reason,
 			created_at,
 			updated_at
 		FROM seller_profiles
@@ -156,10 +184,11 @@ func (r *MySQLSellerRepository) UpdateSellerProfile(ctx context.Context, sellerI
 		return r.GetSellerProfileBySellerID(ctx, sellerID)
 	}
 
-	sets = append(sets, "updated_at = CURRENT_TIMESTAMP")
+	sets = append(sets, "updated_by = ?", "updated_at = ?")
+	args = append(args, patch.UpdatedBy, patch.UpdatedAt)
 	args = append(args, sellerID)
 
-	result, err := r.db.ExecContext(ctx, `
+	result, err := r.executor.ExecContext(ctx, `
 		UPDATE seller_profiles
 		SET `+strings.Join(sets, ", ")+`
 		WHERE seller_id = ?
@@ -189,13 +218,47 @@ func (r *MySQLSellerRepository) UpdateSellerProfile(ctx context.Context, sellerI
 	return r.GetSellerProfileBySellerID(ctx, sellerID)
 }
 
+func (r *MySQLSellerRepository) UpdateSellerStatus(ctx context.Context, seller domain.SellerProfile) (domain.SellerProfile, error) {
+	result, err := r.executor.ExecContext(ctx, `
+		UPDATE seller_profiles
+		SET
+			status = ?,
+			approved_by = ?,
+			approved_at = ?,
+			status_changed_by = ?,
+			status_changed_at = ?,
+			status_reason = ?,
+			updated_by = ?,
+			updated_at = ?
+		WHERE seller_id = ?
+	`,
+		seller.Status,
+		nullableCleanStringPtr(seller.ApprovedBy),
+		nullableTimePtr(seller.ApprovedAt),
+		nullableCleanStringPtr(seller.StatusChangedBy),
+		nullableTimePtr(seller.StatusChangedAt),
+		nullableCleanStringPtr(seller.StatusReason),
+		seller.UpdatedBy,
+		seller.UpdatedAt,
+		seller.SellerID,
+	)
+	if err != nil {
+		logRepositoryError(ctx, r.logger, "update_seller_status", err)
+		return domain.SellerProfile{}, fmt.Errorf("update seller status: %w", err)
+	}
+	if err := ensureAffected(result, domain.ErrSellerNotFound); err != nil {
+		return domain.SellerProfile{}, err
+	}
+	return r.GetSellerProfileBySellerID(ctx, seller.SellerID)
+}
+
 func (r *MySQLSellerRepository) AddKYCDocument(ctx context.Context, doc domain.KYCDocument) (domain.KYCDocument, error) {
 	status := doc.Status
 	if status == "" {
 		status = domain.KYCStatusPending
 	}
 
-	_, err := r.db.ExecContext(ctx, `
+	_, err := r.executor.ExecContext(ctx, `
 		INSERT INTO seller_kyc_documents (
 			document_id,
 			seller_id,
@@ -204,8 +267,14 @@ func (r *MySQLSellerRepository) AddKYCDocument(ctx context.Context, doc domain.K
 			status,
 			reviewed_by,
 			reviewed_at,
-			rejection_reason
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			rejection_reason,
+			created_by,
+			updated_by,
+			created_at,
+			updated_at,
+			status_changed_by,
+			status_changed_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		doc.DocumentID,
 		doc.SellerID,
@@ -215,6 +284,12 @@ func (r *MySQLSellerRepository) AddKYCDocument(ctx context.Context, doc domain.K
 		nullableCleanStringPtr(doc.ReviewedBy),
 		nullableTimePtr(doc.ReviewedAt),
 		nullableCleanStringPtr(doc.RejectionReason),
+		doc.CreatedBy,
+		doc.UpdatedBy,
+		doc.CreatedAt,
+		doc.UpdatedAt,
+		nullableCleanStringPtr(doc.StatusChangedBy),
+		nullableTimePtr(doc.StatusChangedAt),
 	)
 	if err != nil {
 		if isDuplicateKey(err) {
@@ -227,11 +302,11 @@ func (r *MySQLSellerRepository) AddKYCDocument(ctx context.Context, doc domain.K
 		return domain.KYCDocument{}, fmt.Errorf("insert kyc document: %w", err)
 	}
 
-	return r.getKYCDocument(ctx, doc.DocumentID)
+	return r.GetKYCDocument(ctx, doc.SellerID, doc.DocumentID)
 }
 
 func (r *MySQLSellerRepository) ListKYCDocuments(ctx context.Context, sellerID string) ([]domain.KYCDocument, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	rows, err := r.executor.QueryContext(ctx, `
 		SELECT
 			document_id,
 			seller_id,
@@ -241,7 +316,12 @@ func (r *MySQLSellerRepository) ListKYCDocuments(ctx context.Context, sellerID s
 			reviewed_by,
 			reviewed_at,
 			rejection_reason,
-			created_at
+			created_by,
+			updated_by,
+			created_at,
+			updated_at,
+			status_changed_by,
+			status_changed_at
 		FROM seller_kyc_documents
 		WHERE seller_id = ?
 		ORDER BY created_at DESC
@@ -269,8 +349,8 @@ func (r *MySQLSellerRepository) ListKYCDocuments(ctx context.Context, sellerID s
 	return documents, nil
 }
 
-func (r *MySQLSellerRepository) getKYCDocument(ctx context.Context, documentID string) (domain.KYCDocument, error) {
-	row := r.db.QueryRowContext(ctx, `
+func (r *MySQLSellerRepository) GetKYCDocument(ctx context.Context, sellerID string, documentID string) (domain.KYCDocument, error) {
+	row := r.executor.QueryRowContext(ctx, `
 		SELECT
 			document_id,
 			seller_id,
@@ -280,11 +360,17 @@ func (r *MySQLSellerRepository) getKYCDocument(ctx context.Context, documentID s
 			reviewed_by,
 			reviewed_at,
 			rejection_reason,
-			created_at
+			created_by,
+			updated_by,
+			created_at,
+			updated_at,
+			status_changed_by,
+			status_changed_at
 		FROM seller_kyc_documents
 		WHERE document_id = ?
+		  AND seller_id = ?
 		LIMIT 1
-	`, documentID)
+	`, documentID, sellerID)
 
 	document, err := scanKYCDocument(row)
 	if err != nil {
@@ -297,9 +383,45 @@ func (r *MySQLSellerRepository) getKYCDocument(ctx context.Context, documentID s
 	return document, nil
 }
 
+func (r *MySQLSellerRepository) ReviewKYCDocument(ctx context.Context, document domain.KYCDocument) (domain.KYCDocument, error) {
+	result, err := r.executor.ExecContext(ctx, `
+		UPDATE seller_kyc_documents
+		SET
+			status = ?,
+			reviewed_by = ?,
+			reviewed_at = ?,
+			rejection_reason = ?,
+			status_changed_by = ?,
+			status_changed_at = ?,
+			updated_by = ?,
+			updated_at = ?
+		WHERE seller_id = ?
+		  AND document_id = ?
+	`,
+		document.Status,
+		nullableCleanStringPtr(document.ReviewedBy),
+		nullableTimePtr(document.ReviewedAt),
+		nullableCleanStringPtr(document.RejectionReason),
+		nullableCleanStringPtr(document.StatusChangedBy),
+		nullableTimePtr(document.StatusChangedAt),
+		document.UpdatedBy,
+		document.UpdatedAt,
+		document.SellerID,
+		document.DocumentID,
+	)
+	if err != nil {
+		logRepositoryError(ctx, r.logger, "review_kyc_document", err)
+		return domain.KYCDocument{}, fmt.Errorf("review kyc document: %w", err)
+	}
+	if err := ensureAffected(result, domain.ErrKYCDocumentNotFound); err != nil {
+		return domain.KYCDocument{}, err
+	}
+	return r.GetKYCDocument(ctx, document.SellerID, document.DocumentID)
+}
+
 func (r *MySQLSellerRepository) sellerProfileExists(ctx context.Context, sellerID string) (bool, error) {
 	var exists int
-	err := r.db.QueryRowContext(ctx, `
+	err := r.executor.QueryRowContext(ctx, `
 		SELECT 1
 		FROM seller_profiles
 		WHERE seller_id = ?
@@ -317,13 +439,16 @@ func (r *MySQLSellerRepository) sellerProfileExists(ctx context.Context, sellerI
 
 func scanSellerProfile(row sqlScanner) (domain.SellerProfile, error) {
 	var (
-		seller       domain.SellerProfile
-		displayName  sql.NullString
-		gstNumber    sql.NullString
-		supportEmail sql.NullString
-		status       string
-		approvedBy   sql.NullString
-		approvedAt   sql.NullTime
+		seller          domain.SellerProfile
+		displayName     sql.NullString
+		gstNumber       sql.NullString
+		supportEmail    sql.NullString
+		status          string
+		approvedBy      sql.NullString
+		approvedAt      sql.NullTime
+		statusChangedBy sql.NullString
+		statusChangedAt sql.NullTime
+		statusReason    sql.NullString
 	)
 
 	err := row.Scan(
@@ -336,6 +461,11 @@ func scanSellerProfile(row sqlScanner) (domain.SellerProfile, error) {
 		&status,
 		&approvedBy,
 		&approvedAt,
+		&seller.CreatedBy,
+		&seller.UpdatedBy,
+		&statusChangedBy,
+		&statusChangedAt,
+		&statusReason,
 		&seller.CreatedAt,
 		&seller.UpdatedAt,
 	)
@@ -349,6 +479,9 @@ func scanSellerProfile(row sqlScanner) (domain.SellerProfile, error) {
 	seller.Status = domain.SellerStatus(status)
 	seller.ApprovedBy = nullStringPtr(approvedBy)
 	seller.ApprovedAt = nullTimePtr(approvedAt)
+	seller.StatusChangedBy = nullStringPtr(statusChangedBy)
+	seller.StatusChangedAt = nullTimePtr(statusChangedAt)
+	seller.StatusReason = nullStringPtr(statusReason)
 	seller.CreatedAt = seller.CreatedAt.UTC()
 	seller.UpdatedAt = seller.UpdatedAt.UTC()
 
@@ -363,6 +496,8 @@ func scanKYCDocument(row sqlScanner) (domain.KYCDocument, error) {
 		reviewedBy      sql.NullString
 		reviewedAt      sql.NullTime
 		rejectionReason sql.NullString
+		statusChangedBy sql.NullString
+		statusChangedAt sql.NullTime
 	)
 
 	err := row.Scan(
@@ -374,7 +509,12 @@ func scanKYCDocument(row sqlScanner) (domain.KYCDocument, error) {
 		&reviewedBy,
 		&reviewedAt,
 		&rejectionReason,
+		&document.CreatedBy,
+		&document.UpdatedBy,
 		&document.CreatedAt,
+		&document.UpdatedAt,
+		&statusChangedBy,
+		&statusChangedAt,
 	)
 	if err != nil {
 		return domain.KYCDocument{}, err
@@ -385,7 +525,10 @@ func scanKYCDocument(row sqlScanner) (domain.KYCDocument, error) {
 	document.ReviewedBy = nullStringPtr(reviewedBy)
 	document.ReviewedAt = nullTimePtr(reviewedAt)
 	document.RejectionReason = nullStringPtr(rejectionReason)
+	document.StatusChangedBy = nullStringPtr(statusChangedBy)
+	document.StatusChangedAt = nullTimePtr(statusChangedAt)
 	document.CreatedAt = document.CreatedAt.UTC()
+	document.UpdatedAt = document.UpdatedAt.UTC()
 
 	return document, nil
 }

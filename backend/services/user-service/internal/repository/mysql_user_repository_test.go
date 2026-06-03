@@ -22,6 +22,14 @@ func fixedRepositoryTime() time.Time {
 	return time.Date(2026, 5, 21, 10, 30, 0, 0, time.UTC)
 }
 
+func stringPtrRepository(value string) *string {
+	return &value
+}
+
+func timePtrRepository(value time.Time) *time.Time {
+	return &value
+}
+
 func TestMySQLUserRepositoryFindUserByIDNotFound(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -65,10 +73,34 @@ func TestMySQLUserRepositoryCreateUserDuplicate(t *testing.T) {
 		Email:         "buyer@example.com",
 		FullName:      "Aarav Sharma",
 		Status:        domain.UserStatusActive,
+		AuditFields: domain.AuditFields{
+			CreatedBy: "service:auth-service",
+			UpdatedBy: "service:auth-service",
+			CreatedAt: fixedRepositoryTime(),
+			UpdatedAt: fixedRepositoryTime(),
+		},
+		StatusAuditFields: domain.StatusAuditFields{
+			StatusChangedBy: stringPtrRepository("service:auth-service"),
+			StatusChangedAt: timePtrRepository(fixedRepositoryTime()),
+		},
 	}
 
 	mock.ExpectExec(`(?s)INSERT INTO users`).
-		WithArgs(user.UserID, user.AuthAccountID, user.Email, nil, user.FullName, nil, user.Status).
+		WithArgs(
+			user.UserID,
+			user.AuthAccountID,
+			user.Email,
+			nil,
+			user.FullName,
+			nil,
+			user.Status,
+			user.CreatedBy,
+			user.UpdatedBy,
+			"service:auth-service",
+			fixedRepositoryTime(),
+			fixedRepositoryTime(),
+			fixedRepositoryTime(),
+		).
 		WillReturnError(&mysql.MySQLError{Number: 1062, Message: "Duplicate entry"})
 
 	_, err = repo.CreateUser(context.Background(), user)
@@ -101,10 +133,16 @@ func TestMySQLUserRepositoryBatchFindUsers(t *testing.T) {
 		"full_name",
 		"avatar_url",
 		"status",
+		"created_by",
+		"updated_by",
+		"status_changed_by",
+		"status_changed_at",
+		"deleted_by",
+		"deleted_at",
 		"created_at",
 		"updated_at",
-	}).AddRow("user_1", "auth_1", "one@example.com", nil, "One", nil, "active", now, now).
-		AddRow("user_2", "auth_2", "two@example.com", "+919999999999", "Two", nil, "active", now, now)
+	}).AddRow("user_1", "auth_1", "one@example.com", nil, "One", nil, "active", "system:backfill", "system:backfill", "system:backfill", now, nil, nil, now, now).
+		AddRow("user_2", "auth_2", "two@example.com", "+919999999999", "Two", nil, "active", "system:backfill", "system:backfill", "system:backfill", now, nil, nil, now, now)
 
 	mock.ExpectQuery(`(?s)SELECT.*FROM users.*WHERE user_id IN \(\?,\?\).*ORDER BY user_id`).
 		WithArgs("user_1", "user_2").

@@ -21,8 +21,9 @@ type User struct {
 	FullName      string
 	AvatarURL     *string
 	Status        UserStatus
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	AuditFields
+	StatusAuditFields
+	SoftDeleteFields
 }
 
 type NewUserParams struct {
@@ -32,6 +33,7 @@ type NewUserParams struct {
 	Phone         *string
 	FullName      string
 	AvatarURL     *string
+	CreatedBy     string
 	CreatedAt     time.Time
 }
 
@@ -39,6 +41,7 @@ type UserProfilePatch struct {
 	Phone     *string
 	FullName  *string
 	AvatarURL *string
+	UpdatedBy string
 	UpdatedAt time.Time
 }
 
@@ -47,13 +50,21 @@ func NewUser(params NewUserParams) (User, error) {
 	user := User{
 		UserID:        trim(params.UserID),
 		AuthAccountID: trim(params.AuthAccountID),
-		Email:         trim(params.Email),
-		Phone:         cleanOptional(params.Phone),
-		FullName:      trim(params.FullName),
+		Email:         sharedNormalizeEmail(params.Email),
+		Phone:         cleanOptionalPhone(params.Phone),
+		FullName:      cleanText(params.FullName),
 		AvatarURL:     cleanOptional(params.AvatarURL),
 		Status:        UserStatusActive,
-		CreatedAt:     createdAt,
-		UpdatedAt:     createdAt,
+		AuditFields: AuditFields{
+			CreatedBy: trim(params.CreatedBy),
+			UpdatedBy: trim(params.CreatedBy),
+			CreatedAt: createdAt,
+			UpdatedAt: createdAt,
+		},
+		StatusAuditFields: StatusAuditFields{
+			StatusChangedBy: cleanOptional(&params.CreatedBy),
+			StatusChangedAt: &createdAt,
+		},
 	}
 
 	if err := user.Validate(); err != nil {
@@ -79,15 +90,16 @@ func (u User) Validate() error {
 	validateID(&v, "auth_account_id", u.AuthAccountID)
 	validateEmail(&v, "email", u.Email)
 	validateOptionalPhone(&v, "phone", u.Phone)
-	validateRequiredString(&v, "full_name", u.FullName, maxNameLength)
+	validateRequiredSafeText(&v, "full_name", u.FullName, 2, maxNameLength)
 	validateOptionalHTTPURL(&v, "avatar_url", u.AvatarURL, maxAvatarURLLength)
 	if !u.Status.Valid() {
 		v.add("status", "is not supported")
 	}
-	validateTimestamp(&v, "created_at", u.CreatedAt)
-	validateTimestamp(&v, "updated_at", u.UpdatedAt)
-	if !u.CreatedAt.IsZero() && !u.UpdatedAt.IsZero() && u.UpdatedAt.Before(u.CreatedAt) {
-		v.add("updated_at", "cannot be before created_at")
+	validateAuditFields(&v, u.AuditFields)
+	validateStatusAuditFields(&v, u.StatusAuditFields, u.CreatedAt)
+	validateSoftDeleteFields(&v, u.SoftDeleteFields, u.CreatedAt)
+	if u.IsDeleted() && u.DeletedAt == nil {
+		v.add("deleted_at", "is required for deleted user")
 	}
 
 	return v.err()
@@ -98,7 +110,7 @@ func (u User) IsActive() bool {
 }
 
 func (u User) IsDeleted() bool {
-	return u.Status == UserStatusDeleted
+	return u.Status == UserStatusDeleted || u.DeletedAt != nil
 }
 
 func (u *User) ApplyProfilePatch(patch UserProfilePatch) error {
@@ -106,20 +118,24 @@ func (u *User) ApplyProfilePatch(patch UserProfilePatch) error {
 		return fmt.Errorf("%w: user %q", ErrDeletedResource, u.UserID)
 	}
 
+	if trim(patch.UpdatedBy) == "" {
+		return ValidationError{Fields: []FieldError{{Field: "updated_by", Message: "is required"}}}
+	}
 	if patch.UpdatedAt.IsZero() {
 		return ValidationError{Fields: []FieldError{{Field: "updated_at", Message: "is required"}}}
 	}
 
 	next := *u
 	if patch.Phone != nil {
-		next.Phone = cleanOptional(patch.Phone)
+		next.Phone = cleanOptionalPhone(patch.Phone)
 	}
 	if patch.FullName != nil {
-		next.FullName = trim(*patch.FullName)
+		next.FullName = cleanText(*patch.FullName)
 	}
 	if patch.AvatarURL != nil {
 		next.AvatarURL = cleanOptional(patch.AvatarURL)
 	}
+	next.UpdatedBy = trim(patch.UpdatedBy)
 	next.UpdatedAt = patch.UpdatedAt.UTC()
 
 	if err := next.Validate(); err != nil {
@@ -130,7 +146,11 @@ func (u *User) ApplyProfilePatch(patch UserProfilePatch) error {
 	return nil
 }
 
-func (u *User) TransitionStatus(to UserStatus, at time.Time) error {
+func (u *User) TransitionStatus(to UserStatus, actorID string, at time.Time) error {
+	actorID = trim(actorID)
+	if actorID == "" {
+		return ValidationError{Fields: []FieldError{{Field: "updated_by", Message: "is required"}}}
+	}
 	if at.IsZero() {
 		return ValidationError{Fields: []FieldError{{Field: "updated_at", Message: "is required"}}}
 	}
@@ -138,8 +158,9 @@ func (u *User) TransitionStatus(to UserStatus, at time.Time) error {
 		return ValidationError{Fields: []FieldError{{Field: "status", Message: "is not supported"}}}
 	}
 	if u.Status == to {
+		u.UpdatedBy = actorID
 		u.UpdatedAt = at.UTC()
-		return nil
+		return u.Validate()
 	}
 	if u.Status == UserStatusDeleted {
 		return invalidTransition("user", string(u.Status), string(to))
@@ -158,7 +179,15 @@ func (u *User) TransitionStatus(to UserStatus, at time.Time) error {
 		return invalidTransition("user", string(u.Status), string(to))
 	}
 
+	changedAt := at.UTC()
 	u.Status = to
-	u.UpdatedAt = at.UTC()
+	u.UpdatedBy = actorID
+	u.UpdatedAt = changedAt
+	u.StatusChangedBy = &actorID
+	u.StatusChangedAt = &changedAt
+	if to == UserStatusDeleted {
+		u.DeletedBy = &actorID
+		u.DeletedAt = &changedAt
+	}
 	return u.Validate()
 }

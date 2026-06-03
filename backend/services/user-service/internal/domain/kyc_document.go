@@ -31,7 +31,8 @@ type KYCDocument struct {
 	ReviewedBy      *string
 	ReviewedAt      *time.Time
 	RejectionReason *string
-	CreatedAt       time.Time
+	AuditFields
+	StatusAuditFields
 }
 
 type NewKYCDocumentParams struct {
@@ -39,17 +40,28 @@ type NewKYCDocumentParams struct {
 	SellerID     string
 	DocumentType KYCDocumentType
 	StorageURL   string
+	CreatedBy    string
 	CreatedAt    time.Time
 }
 
 func NewKYCDocument(params NewKYCDocumentParams) (KYCDocument, error) {
+	createdAt := params.CreatedAt.UTC()
 	document := KYCDocument{
 		DocumentID:   trim(params.DocumentID),
 		SellerID:     trim(params.SellerID),
 		DocumentType: KYCDocumentType(trim(string(params.DocumentType))),
 		StorageURL:   trim(params.StorageURL),
 		Status:       KYCStatusPending,
-		CreatedAt:    params.CreatedAt.UTC(),
+		AuditFields: AuditFields{
+			CreatedBy: trim(params.CreatedBy),
+			UpdatedBy: trim(params.CreatedBy),
+			CreatedAt: createdAt,
+			UpdatedAt: createdAt,
+		},
+		StatusAuditFields: StatusAuditFields{
+			StatusChangedBy: cleanOptional(&params.CreatedBy),
+			StatusChangedAt: &createdAt,
+		},
 	}
 
 	if err := document.Validate(); err != nil {
@@ -92,7 +104,8 @@ func (d KYCDocument) Validate() error {
 	}
 	validateOptionalID(&v, "reviewed_by", d.ReviewedBy)
 	validateOptionalString(&v, "rejection_reason", d.RejectionReason, maxRejectionReasonLength)
-	validateTimestamp(&v, "created_at", d.CreatedAt)
+	validateAuditFields(&v, d.AuditFields)
+	validateStatusAuditFields(&v, d.StatusAuditFields, d.CreatedAt)
 	if d.ReviewedAt != nil && d.ReviewedAt.Before(d.CreatedAt) {
 		v.add("reviewed_at", "cannot be before created_at")
 	}
@@ -134,17 +147,24 @@ func (d *KYCDocument) review(status KYCStatus, reviewedBy string, rejectionReaso
 	if at.IsZero() {
 		return ValidationError{Fields: []FieldError{{Field: "reviewed_at", Message: "is required"}}}
 	}
+	reviewer := trim(reviewedBy)
+	if reviewer == "" {
+		return ValidationError{Fields: []FieldError{{Field: "reviewed_by", Message: "is required"}}}
+	}
 	if d.Status != KYCStatusPending {
 		return invalidTransition("kyc_document", string(d.Status), string(status))
 	}
 
-	reviewer := trim(reviewedBy)
 	reviewedAt := at.UTC()
 	next := *d
 	next.Status = status
 	next.ReviewedBy = &reviewer
 	next.ReviewedAt = &reviewedAt
 	next.RejectionReason = cleanOptional(rejectionReason)
+	next.UpdatedBy = reviewer
+	next.UpdatedAt = reviewedAt
+	next.StatusChangedBy = &reviewer
+	next.StatusChangedAt = &reviewedAt
 
 	if err := next.Validate(); err != nil {
 		return err

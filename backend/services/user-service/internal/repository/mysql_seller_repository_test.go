@@ -27,6 +27,16 @@ func TestMySQLSellerRepositoryCreateSellerProfileDuplicate(t *testing.T) {
 		UserID:    "user_123",
 		StoreName: "Aarav Retail",
 		Status:    domain.SellerStatusDraft,
+		AuditFields: domain.AuditFields{
+			CreatedBy: "user_123",
+			UpdatedBy: "user_123",
+			CreatedAt: fixedRepositoryTime(),
+			UpdatedAt: fixedRepositoryTime(),
+		},
+		StatusAuditFields: domain.StatusAuditFields{
+			StatusChangedBy: stringPtrRepository("user_123"),
+			StatusChangedAt: timePtrRepository(fixedRepositoryTime()),
+		},
 	}
 
 	mock.ExpectExec(`(?s)INSERT INTO seller_profiles`).
@@ -40,6 +50,13 @@ func TestMySQLSellerRepositoryCreateSellerProfileDuplicate(t *testing.T) {
 			seller.Status,
 			nil,
 			nil,
+			seller.CreatedBy,
+			seller.UpdatedBy,
+			"user_123",
+			fixedRepositoryTime(),
+			nil,
+			fixedRepositoryTime(),
+			fixedRepositoryTime(),
 		).
 		WillReturnError(&mysql.MySQLError{Number: 1062, Message: "Duplicate entry"})
 
@@ -70,6 +87,16 @@ func TestMySQLSellerRepositoryAddKYCDocumentMissingSeller(t *testing.T) {
 		DocumentType: domain.KYCDocumentTypePANCard,
 		StorageURL:   "s3://private-kyc/seller_missing/doc_123.pdf",
 		Status:       domain.KYCStatusPending,
+		AuditFields: domain.AuditFields{
+			CreatedBy: "user_123",
+			UpdatedBy: "user_123",
+			CreatedAt: fixedRepositoryTime(),
+			UpdatedAt: fixedRepositoryTime(),
+		},
+		StatusAuditFields: domain.StatusAuditFields{
+			StatusChangedBy: stringPtrRepository("user_123"),
+			StatusChangedAt: timePtrRepository(fixedRepositoryTime()),
+		},
 	}
 
 	mock.ExpectExec(`(?s)INSERT INTO seller_kyc_documents`).
@@ -82,6 +109,12 @@ func TestMySQLSellerRepositoryAddKYCDocumentMissingSeller(t *testing.T) {
 			nil,
 			nil,
 			nil,
+			document.CreatedBy,
+			document.UpdatedBy,
+			fixedRepositoryTime(),
+			fixedRepositoryTime(),
+			"user_123",
+			fixedRepositoryTime(),
 		).
 		WillReturnError(&mysql.MySQLError{Number: 1452, Message: "Cannot add or update a child row"})
 

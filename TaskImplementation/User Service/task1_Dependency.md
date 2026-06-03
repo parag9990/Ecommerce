@@ -1,203 +1,105 @@
-# Project Dependency & Setup Guide
+# User Service - Task 1 Dependency and Setup Guide
 
-This guide is generated for:
-
-```text
-TaskImplementation/User Service/task1.md
-```
-
-Output file:
+Generated from:
 
 ```text
-TaskImplementation/User Service/task1_Dependency.md
+SERVICE_NAME=User Service
+TASK_FILE_NAME=task1.md
+INPUT_PATH=TaskImplementation/User Service/task1.md
+OUTPUT_FILE=task1_Dependency.md
 ```
 
-Is document ka goal hai ki ek beginner developer bhi User Service ko local machine par setup, configure, migrate, run, and debug kar sake. Ye business logic rewrite nahi karta. Ye sirf dependencies, environment, database, Docker, DevOps, and onboarding setup explain karta hai.
+Is document ka goal hai ki beginner developer project clone karke dependencies install kare, environment configure kare, MySQL setup kare, migration run kare, backend service start kare, aur common setup issues debug kar sake.
+
+Important scope note:
+
+- `TaskImplementation/User Service/task1.md` itself is a domain documentation task. Us file ko read karne ke liye runtime dependency nahi chahiye.
+- Current repo me `backend/services/user-service/` ka runnable Go service, migrations, gRPC server, and generated proto code present hai. Setup instructions below us actual runnable service ke basis par diye gaye hain.
+- Business logic, implementation files, and original task file ko modify nahi kiya gaya.
 
 ---
 
-## 1. Project Overview
+## 1. Project Tech Stack Analysis
 
-User Service e-commerce platform ka profile service hai.
+### Analyzed Files
 
-Simple Hinglish me:
-
-User Service ka kaam login/password manage karna nahi hai. Ye service buyer, seller, admin base profile, addresses, seller profile, aur KYC metadata manage karti hai. Authentication Auth Service karega, lekin profile data User Service ke MySQL database me rahega.
-
-Analyzed implementation files:
-
-| File | Purpose |
+| File | Why it was checked |
 |---|---|
-| `TaskImplementation/User Service/task1.md` | Domain boundary and task implementation guide |
-| `backend/services/user-service/go.mod` | Go dependencies |
-| `backend/go.work` | Go workspace setup |
-| `backend/services/user-service/internal/config/config.go` | Runtime environment variables |
-| `backend/services/user-service/cmd/server/main.go` | gRPC server startup and MySQL connection |
-| `backend/services/user-service/migrations/001_create_user_tables.up.sql` | MySQL schema migration |
-| `proto/ecommerce/user/v1/user.proto` | gRPC contract |
-| `backend/shared/gen/go/...` | Generated Go protobuf/gRPC code |
-
-Current implementation status:
-
-| Area | Status |
-|---|---|
-| Language | Go |
-| Runtime service | gRPC server |
-| Database | MySQL |
-| REST API | Not directly in User Service; expected via API Gateway later |
-| Redis | Not required by current User Service code |
-| Kafka/RabbitMQ | Not required by current Task 1/current service startup |
-| Docker files | Not present yet in repo |
-| Migrations | Plain SQL files exist |
-| `.env.example` | Not present yet |
-
----
-
-## 2. Tech Stack
+| `TaskImplementation/User Service/task1.md` | Task 1 domain boundary, profile fields, ownership split |
+| `backend/services/user-service/go.mod` | Go version and direct dependencies |
+| `backend/services/user-service/go.sum` | Dependency checksum lock file |
+| `backend/go.work` | Local multi-module workspace |
+| `backend/services/user-service/internal/config/config.go` | Environment variables and validation |
+| `backend/services/user-service/cmd/server/main.go` | Service startup, MySQL connection, gRPC server |
+| `backend/services/user-service/migrations/001_create_user_tables.up.sql` | MySQL schema setup |
+| `backend/services/user-service/migrations/001_create_user_tables.down.sql` | MySQL rollback setup |
+| `proto/ecommerce/user/v1/user.proto` | gRPC API contract |
+| `proto/buf.yaml` and `proto/buf.gen.yaml` | Protobuf generation workflow |
+| `backend/shared/gen/go/` | Generated Go protobuf/gRPC module |
+| `.gitignore` | Confirms `.env` files are ignored and `.env.example` is allowed |
 
 ### Main Technologies
 
-| Technology | Required? | What it is | Why this project uses it |
+| Technology | Required? | What it is | Why project uses it |
 |---|---:|---|---|
-| Go 1.24+ | Yes | Go ek compiled backend language hai jo fast, simple, and production-friendly services banane ke liye use hoti hai. | User Service backend Go me implemented hai. |
-| Go Modules | Yes | Go ka dependency management system. `go.mod` dependencies list karta hai and `go.sum` checksum lock karta hai. | Libraries ko version ke saath manage karne ke liye. |
-| Go Workspace | Yes | `go.work` multiple Go modules ko ek workspace me connect karta hai. | `user-service` local generated protobuf module ko use karta hai. |
-| gRPC | Yes | gRPC ek high-performance internal service communication framework hai. | User Service internal APIs expose karta hai for Auth/Gateway/other services. |
-| Protocol Buffers | Yes | Proto files strongly typed request/response contract define karte hain. | User Service ke gRPC messages generated code se type-safe bante hain. |
-| MySQL | Yes | MySQL ek relational database hai jisme data tables ke form me store hota hai. | Users, addresses, seller profiles, and KYC metadata structured data hai. |
-| `database/sql` | Yes | Go standard DB abstraction package. | MySQL queries and connection pooling ke liye. |
-| `github.com/go-sql-driver/mysql` | Yes | Go MySQL driver. | Go app ko MySQL se connect karne ke liye. |
-| `log/slog` | Yes | Go standard structured logging package. | JSON logs stdout par print karne ke liye. |
-| `go-sqlmock` | Test only | SQL repository tests ke liye mock database library. | Unit tests me real MySQL ke bina SQL behavior test karne ke liye. |
-| Docker | Optional but recommended | Containers run karne ka tool. | Beginner setup me MySQL ko quickly run karne ke liye best option. |
-| grpcurl | Optional dev tool | gRPC APIs ko terminal se test karne ka CLI. | Browser/curl gRPC directly nahi bolta, grpcurl debugging easy banata hai. |
-| buf CLI | Optional unless proto changes | Protobuf generation/linting tool. | Proto update ke baad generated Go code banane ke liye. |
+| Go 1.24+ | Yes | Go ek compiled backend language hai jo fast APIs/services banane ke liye use hoti hai. | Backend service Go me implemented hai. |
+| Go Modules | Yes | Go ka dependency system. `go.mod` dependencies list karta hai, `go.sum` checksums lock karta hai. | Stable dependency versions ke liye. |
+| Go Workspace | Yes for local dev | `go.work` multiple Go modules ko ek local workspace me connect karta hai. | Service local generated proto module `backend/shared/gen/go` use karta hai. |
+| MySQL 8.x | Yes at runtime | MySQL ek relational database hai jisme tables, indexes, constraints hote hain. | Profiles, addresses, seller profiles, and KYC metadata structured relational data hai. |
+| gRPC | Yes | gRPC high-performance service-to-service communication framework hai. | User profile APIs internal services/Gateway ko expose karne ke liye. |
+| Protocol Buffers | Yes | `.proto` typed API contract define karta hai. | Request/response types generated Go code me convert hote hain. |
+| Buf | Optional unless proto changes | Proto lint/generate tool. | `user.proto` change karne ke baad generated Go code update karne ke liye. |
+| `database/sql` | Yes | Go standard DB abstraction. | MySQL connection pool and query execution ke liye. |
+| `github.com/go-sql-driver/mysql` | Yes | Go MySQL driver. | Go app ko MySQL DSN se connect karne ke liye. |
+| `log/slog` | Yes | Go standard structured logging. | JSON logs stdout par print karne ke liye. |
+| `go-sqlmock` | Test only | SQL tests ke liye mock DB library. | Repository tests real MySQL ke bina run karne ke liye. |
+| Docker | Optional but recommended | Containers run karne ka tool. | Beginner local MySQL setup ko easy banata hai. |
+| grpcurl | Optional dev tool | Terminal se gRPC APIs test karne ka CLI. | Service verify/debug karne ke liye useful. |
+| Markdown | Yes for task docs | Lightweight documentation format. | Task implementation and dependency docs Markdown me hain. |
+| Mermaid | Optional docs rendering | Markdown diagrams render karta hai. | Task 1 me architecture/ER/flow diagrams explain kiye gaye hain. |
 
-### Not Required For Current User Service Startup
+### Not Used By Current User Service Startup
 
-| Technology | Current status |
+| Technology | Status |
 |---|---|
-| Node.js / npm / pnpm | User Service backend run karne ke liye required nahi. Frontend/future tools ke liye docs me mentioned hai. |
-| Python / pip / venv | Current User Service ke liye required nahi. |
-| Redis | Current User Service code me Redis connection nahi hai. Future cache/rate-limit/session use case ho sakta hai. |
-| Kafka / RabbitMQ | Current Task 1/current startup me event publisher nahi wired. Future Task 8 me user events ke liye planned hai. |
-| MongoDB | User Service use nahi karta. Other services jaise Product/Cart/Wishlist use kar sakte hain. |
-| Typesense | User Service use nahi karta. Search Service ke liye planned hai. |
-| Kubernetes | Local development ke liye required nahi. Production deployment ke liye planned. |
+| Node.js / npm / pnpm | Current backend service start karne ke liye required nahi. |
+| Python / pip / virtualenv | Current backend service ke liye required nahi. |
+| Redis | Current User Service code me Redis client/env usage nahi mila. |
+| Kafka / RabbitMQ / NATS | Task 8 me events planned hain, but current service startup me MQ dependency nahi hai. |
+| MongoDB | User Service MySQL use karta hai, MongoDB nahi. |
+| Elasticsearch / Typesense | Search service concern ho sakta hai, User Service runtime dependency nahi. |
+| Kubernetes | Local development ke liye required nahi; production deployment future concern hai. |
+| S3 / MinIO | Task 1 KYC storage URL concept define karta hai; actual object storage integration current service startup me nahi mila. |
 
 ---
 
-## 3. Required Software
-
-### Minimum Required For This User Service
-
-| Software | Version | Required? | Verify command |
-|---|---|---:|---|
-| Git | Any modern version | Yes | `git --version` |
-| Go | 1.24 or higher | Yes | `go version` |
-| MySQL | 8.x recommended | Yes | `mysql --version` |
-| Docker | Latest stable | Optional but recommended | `docker --version` |
-| Docker Compose | Compose v2 | Optional but recommended | `docker compose version` |
-| grpcurl | Latest | Optional | `grpcurl -version` |
-| buf | Latest | Optional unless proto regeneration needed | `buf --version` |
-
-### Install Go
-
-Go is mandatory.
-
-Windows:
-
-```powershell
-winget install GoLang.Go
-go version
-```
-
-Alternative: Download installer from the official Go website and restart terminal.
-
-macOS:
-
-```bash
-brew install go
-go version
-```
-
-Ubuntu/Debian Linux:
-
-```bash
-sudo apt update
-sudo apt install -y golang-go
-go version
-```
-
-Note: Ubuntu package manager kabhi-kabhi old Go version install karta hai. Agar `go version` 1.24 se lower aaye, official Go tarball ya version manager use karo.
-
-### Install Docker
-
-Docker optional hai, but beginners ke liye MySQL setup Docker se easiest hota hai.
-
-Windows/macOS:
-
-```text
-Install Docker Desktop.
-Start Docker Desktop.
-Run: docker --version
-Run: docker compose version
-```
-
-Ubuntu/Debian Linux:
-
-```bash
-sudo apt update
-sudo apt install -y docker.io docker-compose-plugin
-sudo systemctl enable --now docker
-docker --version
-docker compose version
-```
-
-If Docker command permission denied aaye:
-
-```bash
-sudo usermod -aG docker "$USER"
-```
-
-Then logout/login again.
-
----
-
-## 4. Dependency Management
-
-### This Is A Go Project
-
-User Service dependencies yahan defined hain:
-
-```text
-backend/services/user-service/go.mod
-backend/services/user-service/go.sum
-backend/go.work
-backend/go.work.sum
-backend/shared/gen/go/go.mod
-backend/shared/gen/go/go.sum
-```
+## 2. Language-Specific Dependency System: Go
 
 ### `go.mod`
 
-`go.mod` project ka dependency manifest hai.
+`go.mod` Go project ka dependency manifest hai.
 
 Simple Hinglish:
 
-`go.mod` bataata hai ki service ko kaunsi Go libraries chahiye aur kis version me chahiye.
+`go.mod` batata hai ki project ko kaunsi libraries chahiye, kaunsa Go version chahiye, aur local module replacement kaha se load karna hai.
+
+Main file:
+
+```text
+backend/services/user-service/go.mod
+```
 
 Current direct dependencies:
 
 | Dependency | Required? | Purpose |
 |---|---:|---|
-| `github.com/go-sql-driver/mysql v1.9.3` | Yes | MySQL database driver |
+| `github.com/go-sql-driver/mysql v1.9.3` | Yes | MySQL driver |
 | `google.golang.org/grpc v1.72.2` | Yes | gRPC server |
-| `google.golang.org/protobuf v1.36.6` | Yes | Generated proto message support |
+| `google.golang.org/protobuf v1.36.6` | Yes | Protobuf runtime |
 | `github.com/parag/ecommerce/backend/shared/gen/go v0.0.0` | Yes | Local generated protobuf/gRPC Go code |
-| `github.com/DATA-DOG/go-sqlmock v1.5.2` | Test only | SQL unit testing |
+| `github.com/DATA-DOG/go-sqlmock v1.5.2` | Test only | SQL repository unit tests |
 
-Important local replace:
+Local replace:
 
 ```go
 replace github.com/parag/ecommerce/backend/shared/gen/go => ../../shared/gen/go
@@ -205,17 +107,17 @@ replace github.com/parag/ecommerce/backend/shared/gen/go => ../../shared/gen/go
 
 Meaning:
 
-User Service remote package download nahi karega. Ye local folder `backend/shared/gen/go` use karega. Isliye repo ka full structure intact hona chahiye.
+The service does not download this generated module from internet. Ye local folder `backend/shared/gen/go` se load hota hai. Isliye repo ka folder structure intact rehna chahiye.
 
 ### `go.sum`
 
 `go.sum` dependency checksums store karta hai.
 
-Beginner rule:
+Beginner rules:
 
 - Manually edit mat karo.
-- `go mod tidy` ya `go mod download` automatically update karega.
-- Git me commit karna chahiye.
+- `go mod tidy`, `go mod download`, or `go test` automatically update kar sakte hain.
+- Is file ko commit karna chahiye because checksums reproducible builds me help karte hain.
 
 ### `go.work`
 
@@ -225,135 +127,107 @@ Workspace file:
 backend/go.work
 ```
 
-Current content:
+Current workspace modules:
 
-```go
-go 1.24
-
-use (
-    ./services/user-service
-    ./shared/gen/go
-)
+```text
+./services/user-service
+./shared/gen/go
 ```
 
 Meaning:
 
-Backend folder ke andar Go ko pata hai ki `user-service` and generated proto module same workspace ka part hain.
+Local development me Go ko pata hai ki User Service aur generated proto module same repo ke andar available hain.
 
-Recommended command location:
+### Common Go Commands
 
-```bash
-cd backend/services/user-service
-```
-
-or:
-
-```bash
-cd backend
-```
-
-### Install/Download Go Dependencies
-
-From service folder:
+Run these from service folder:
 
 ```bash
 cd backend/services/user-service
 go mod download
-```
-
-Clean dependency graph:
-
-```bash
 go mod tidy
-```
-
-Run tests:
-
-```bash
 go test ./...
-```
-
-Build binary:
-
-```bash
-go build -o ./bin/user-service ./cmd/server
-```
-
-Run service:
-
-```bash
+go build ./...
 go run ./cmd/server
 ```
 
-### Common Go Dependency Issues
-
-| Error | Cause | Fix | Prevention |
-|---|---|---|---|
-| `go.mod requires go >= 1.24` | Installed Go version old hai. | Install Go 1.24+. | `go version` setup ke start me check karo. |
-| `module ... backend/shared/gen/go not found` | Repo partial clone hai ya `backend/shared/gen/go` missing hai. | Full repo clone karo, folder check karo. | `git status` and `ls backend/shared/gen/go` verify karo. |
-| `missing go.sum entry` | Dependency checksum missing. | `go mod tidy` run karo. | `go.sum` commit karo. |
-| `no required module provides package` | Import exists but module missing hai. | `go mod tidy` ya correct import path. | Local package paths carefully use karo. |
-| `go mod download` network fail | Internet/proxy issue. | Network fix, proxy configure, or dependency cache use karo. | Corporate proxy docs maintain karo. |
-| `GONOSUMDB`/checksum issue | Private module ya checksum DB issue. | Private module settings configure karo. | Team Go env setup document karo. |
-
-Useful debug commands:
+Run from workspace folder:
 
 ```bash
-go env
+cd backend
+go test ./services/user-service/...
+```
+
+### Why Dependencies Fail
+
+| Error | Common cause | Fix |
+|---|---|---|
+| `go: go.mod file not found` | Wrong directory | `cd backend/services/user-service` or `cd backend` |
+| `module requires go >= 1.24` | Old Go installed | Install Go 1.24+ |
+| `missing go.sum entry` | Dependency checksum missing | Run `go mod tidy` |
+| `cannot find module .../shared/gen/go` | Repo structure missing or local replace path broken | Clone full repo; do not move service folder alone |
+| `dial tcp ... proxy.golang.org` fails | Network/proxy issue | Retry later, set `GOPROXY`, or use cached deps |
+| Version mismatch after proto change | Generated code and proto runtime mismatch | Run `buf generate`, then `go mod tidy` |
+| Tests fail with DB connection | Running integration/service startup without env | Unit tests mostly mock DB; service run needs MySQL DSN |
+
+### Useful Go Environment Debug Commands
+
+```bash
+go version
+go env GOPATH
 go env GOPROXY
-go env GOMOD
+go env GOWORK
 go list -m all
 ```
 
 ---
 
-## 5. Database Setup
+## 3. Database Analysis
 
 ### Detected Database: MySQL
 
-MySQL required hai.
-
 #### A. What It Is
 
-MySQL ek relational database hai. Isme data tables, rows, columns, indexes, and foreign keys ke form me store hota hai.
+MySQL ek relational database hai. Data tables ke form me store hota hai: rows, columns, primary keys, unique keys, indexes, and foreign keys.
 
-Simple Hinglish:
+Simple example:
 
-MySQL ek structured data store hai. User profile, address, seller profile jaise fixed fields ke liye MySQL perfect fit hai.
+- `users` table profile data store karta hai.
+- `user_addresses` table user ke multiple addresses store karta hai.
+- Foreign key ensure karta hai ki address kisi existing user se linked ho.
 
-#### B. Why This Project Uses It
+#### B. Why This Project Uses MySQL
 
-User Service data relational hai:
+Task 1 ne profile domain finalize kiya. Current migration us domain ko MySQL tables me map karta hai.
 
-- One user has many addresses.
-- One user may have one seller profile.
-- One seller profile has many KYC documents.
-- Unique constraints chahiye for `user_id`, `auth_account_id`, `email`, `seller_id`.
-- Foreign key constraints data consistency maintain karte hain.
+Detected database:
+
+```text
+user_db
+```
+
+Detected tables:
+
+| Table | Purpose |
+|---|---|
+| `users` | Base buyer/seller/admin profile |
+| `user_addresses` | Shipping/billing address book |
+| `seller_profiles` | Seller business profile and review status |
+| `seller_kyc_documents` | KYC metadata, not actual binary files |
 
 #### C. Required Or Optional
 
-Required.
+MySQL required hai when running the backend service.
 
-Without MySQL, User Service startup fail karega because startup par DB ping hota hai.
+Why:
 
-Expected startup failure if DB/env missing:
+- `cmd/server/main.go` startup me DB open karta hai.
+- Service startup `PingContext` se MySQL ping karta hai.
+- Agar DB unreachable hai, service start fail karegi.
 
-```text
-USER_SERVICE_DATABASE_DSN is required
-```
-
-or:
-
-```text
-ping mysql: ...
-```
+Task 1 document read karne ke liye MySQL required nahi hai.
 
 #### D. Local Installation
-
-Recommended beginner approach: Docker use karo.
-
-Native install steps:
 
 Windows:
 
@@ -362,7 +236,11 @@ winget install Oracle.MySQL
 mysql --version
 ```
 
-Alternative: MySQL Installer use karo, root password set karo, and MySQL Server start karo.
+Alternative:
+
+- MySQL Installer for Windows install karo.
+- MySQL Server and MySQL Shell/Client select karo.
+- Root password yaad rakho.
 
 macOS:
 
@@ -381,7 +259,7 @@ sudo systemctl enable --now mysql
 mysql --version
 ```
 
-Verify MySQL server:
+Verify service:
 
 ```bash
 mysqladmin ping -h 127.0.0.1 -P 3306 -u root -p
@@ -389,77 +267,66 @@ mysqladmin ping -h 127.0.0.1 -P 3306 -u root -p
 
 #### E. Docker Setup
 
-Create persistent Docker volume:
+Docker local setup beginners ke liye recommended hai because MySQL install/config manual steps kam ho jate hain.
 
 ```bash
-docker volume create ecommerce_user_mysql_data
-```
-
-Run MySQL container:
-
-```bash
-docker run -d \
-  --name ecommerce-user-mysql \
-  -e MYSQL_ROOT_PASSWORD=root_password \
+docker run --name ecommerce-user-mysql \
+  -e MYSQL_ROOT_PASSWORD=root \
   -e MYSQL_DATABASE=user_db \
   -e MYSQL_USER=ecommerce_user \
-  -e MYSQL_PASSWORD=ecommerce_password \
+  -e MYSQL_PASSWORD=change_me_local_password \
   -p 3306:3306 \
   -v ecommerce_user_mysql_data:/var/lib/mysql \
-  mysql:8.4
+  -d mysql:8
 ```
 
-Check container:
+If port `3306` busy hai:
 
 ```bash
-docker ps
-docker logs ecommerce-user-mysql
+docker run --name ecommerce-user-mysql \
+  -e MYSQL_ROOT_PASSWORD=root \
+  -e MYSQL_DATABASE=user_db \
+  -e MYSQL_USER=ecommerce_user \
+  -e MYSQL_PASSWORD=change_me_local_password \
+  -p 3307:3306 \
+  -v ecommerce_user_mysql_data:/var/lib/mysql \
+  -d mysql:8
 ```
 
-Verify MySQL:
-
-```bash
-docker exec -it ecommerce-user-mysql mysqladmin ping -uroot -proot_password
-```
+Then DSN me `3307` use karo.
 
 #### F. Docker Compose Example
 
-Current repo me `docker-compose.yml` present nahi hai. Agar beginner local setup banana ho, root folder me temporary local compose file create kar sakte ho, but commit karne se pehle team convention follow karo.
-
-Example:
+No checked-in `docker-compose.yml` was found. Ye beginner local example hai:
 
 ```yaml
 services:
   user-mysql:
-    image: mysql:8.4
+    image: mysql:8
     container_name: ecommerce-user-mysql
-    restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: user_db
       MYSQL_USER: ecommerce_user
-      MYSQL_PASSWORD: ecommerce_password
-      TZ: UTC
+      MYSQL_PASSWORD: change_me_local_password
     ports:
       - "3306:3306"
     volumes:
-      - user_mysql_data:/var/lib/mysql
+      - ecommerce_user_mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot_password"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
       interval: 10s
       timeout: 5s
       retries: 10
 
 volumes:
-  user_mysql_data:
+  ecommerce_user_mysql_data:
 ```
 
-Run:
+Start:
 
 ```bash
-docker compose up -d
-docker compose ps
-docker compose logs user-mysql
+docker compose up -d user-mysql
 ```
 
 Stop:
@@ -468,112 +335,99 @@ Stop:
 docker compose down
 ```
 
-Stop and delete DB data:
+Stop and delete local DB data:
 
 ```bash
 docker compose down -v
 ```
 
-Warning: `down -v` database volume delete karta hai. Local data lost ho jayega.
+Warning: `down -v` data delete karta hai. Sirf disposable local DB ke liye use karo.
 
 #### G. Start Commands
 
-Native Linux:
+Native Linux MySQL:
 
 ```bash
 sudo systemctl start mysql
-sudo systemctl status mysql
 ```
 
 macOS Homebrew:
 
 ```bash
 brew services start mysql
-brew services list
 ```
 
 Docker:
 
 ```bash
 docker start ecommerce-user-mysql
-docker ps
 ```
 
 #### H. Verify Running
 
-Connect with root:
-
 ```bash
-mysql -h 127.0.0.1 -P 3306 -u root -p
+docker ps --filter name=ecommerce-user-mysql
+mysqladmin ping -h 127.0.0.1 -P 3306 -u root -p
+mysql -h 127.0.0.1 -P 3306 -u root -p -e "SHOW DATABASES;"
 ```
 
-Connect with app user:
+Verify tables after migration:
 
 ```bash
-mysql -h 127.0.0.1 -P 3306 -u ecommerce_user -p user_db
+mysql -h 127.0.0.1 -P 3306 -u ecommerce_user -p user_db -e "SHOW TABLES;"
 ```
 
-Show tables:
+Expected:
 
-```sql
-SHOW DATABASES;
-USE user_db;
-SHOW TABLES;
+```text
+seller_kyc_documents
+seller_profiles
+user_addresses
+users
 ```
 
 #### I. Default Port
 
-```text
-3306
-```
+| Service | Default port |
+|---|---:|
+| MySQL | `3306` |
+| Alternate local MySQL mapping | `3307` |
 
 #### J. Connection String Format
 
 Go MySQL driver DSN format:
 
 ```env
-USER_SERVICE_DATABASE_DSN=ecommerce_user:ecommerce_password@tcp(127.0.0.1:3306)/user_db?parseTime=true&charset=utf8mb4&loc=UTC
+USER_SERVICE_DATABASE_DSN=ecommerce_user:change_me_local_password@tcp(127.0.0.1:3306)/user_db?parseTime=true&charset=utf8mb4&loc=UTC
 ```
 
-Important:
+Important parts:
 
-- `parseTime=true` required hai because code timestamps ko Go `time.Time` me scan karta hai.
-- `charset=utf8mb4` emoji/multilingual text safe banata hai.
-- `loc=UTC` timestamps consistent rakhta hai.
-
-Alternative fallback env var:
-
-```env
-MYSQL_DSN=ecommerce_user:ecommerce_password@tcp(127.0.0.1:3306)/user_db?parseTime=true&charset=utf8mb4&loc=UTC
-```
-
-Code pehle `USER_SERVICE_DATABASE_DSN` read karta hai. Agar blank ho to `MYSQL_DSN` use karta hai.
+| Part | Meaning |
+|---|---|
+| `ecommerce_user` | DB username |
+| `change_me_local_password` | DB password |
+| `127.0.0.1` | DB host |
+| `3306` | DB port |
+| `user_db` | Database name |
+| `parseTime=true` | Go timestamps ko correctly scan karne ke liye important |
+| `charset=utf8mb4` | Unicode support |
+| `loc=UTC` | UTC time handling |
 
 #### K. Where To Place Credentials
 
-Recommended local file:
+Local development:
 
 ```text
 backend/services/user-service/.env
 ```
 
-Do not commit `.env`.
+Security rules:
 
-Credentials placement:
-
-| Credential | Env variable | Example |
-|---|---|---|
-| DB username | Inside `USER_SERVICE_DATABASE_DSN` | `ecommerce_user` |
-| DB password | Inside `USER_SERVICE_DATABASE_DSN` | `ecommerce_password` |
-| DB host | Inside `USER_SERVICE_DATABASE_DSN` | `127.0.0.1` |
-| DB port | Inside `USER_SERVICE_DATABASE_DSN` | `3306` |
-| DB name | Inside `USER_SERVICE_DATABASE_DSN` | `user_db` |
-
-Production:
-
-- Use Kubernetes Secret, cloud secret manager, or CI/CD secret store.
-- Root DB password app ko mat do.
-- App user ko limited permissions do.
+- `.env` me real password ho sakta hai, commit mat karo.
+- `.gitignore` already `.env` and nested `.env` files ignore karta hai.
+- Sanitized `.env.example` add karna recommended hai.
+- Production me secrets manager, deployment env vars, or CI/CD secret store use karo.
 
 #### L. Run Migration
 
@@ -583,493 +437,371 @@ Migration file:
 backend/services/user-service/migrations/001_create_user_tables.up.sql
 ```
 
-It creates:
-
-- `user_db`
-- `users`
-- `user_addresses`
-- `seller_profiles`
-- `seller_kyc_documents`
-
-Run with native/local MySQL:
+Apply:
 
 ```bash
 mysql -h 127.0.0.1 -P 3306 -u root -p < backend/services/user-service/migrations/001_create_user_tables.up.sql
 ```
 
-Run inside Docker container:
-
-```bash
-docker exec -i ecommerce-user-mysql mysql -uroot -proot_password < backend/services/user-service/migrations/001_create_user_tables.up.sql
-```
-
-Verify:
-
-```bash
-mysql -h 127.0.0.1 -P 3306 -u ecommerce_user -p user_db -e "SHOW TABLES;"
-```
-
-Expected tables:
+Rollback file:
 
 ```text
-seller_kyc_documents
-seller_profiles
-user_addresses
-users
+backend/services/user-service/migrations/001_create_user_tables.down.sql
 ```
 
-Rollback migration:
+Rollback only in disposable local/dev DB:
 
 ```bash
 mysql -h 127.0.0.1 -P 3306 -u root -p < backend/services/user-service/migrations/001_create_user_tables.down.sql
 ```
 
-Warning: Down migration drops tables. Local debugging me okay, production me backup ke bina kabhi run mat karo.
+Current limitation:
 
-#### M. App User Permissions
-
-If you created MySQL manually, app user create karo:
-
-```sql
-CREATE DATABASE IF NOT EXISTS user_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE USER IF NOT EXISTS 'ecommerce_user'@'%' IDENTIFIED BY 'ecommerce_password';
-
-GRANT SELECT, INSERT, UPDATE, DELETE
-ON user_db.*
-TO 'ecommerce_user'@'%';
-
-FLUSH PRIVILEGES;
-```
-
-For migrations, root/admin user usually required hota hai because migration creates database/tables.
+- Plain SQL migration files exist.
+- No versioned migration runner such as `golang-migrate` or `goose` is wired in current service startup.
+- Developer ko migration manually run karni hogi before running real service flows.
 
 ---
 
-## 6. Redis / Queue / External Services
+## 4. Environment Variables
 
-### Current User Service Requirement
+### Complete `.env` Example
 
-Current code path me only MySQL mandatory hai.
-
-| Service | Required now? | Notes |
-|---|---:|---|
-| Redis | No | Not connected in current User Service code. |
-| Kafka | No | Future user events may use Kafka. |
-| RabbitMQ | No | Future user events may use RabbitMQ. |
-| MinIO/S3/Object Storage | No for startup | Task 1 mentions KYC file storage conceptually, but current code stores only `storage_url` metadata. |
-| API Gateway | No for direct gRPC run | Public REST API expected later via gateway. |
-| Nginx | No | Not needed for current local gRPC service. |
-| Kubernetes | No | Production deployment only. |
-
-### Redis
-
-What it is:
-
-Redis ek in-memory cache/data store hai. Fast access ke liye use hota hai, jaise sessions, OTP counters, rate limiting, cache.
-
-Why this project may use it:
-
-Overall platform docs Redis ko Auth, Cart, Session, Recommendation cache ke liye mention karte hain. User Service current code me Redis use nahi karta.
-
-Required or optional:
-
-Optional/future for User Service.
-
-Docker setup if needed later:
-
-```bash
-docker volume create ecommerce_redis_data
-
-docker run -d \
-  --name ecommerce-redis \
-  -p 6379:6379 \
-  -v ecommerce_redis_data:/data \
-  redis:7-alpine \
-  redis-server --appendonly yes --requirepass dev_redis_password
-```
-
-Verify:
-
-```bash
-docker exec -it ecommerce-redis redis-cli -a dev_redis_password ping
-```
-
-Expected:
-
-```text
-PONG
-```
-
-Default port:
-
-```text
-6379
-```
-
-Credential placement if future code adds Redis:
-
-```env
-REDIS_HOST=127.0.0.1
-REDIS_PORT=6379
-REDIS_PASSWORD=dev_redis_password
-```
-
-### RabbitMQ
-
-What it is:
-
-RabbitMQ ek message broker hai. Services async messages bhej sakti hain, jaise `UserCreated` event ya notification command.
-
-Why this project may use it:
-
-Future Task 8 style event publishing ke liye `user.events` queue/exchange use ho sakta hai.
-
-Required or optional:
-
-Optional/future for current User Service.
-
-Docker setup:
-
-```bash
-docker run -d \
-  --name ecommerce-rabbitmq \
-  -p 5672:5672 \
-  -p 15672:15672 \
-  -e RABBITMQ_DEFAULT_USER=ecommerce \
-  -e RABBITMQ_DEFAULT_PASS=ecommerce_password \
-  rabbitmq:3-management
-```
-
-Health check:
-
-```bash
-docker exec ecommerce-rabbitmq rabbitmq-diagnostics ping
-```
-
-Management UI:
-
-```text
-http://localhost:15672
-username: ecommerce
-password: ecommerce_password
-```
-
-Default ports:
-
-| Port | Purpose |
-|---:|---|
-| 5672 | AMQP app connection |
-| 15672 | Browser management UI |
-
-Future credential placement:
-
-```env
-USER_EVENTS_PROVIDER=rabbitmq
-RABBITMQ_URL=amqp://ecommerce:ecommerce_password@127.0.0.1:5672/
-```
-
-### Kafka
-
-What it is:
-
-Kafka ek distributed event streaming platform hai. High-throughput events ke liye useful hota hai.
-
-Why this project may use it:
-
-Large-scale e-commerce me user, order, product, payment events stream karne ke liye Kafka use ho sakta hai.
-
-Required or optional:
-
-Optional/future for current User Service.
-
-Future env example:
-
-```env
-USER_EVENTS_PROVIDER=kafka
-KAFKA_BROKERS=127.0.0.1:9092
-USER_EVENTS_TOPIC=user.events
-```
-
-Health check:
-
-```bash
-# Depends on chosen Kafka image/tooling.
-# Current repo does not include Kafka compose yet.
-```
-
-Beginner recommendation:
-
-Current User Service run karne ke liye Kafka install mat karo. Jab event publisher implementation add ho, tab team-provided Docker Compose use karo.
-
-### Object Storage / MinIO / S3
-
-What it is:
-
-Object storage files store karta hai, jaise images, invoices, KYC PDFs. S3 cloud version hai; MinIO local S3-compatible server hai.
-
-Why this project may use it:
-
-Task 1 domain guide me KYC actual files database me store nahi karne ka rule hai. DB me sirf `storage_url` metadata rahega.
-
-Required or optional:
-
-Optional/future. Current service startup ke liye required nahi.
-
-Local MinIO Docker setup if needed later:
-
-```bash
-docker volume create ecommerce_minio_data
-
-docker run -d \
-  --name ecommerce-minio \
-  -p 9000:9000 \
-  -p 9001:9001 \
-  -e MINIO_ROOT_USER=ecommerce_minio \
-  -e MINIO_ROOT_PASSWORD=ecommerce_minio_password \
-  -v ecommerce_minio_data:/data \
-  quay.io/minio/minio server /data --console-address ":9001"
-```
-
-Console:
-
-```text
-http://localhost:9001
-```
-
-Future credential placement:
-
-```env
-OBJECT_STORAGE_ENDPOINT=http://127.0.0.1:9000
-OBJECT_STORAGE_BUCKET=user-kyc
-OBJECT_STORAGE_ACCESS_KEY=ecommerce_minio
-OBJECT_STORAGE_SECRET_KEY=ecommerce_minio_password
-```
-
----
-
-## 7. Environment Variables
-
-### How Project Loads Env Variables
-
-Current code uses Go standard `os.Getenv`.
-
-Important beginner note:
-
-The binary does not automatically read `.env` file. `.env` ek convention hai. Aapko variables shell me export karne honge, Docker Compose `env_file` use karna hoga, ya direnv/tooling use karni hogi.
-
-Config loader file:
-
-```text
-backend/services/user-service/internal/config/config.go
-```
-
-### Where To Create `.env`
-
-Recommended local path:
+Create this file for local development:
 
 ```text
 backend/services/user-service/.env
 ```
 
-Do not commit it. Root `.gitignore` already `.env` files ignore karta hai.
-
-### Complete `.env` Example
+Example:
 
 ```env
-# Required: MySQL DSN for User Service
-USER_SERVICE_DATABASE_DSN=ecommerce_user:ecommerce_password@tcp(127.0.0.1:3306)/user_db?parseTime=true&charset=utf8mb4&loc=UTC
+# Required: MySQL DSN for User Service runtime.
+USER_SERVICE_DATABASE_DSN=ecommerce_user:change_me_local_password@tcp(127.0.0.1:3306)/user_db?parseTime=true&charset=utf8mb4&loc=UTC
 
-# Optional fallback if USER_SERVICE_DATABASE_DSN is not set
-MYSQL_DSN=ecommerce_user:ecommerce_password@tcp(127.0.0.1:3306)/user_db?parseTime=true&charset=utf8mb4&loc=UTC
+# Optional fallback if USER_SERVICE_DATABASE_DSN is blank.
+MYSQL_DSN=ecommerce_user:change_me_local_password@tcp(127.0.0.1:3306)/user_db?parseTime=true&charset=utf8mb4&loc=UTC
 
-# gRPC server config
+# gRPC server config.
 USER_SERVICE_GRPC_ADDRESS=:50052
 USER_SERVICE_GRPC_REFLECTION=true
 USER_SERVICE_SHUTDOWN_TIMEOUT=10s
 
-# Database pool config
+# Database pool config.
 USER_SERVICE_DB_MAX_OPEN_CONNS=25
 USER_SERVICE_DB_MAX_IDLE_CONNS=25
 USER_SERVICE_DB_CONN_MAX_LIFETIME=5m
 USER_SERVICE_DB_PING_TIMEOUT=5s
 
-# Logging
+# Logging.
 USER_SERVICE_LOG_LEVEL=debug
 ```
 
-### Env Variable Details
+### How Project Loads Environment Variables
 
-| Variable | Required? | Default | Purpose | Example | Security note |
-|---|---:|---|---|---|---|
-| `USER_SERVICE_DATABASE_DSN` | Yes | None | Main MySQL connection string. | `ecommerce_user:...@tcp(127.0.0.1:3306)/user_db?...` | Contains password. Never commit. |
-| `MYSQL_DSN` | Conditional | None | Fallback DSN if main DSN is blank. | Same as above | Avoid setting both differently. |
-| `USER_SERVICE_GRPC_ADDRESS` | No | `:50052` | gRPC listen address. | `:50052` | In production bind carefully. |
-| `USER_SERVICE_GRPC_REFLECTION` | No | `true` | Allows grpcurl/proto discovery. | `true` local, `false` prod | Disable in production unless intentionally exposed internally. |
-| `USER_SERVICE_SHUTDOWN_TIMEOUT` | No | `10s` | Graceful shutdown wait time. | `10s` | Too low can drop requests. |
-| `USER_SERVICE_DB_MAX_OPEN_CONNS` | No | `25` | Max open DB connections. | `25` | Too high can overload MySQL. |
-| `USER_SERVICE_DB_MAX_IDLE_CONNS` | No | `25` | Max idle DB connections. | `10` | Keep <= max open conns. |
-| `USER_SERVICE_DB_CONN_MAX_LIFETIME` | No | `5m` | Recycle DB connections after duration. | `5m` | Useful with load balancers/proxies. |
-| `USER_SERVICE_DB_PING_TIMEOUT` | No | `5s` | Startup DB ping timeout. | `5s` | Too low can fail on slow local Docker startup. |
-| `USER_SERVICE_LOG_LEVEL` | No | `info` | Log level. | `debug`, `info`, `warn`, `error` | Avoid debug logs with PII in production. |
+Code uses `os.Getenv` in:
 
-### Load `.env` On Linux/macOS
+```text
+backend/services/user-service/internal/config/config.go
+```
+
+Important:
+
+The code does not automatically parse `.env`. Shell me variables export karne padenge.
+
+Use:
 
 ```bash
 cd backend/services/user-service
 set -a
-source .env
+. ./.env
 set +a
 go run ./cmd/server
 ```
 
-### Load Env On Windows PowerShell
+### Environment Variable Table
 
-```powershell
-cd backend/services/user-service
-$env:USER_SERVICE_DATABASE_DSN="ecommerce_user:ecommerce_password@tcp(127.0.0.1:3306)/user_db?parseTime=true&charset=utf8mb4&loc=UTC"
-$env:USER_SERVICE_GRPC_ADDRESS=":50052"
-$env:USER_SERVICE_GRPC_REFLECTION="true"
-$env:USER_SERVICE_LOG_LEVEL="debug"
-go run .\cmd\server
-```
+| Variable | Required? | Example | Purpose | Security notes |
+|---|---:|---|---|---|
+| `USER_SERVICE_DATABASE_DSN` | Yes | `ecommerce_user:...@tcp(127.0.0.1:3306)/user_db?...` | Main MySQL connection string | Contains password; do not log/commit |
+| `MYSQL_DSN` | Conditional fallback | Same DSN format | Used only if main DSN blank | Contains password; prefer main var for clarity |
+| `USER_SERVICE_GRPC_ADDRESS` | Optional | `:50052` | gRPC listen address/port | Bind internally in production |
+| `USER_SERVICE_GRPC_REFLECTION` | Optional | `true` local, `false` prod | Enables grpcurl reflection | Disable or restrict in public/prod networks |
+| `USER_SERVICE_SHUTDOWN_TIMEOUT` | Optional | `10s` | Graceful shutdown wait time | Must be positive |
+| `USER_SERVICE_DB_MAX_OPEN_CONNS` | Optional | `25` | Max open DB connections | Too high can overload DB |
+| `USER_SERVICE_DB_MAX_IDLE_CONNS` | Optional | `25` | Max idle DB connections | Cannot be negative |
+| `USER_SERVICE_DB_CONN_MAX_LIFETIME` | Optional | `5m` | DB connection recycle duration | Helps avoid stale long-lived connections |
+| `USER_SERVICE_DB_PING_TIMEOUT` | Optional | `5s` | Startup DB ping timeout | Must be positive |
+| `USER_SERVICE_LOG_LEVEL` | Optional | `debug` local, `info` prod | Log verbosity | Avoid debug logs with PII in production |
 
-### Common Env Mistakes
+### Common `.env` Mistakes
 
 | Mistake | Symptom | Fix |
 |---|---|---|
-| `.env` created but not sourced | App says DSN required. | Run `set -a; source .env; set +a`. |
-| Missing `parseTime=true` | Timestamp scan errors. | Add `?parseTime=true` to DSN. |
-| Wrong DB host in Docker | Connection refused. | If app runs on host use `127.0.0.1`; if app runs in compose use service name like `user-mysql`. |
-| Password contains special chars | DSN parse error. | URL-escape special characters or use simpler local password. |
-| Port already used | MySQL or gRPC cannot bind. | Change host port or service address. |
-| Both DSNs set differently | Confusing DB connection. | Prefer only `USER_SERVICE_DATABASE_DSN`. |
+| `.env` created but not sourced | `USER_SERVICE_DATABASE_DSN is required` | Use `set -a; . ./.env; set +a` |
+| Wrong DB port | `connection refused` | Match Docker/native port in DSN |
+| Missing `parseTime=true` | Timestamp scan errors | Add `parseTime=true` |
+| Password contains special characters | DSN parse error | URL-escape password or use simple local password |
+| Quotes included incorrectly | Auth failure or bad DSN | Prefer no quotes in `.env`, or source with shell-compatible syntax |
+| Using root DB user for app | Works locally but unsafe | Create app user with limited grants |
 
 ---
 
-## 8. Docker Setup
+## 5. External Services Analysis
 
-### Current Docker Status
+### MySQL
 
-Current repo does not include a User Service Dockerfile or docker-compose file.
+| Item | Detail |
+|---|---|
+| What it is | Relational DB for structured profile data |
+| Why used | User, address, seller, KYC metadata persistence |
+| Mandatory? | Yes for running backend |
+| Credentials | `USER_SERVICE_DATABASE_DSN` or `MYSQL_DSN` |
+| Health check | `mysqladmin ping -h 127.0.0.1 -P 3306 -u root -p` |
+| Docker | `mysql:8` container recommended locally |
+| Common issue | Wrong DSN user/password/port |
 
-So Docker is currently mainly useful for:
+### gRPC
 
-- Running MySQL locally.
-- Running optional future services like Redis/RabbitMQ/MinIO.
+| Item | Detail |
+|---|---|
+| What it is | Internal API communication framework |
+| Why used | Auth/API Gateway/internal services call User Service |
+| Mandatory? | Yes for current backend server |
+| Port | Default `50052` |
+| Health check | `grpcurl -plaintext localhost:50052 list` when reflection enabled |
+| Credentials | No TLS/auth config found for current local server |
+| Common issue | Reflection disabled or service not running |
+
+Install grpcurl:
+
+```bash
+# macOS
+brew install grpcurl
+
+# Go install alternative
+go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
+```
+
+Verify:
+
+```bash
+grpcurl -plaintext localhost:50052 list
+grpcurl -plaintext localhost:50052 describe ecommerce.user.v1.UserService
+```
+
+### Protobuf and Buf
+
+| Item | Detail |
+|---|---|
+| What it is | API contract and code generation tooling |
+| Why used | `user.proto` generates typed Go gRPC code |
+| Mandatory? | Runtime uses generated code; Buf only needed when proto changes |
+| Config files | `proto/buf.yaml`, `proto/buf.gen.yaml` |
+| Generated output | `backend/shared/gen/go/` |
+| Common issue | Proto changed but generated code stale |
+
+Generate after proto changes:
+
+```bash
+cd proto
+buf generate
+```
+
+### Docker
+
+| Item | Detail |
+|---|---|
+| What it is | Container runtime |
+| Why used | Optional local MySQL setup |
+| Mandatory? | No, native MySQL works |
+| Dockerfile | Not found for User Service |
+| docker-compose | Not found in repo |
+| Health check | `docker ps`, `docker logs ecommerce-user-mysql` |
+| Common issue | Port already allocated or stale volume password |
+
+### API Gateway, Auth Service, Superadmin Service
+
+Task 1 defines service boundaries:
+
+| Service | Current relation | Required for local User Service startup? |
+|---|---|---:|
+| Auth Service | Owns password, OTP, JWT, roles; calls `CreateUser` conceptually | No |
+| API Gateway | Browser REST should go through Gateway, then gRPC to User Service | No |
+| Superadmin Service | Seller/admin workflows and audit ownership | No |
+
+For isolated local backend startup, only User Service + MySQL are required. For complete platform flow, Gateway/Auth/Superadmin will be needed later.
+
+### Object Storage / S3 / MinIO
+
+Task 1 says actual KYC files should not live in MySQL. DB stores only `storage_url`.
+
+Current status:
+
+- No S3/MinIO client or env variables found in User Service startup.
+- Object storage is a future integration, not a required Task 1 runtime dependency.
+
+### Redis, Kafka, RabbitMQ, NATS
+
+Current status:
+
+| Service | Required now? | Why |
+|---|---:|---|
+| Redis | No | No Redis client/env usage in current User Service |
+| Kafka | No | Events are planned in later docs, not wired here |
+| RabbitMQ | No | No queue publisher/consumer in current service |
+| NATS | No | No NATS usage found |
+
+Do not add fake env variables for these services until implementation actually uses them.
+
+---
+
+## 6. Ports and Networking
+
+| Service | Port | Purpose | Required? |
+|---|---:|---|---:|
+| User Service gRPC | `50052` | Internal gRPC API | Yes for backend |
+| MySQL | `3306` | Database connection | Yes |
+| MySQL alternate | `3307` | Local fallback if `3306` busy | Optional |
+| API Gateway HTTP | `8080` | Browser REST entrypoint, future/full platform | Not for isolated service |
+| Redis | `6379` | Not used by current User Service | No |
+| Kafka | `9092` | Future events only | No |
+| RabbitMQ | `5672` | Not used by current User Service | No |
+
+### Port Conflicts
+
+Check open ports:
+
+```bash
+ss -ltnp | grep 50052
+ss -ltnp | grep 3306
+```
+
+If gRPC port busy:
+
+```bash
+export USER_SERVICE_GRPC_ADDRESS=':50053'
+```
+
+Then verify with:
+
+```bash
+grpcurl -plaintext localhost:50053 list
+```
+
+If MySQL port busy:
+
+```bash
+docker run --name ecommerce-user-mysql \
+  -e MYSQL_ROOT_PASSWORD=root \
+  -e MYSQL_DATABASE=user_db \
+  -e MYSQL_USER=ecommerce_user \
+  -e MYSQL_PASSWORD=change_me_local_password \
+  -p 3307:3306 \
+  -v ecommerce_user_mysql_data:/var/lib/mysql \
+  -d mysql:8
+```
+
+Update DSN:
+
+```env
+USER_SERVICE_DATABASE_DSN=ecommerce_user:change_me_local_password@tcp(127.0.0.1:3307)/user_db?parseTime=true&charset=utf8mb4&loc=UTC
+```
+
+### Docker Network Notes
+
+From host to Docker MySQL:
+
+```text
+127.0.0.1:3306
+```
+
+From another container to MySQL in same compose network:
+
+```text
+user-mysql:3306
+```
+
+Common beginner confusion:
+
+- Host machine uses published port: `127.0.0.1:3306`.
+- Container-to-container uses service name: `user-mysql:3306`.
+- Do not use `localhost` inside one container to reach another container.
+
+---
+
+## 7. Docker and DevOps Setup
+
+### Current Repo Status
+
+| Item | Status |
+|---|---|
+| User Service Dockerfile | Not found |
+| Project `docker-compose.yml` | Not found |
+| MySQL Docker usage | Recommended local option |
+| Docker volumes | Needed for persistent MySQL data |
+| Docker networks | Needed if service is containerized later |
+| Restart policies | Future compose/deployment concern |
+| Health checks | MySQL example provided; app health endpoint not found |
 
 ### Recommended Beginner Approach
 
-Use Docker for MySQL, run Go service directly on host.
+Use Docker only for MySQL, and run the Go backend directly:
 
-Why:
+```bash
+docker run --name ecommerce-user-mysql \
+  -e MYSQL_ROOT_PASSWORD=root \
+  -e MYSQL_DATABASE=user_db \
+  -e MYSQL_USER=ecommerce_user \
+  -e MYSQL_PASSWORD=change_me_local_password \
+  -p 3306:3306 \
+  -v ecommerce_user_mysql_data:/var/lib/mysql \
+  -d mysql:8
+```
 
-- Easy DB setup.
-- Go service logs directly visible in terminal.
-- Debugging simpler.
-- No need to build service image until Dockerfile exists.
+Then run service directly:
+
+```bash
+cd backend/services/user-service
+set -a
+. ./.env
+set +a
+go run ./cmd/server
+```
 
 ### Useful Docker Commands
 
-Start MySQL container:
-
-```bash
-docker start ecommerce-user-mysql
-```
-
-Stop MySQL container:
-
-```bash
-docker stop ecommerce-user-mysql
-```
-
-Show containers:
-
 ```bash
 docker ps
-docker ps -a
-```
-
-Show logs:
-
-```bash
 docker logs ecommerce-user-mysql
-```
-
-Open MySQL shell:
-
-```bash
-docker exec -it ecommerce-user-mysql mysql -uroot -proot_password
-```
-
-Remove stopped container:
-
-```bash
+docker stop ecommerce-user-mysql
+docker start ecommerce-user-mysql
 docker rm ecommerce-user-mysql
+docker volume ls
 ```
 
-Warning: Remove container data only if volume is preserved. If volume deleted, DB data lost.
+Docker Compose commands if you create a local compose file:
 
-### Future Dockerfile Shape
-
-Not currently present, but production-ready Go service Dockerfile should roughly:
-
-- Use `golang:1.24-alpine` or official Go builder image.
-- Build static binary.
-- Copy binary into distroless/alpine runtime.
-- Expose gRPC port `50052`.
-- Run as non-root user if possible.
-- Read config from env variables.
-
-Example concept:
-
-```dockerfile
-FROM golang:1.24-alpine AS builder
-WORKDIR /app
-COPY backend/go.work backend/go.work.sum ./backend/
-COPY backend/shared ./backend/shared
-COPY backend/services/user-service ./backend/services/user-service
-WORKDIR /app/backend/services/user-service
-RUN go mod download
-RUN CGO_ENABLED=0 GOOS=linux go build -o /out/user-service ./cmd/server
-
-FROM gcr.io/distroless/static-debian12
-COPY --from=builder /out/user-service /user-service
-EXPOSE 50052
-ENTRYPOINT ["/user-service"]
+```bash
+docker compose up -d
+docker compose down
+docker compose logs
+docker compose ps
 ```
 
-Do not add this unless task specifically asks for Docker implementation.
+### Local vs Docker Setup
 
-### Volumes
+| Approach | Pros | Cons |
+|---|---|---|
+| Native MySQL | Fast, simple if already installed | OS-specific install/config issues |
+| Docker MySQL | Clean, repeatable, easy reset | Needs Docker daemon and port mapping understanding |
+| Full Docker app stack | Production-like | Not available yet because Dockerfile/compose missing |
 
-MySQL volume:
-
-```text
-ecommerce_user_mysql_data:/var/lib/mysql
-```
-
-Why important:
-
-Volume ke bina container delete hone par database data delete ho sakta hai.
-
-### Networks
-
-If app also runs in Docker Compose, DSN host should be service name:
-
-```env
-USER_SERVICE_DATABASE_DSN=ecommerce_user:ecommerce_password@tcp(user-mysql:3306)/user_db?parseTime=true&charset=utf8mb4&loc=UTC
-```
-
-If app runs on your host machine and MySQL runs in Docker:
-
-```env
-USER_SERVICE_DATABASE_DSN=ecommerce_user:ecommerce_password@tcp(127.0.0.1:3306)/user_db?parseTime=true&charset=utf8mb4&loc=UTC
-```
+For beginners, Docker MySQL + direct `go run` is best currently.
 
 ---
 
-## 9. Local Development Setup
+## 8. Project Run Instructions
 
 ### Step 1: Clone Repository
 
@@ -1078,76 +810,53 @@ git clone <repository-url>
 cd Ecommerce
 ```
 
-Verify important folders:
-
-```bash
-ls backend/services/user-service
-ls backend/shared/gen/go
-ls proto/ecommerce/user/v1
-```
-
-### Step 2: Install Required Tools
-
-```bash
-git --version
-go version
-docker --version
-docker compose version
-```
-
-Need Go 1.24+.
-
-### Step 3: Download Go Dependencies
+### Step 2: Go To Service Directory
 
 ```bash
 cd backend/services/user-service
+```
+
+### Step 3: Install/Download Go Dependencies
+
+```bash
 go mod download
 go mod tidy
 ```
 
-### Step 4: Start MySQL
+### Step 4: Setup MySQL
 
-Docker recommended:
+Docker option:
 
 ```bash
-docker volume create ecommerce_user_mysql_data
-
-docker run -d \
-  --name ecommerce-user-mysql \
-  -e MYSQL_ROOT_PASSWORD=root_password \
+docker run --name ecommerce-user-mysql \
+  -e MYSQL_ROOT_PASSWORD=root \
   -e MYSQL_DATABASE=user_db \
   -e MYSQL_USER=ecommerce_user \
-  -e MYSQL_PASSWORD=ecommerce_password \
+  -e MYSQL_PASSWORD=change_me_local_password \
   -p 3306:3306 \
   -v ecommerce_user_mysql_data:/var/lib/mysql \
-  mysql:8.4
+  -d mysql:8
 ```
 
-Wait until ready:
+Wait until MySQL is ready:
 
 ```bash
 docker logs ecommerce-user-mysql
-docker exec -it ecommerce-user-mysql mysqladmin ping -uroot -proot_password
+mysqladmin ping -h 127.0.0.1 -P 3306 -u root -p
 ```
 
-### Step 5: Run Database Migration
+### Step 5: Run Migration
 
-From repo root:
+From repository root:
 
 ```bash
 mysql -h 127.0.0.1 -P 3306 -u root -p < backend/services/user-service/migrations/001_create_user_tables.up.sql
 ```
 
-If using Docker and no local `mysql` CLI installed:
-
-```bash
-docker exec -i ecommerce-user-mysql mysql -uroot -proot_password < backend/services/user-service/migrations/001_create_user_tables.up.sql
-```
-
 Verify:
 
 ```bash
-docker exec -it ecommerce-user-mysql mysql -uecommerce_user -pecommerce_password user_db -e "SHOW TABLES;"
+mysql -h 127.0.0.1 -P 3306 -u ecommerce_user -p user_db -e "SHOW TABLES;"
 ```
 
 ### Step 6: Create `.env`
@@ -1158,10 +867,10 @@ Create:
 backend/services/user-service/.env
 ```
 
-Content:
+Use:
 
 ```env
-USER_SERVICE_DATABASE_DSN=ecommerce_user:ecommerce_password@tcp(127.0.0.1:3306)/user_db?parseTime=true&charset=utf8mb4&loc=UTC
+USER_SERVICE_DATABASE_DSN=ecommerce_user:change_me_local_password@tcp(127.0.0.1:3306)/user_db?parseTime=true&charset=utf8mb4&loc=UTC
 USER_SERVICE_GRPC_ADDRESS=:50052
 USER_SERVICE_GRPC_REFLECTION=true
 USER_SERVICE_SHUTDOWN_TIMEOUT=10s
@@ -1172,69 +881,40 @@ USER_SERVICE_DB_PING_TIMEOUT=5s
 USER_SERVICE_LOG_LEVEL=debug
 ```
 
-### Step 7: Load Env And Run Service
-
-Linux/macOS:
+### Step 7: Start Backend Service
 
 ```bash
 cd backend/services/user-service
 set -a
-source .env
+. ./.env
 set +a
 go run ./cmd/server
 ```
 
-Expected log:
+Expected log messages:
 
-```json
-{"msg":"user_service_grpc_listening","address":":50052"}
+```text
+user_service_starting
+user_service_grpc_listening
 ```
 
-### Step 8: Verify gRPC Service
+### Step 8: Verify gRPC APIs
 
-Install grpcurl if not installed:
-
-```bash
-go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
-```
-
-Make sure Go bin is in PATH:
-
-```bash
-export PATH="$PATH:$(go env GOPATH)/bin"
-```
-
-List services:
+In another terminal:
 
 ```bash
 grpcurl -plaintext localhost:50052 list
-```
-
-Describe User Service:
-
-```bash
 grpcurl -plaintext localhost:50052 describe ecommerce.user.v1.UserService
 ```
 
-Create test user:
+Current proto methods:
 
-```bash
-grpcurl -plaintext \
-  -d '{"auth_account_id":"auth_dev_001","email":"dev.user@example.com","phone":"+919999999999","full_name":"Dev User"}' \
-  localhost:50052 ecommerce.user.v1.UserService/CreateUser
-```
-
-Get user:
-
-```bash
-grpcurl -plaintext \
-  -d '{"user_id":"<returned_user_id>"}' \
-  localhost:50052 ecommerce.user.v1.UserService/GetUser
-```
-
-Note:
-
-Current service is internal gRPC. Public REST routes are expected through API Gateway in later tasks, not directly in this service.
+| Method | Purpose |
+|---|---|
+| `CreateUser` | Create base profile after Auth signup |
+| `GetUser` | Fetch profile |
+| `UpdateUserProfile` | Update profile fields |
+| `GetSellerProfile` | Fetch seller profile |
 
 ### Step 9: Run Tests
 
@@ -1243,571 +923,132 @@ cd backend/services/user-service
 go test ./...
 ```
 
-### Step 10: Build Binary
+---
 
-```bash
-cd backend/services/user-service
-go build -o ./bin/user-service ./cmd/server
-```
+## 9. Common Errors and Fixes
 
-Run built binary:
-
-```bash
-set -a
-source .env
-set +a
-./bin/user-service
-```
+| Error | Cause | Fix | Prevention |
+|---|---|---|---|
+| `USER_SERVICE_DATABASE_DSN is required` | `.env` not exported or variable missing | Run `set -a; . ./.env; set +a` | Add startup notes to README |
+| `ping mysql: connect: connection refused` | MySQL stopped or wrong host/port | Start MySQL; verify `3306` or `3307` | Keep DSN aligned with Docker port |
+| `Unknown database 'user_db'` | Migration/DB creation not run | Run up migration | Run migration before service |
+| `Access denied for user` | Wrong username/password/grants | Recreate user grants or fix DSN | Use one source of truth for DB credentials |
+| `port is already allocated` | Docker MySQL port busy | Map `3307:3306` and update DSN | Check `ss -ltnp` before run |
+| `listen tcp :50052: bind: address already in use` | gRPC port busy | Set `USER_SERVICE_GRPC_ADDRESS=:50053` | Reserve local ports in docs |
+| `grpcurl: connection refused` | Service not running or wrong port | Start service and use correct port | Watch startup logs |
+| `server does not support reflection` | Reflection disabled | Set `USER_SERVICE_GRPC_REFLECTION=true` locally | Keep reflection local-only |
+| `go: module requires go >= 1.24` | Old Go version | Install Go 1.24+ | Verify `go version` first |
+| `missing go.sum entry` | Dependencies not downloaded/tidied | Run `go mod tidy` | Commit updated `go.sum` |
+| `cannot find shared/gen/go` | Running service folder without full repo | Clone full repo | Do not copy module alone |
+| `Docker daemon not running` | Docker Desktop/service stopped | Start Docker | Verify `docker ps` before setup |
+| Migration foreign key error on rollback | Dropping parent before child | Use provided down migration | Do rollback only with versioned scripts |
+| Timestamp scan error | DSN missing `parseTime=true` | Add `parseTime=true` | Keep DSN example exact |
+| Invalid bool/duration ignored | Env value parse failed | Use `true`, `false`, `10s`, `5m` | Copy validated examples |
+| Permission denied on Docker | Linux user not in docker group | Add user to docker group and re-login | Configure Docker after install |
 
 ---
 
-## 10. Running The Project
+## 10. Security and Configuration Audit
 
-### Quick Start Commands
+| Area | Finding | Risk | Suggested fix |
+|---|---|---|---|
+| `.env` file | Local `.env` exists and is ignored by Git | Secrets can leak if copied manually | Keep ignored; add sanitized `.env.example` |
+| `.env.example` | Not found | Beginners may not know required variables | Add example with fake values |
+| DB password in DSN | DSN contains password | Logs/screenshots can expose secrets | Never log full DSN; mask password |
+| MySQL root usage | Migration examples use root | Unsafe for runtime | Use root/admin only for migration; app user for service |
+| Runtime DB grants | App user should not need DDL in production | Excess permissions increase blast radius | Grant SELECT/INSERT/UPDATE/DELETE only |
+| gRPC reflection | Defaults to true | Useful locally, risky if public | Set `USER_SERVICE_GRPC_REFLECTION=false` in prod |
+| gRPC transport security | No TLS config found | Internal plaintext only | Use private network or add TLS/mTLS later |
+| Health check | No gRPC health service found | Harder orchestration/debugging | Add standard `grpc_health_v1` health service |
+| Dockerfile | Not found | No containerized app runtime | Add Dockerfile in DevOps task |
+| docker-compose | Not found | Beginners need manual DB steps | Add local compose with MySQL healthcheck |
+| Migration runner | Plain SQL only | No version tracking | Add `golang-migrate` or `goose` later |
+| Object storage | KYC URL concept exists, storage integration absent | Future uploads may be insecure if rushed | Use private bucket, signed URLs, no public KYC files |
+| PII logging | User domain includes email, phone, address, KYC URL | Privacy risk | Mask PII and never log tokens/passwords |
+| Auth boundaries | Password/OTP/JWT intentionally not in User Service | Good separation | Keep Auth Service as source of truth |
+| Redis/Kafka env | Not present and not needed now | Fake env docs confuse setup | Add only when implementation uses them |
 
-From repo root:
+Hardcoded credential note:
 
-```bash
-# 1. Start MySQL
-docker start ecommerce-user-mysql
-
-# 2. If first time only, run migration
-docker exec -i ecommerce-user-mysql mysql -uroot -proot_password < backend/services/user-service/migrations/001_create_user_tables.up.sql
-
-# 3. Run User Service
-cd backend/services/user-service
-set -a
-source .env
-set +a
-go run ./cmd/server
-```
-
-### Service Startup Flow
-
-When `go run ./cmd/server` starts:
-
-1. Loads env variables from process environment.
-2. Validates `USER_SERVICE_DATABASE_DSN`.
-3. Opens MySQL connection.
-4. Pings MySQL with timeout.
-5. Creates repositories.
-6. Creates usecase service.
-7. Starts gRPC server on `USER_SERVICE_GRPC_ADDRESS`.
-8. Enables gRPC reflection if configured.
-9. Waits for SIGINT/SIGTERM.
-10. Gracefully shuts down.
-
-### Ports & Networking
-
-| Service | Port | Required now? | Purpose |
-|---|---:|---:|---|
-| User Service gRPC | 50052 | Yes | Internal gRPC API |
-| MySQL | 3306 | Yes | User database |
-| API Gateway HTTP | 8080 | No for current service | Future public REST entrypoint |
-| Redis | 6379 | No | Future cache/session/rate-limit |
-| RabbitMQ AMQP | 5672 | No | Future async events |
-| RabbitMQ UI | 15672 | No | Future queue debugging |
-| Kafka | 9092 | No | Future event streaming |
-| MinIO API | 9000 | No | Future KYC/object storage |
-| MinIO Console | 9001 | No | Future object storage admin UI |
-
-### Port Conflicts
-
-Check port usage:
-
-Linux/macOS:
-
-```bash
-lsof -i :50052
-lsof -i :3306
-```
-
-Linux alternative:
-
-```bash
-ss -ltnp | grep 50052
-ss -ltnp | grep 3306
-```
-
-Windows PowerShell:
-
-```powershell
-netstat -ano | findstr :50052
-netstat -ano | findstr :3306
-```
-
-Change gRPC port:
-
-```env
-USER_SERVICE_GRPC_ADDRESS=:50053
-```
-
-Change MySQL Docker host port:
-
-```bash
-docker run ... -p 3307:3306 ...
-```
-
-Then DSN:
-
-```env
-USER_SERVICE_DATABASE_DSN=ecommerce_user:ecommerce_password@tcp(127.0.0.1:3307)/user_db?parseTime=true&charset=utf8mb4&loc=UTC
-```
-
-Firewall notes:
-
-- Local development me `127.0.0.1` safest hai.
-- Production me DB port publicly expose mat karo.
-- gRPC service ko internal network/service mesh ke andar rakho.
+- The repository has local `.env` values in the working tree, but `.gitignore` excludes them.
+- Dependency docs should use `change_me_local_password`, not real local passwords.
+- Production secrets should come from a secret manager or deployment environment.
 
 ---
 
-## 11. Common Errors & Fixes
+## 11. Best Practices
 
-### `USER_SERVICE_DATABASE_DSN is required`
+- Never commit `.env`.
+- Create and commit `.env.example` with fake values.
+- Use strong passwords, even in shared dev environments.
+- Do not use MySQL root user for app runtime.
+- Keep migration/admin user separate from runtime app user.
+- Always include `parseTime=true` in Go MySQL DSN.
+- Use Docker volumes for local MySQL persistence.
+- Use `docker compose down -v` only when you intentionally want to delete local DB data.
+- Disable gRPC reflection in production or expose it only inside private networks.
+- Do not log passwords, OTP, JWT, refresh tokens, full DSN, or KYC document URLs.
+- Keep User Service profile ownership separate from Auth Service credential ownership.
+- Run `go mod tidy` after dependency changes.
+- Run `go test ./...` before pushing backend changes.
+- Use versioned migration tooling before adding many migrations.
+- Document every required service when Redis/Kafka/object storage is actually implemented.
 
-Cause:
+---
 
-Env variable set nahi hai.
+## 12. Final Checklist
 
-Fix:
+| Check | Done |
+|---|---|
+| Required language runtime Go 1.24+ installed | [ ] |
+| Git installed and repo cloned | [ ] |
+| Full repo structure available, including `backend/shared/gen/go` | [ ] |
+| Go dependencies downloaded with `go mod download` | [ ] |
+| MySQL installed or Docker MySQL running | [ ] |
+| MySQL port confirmed (`3306` or alternate `3307`) | [ ] |
+| `user_db` created | [ ] |
+| Migration `001_create_user_tables.up.sql` applied | [ ] |
+| Tables verified with `SHOW TABLES` | [ ] |
+| `backend/services/user-service/.env` created locally | [ ] |
+| `USER_SERVICE_DATABASE_DSN` points to correct DB host/port/user/password | [ ] |
+| `.env` sourced/exported before running service | [ ] |
+| Backend started with `go run ./cmd/server` | [ ] |
+| Startup logs show `user_service_grpc_listening` | [ ] |
+| gRPC verified with `grpcurl` | [ ] |
+| `go test ./...` passes | [ ] |
+| Common errors section reviewed | [ ] |
+| `.env.example` planned or added with fake values | [ ] |
+| Production notes reviewed: no root DB user, reflection disabled, secrets not logged | [ ] |
 
-```bash
-cd backend/services/user-service
-set -a
-source .env
-set +a
-go run ./cmd/server
-```
+---
 
-Prevention:
-
-`.env.example` add karo and onboarding docs follow karo.
-
-### `ping mysql: dial tcp 127.0.0.1:3306: connect: connection refused`
-
-Cause:
-
-MySQL running nahi hai, wrong host/port, or Docker container stopped.
-
-Fix:
-
-```bash
-docker ps -a
-docker start ecommerce-user-mysql
-docker logs ecommerce-user-mysql
-```
-
-Prevention:
-
-Service run karne se pehle MySQL health check karo.
-
-### `Access denied for user`
-
-Cause:
-
-Wrong username/password or user permissions missing.
-
-Fix:
-
-```bash
-docker exec -it ecommerce-user-mysql mysql -uroot -proot_password
-```
-
-Then:
-
-```sql
-CREATE USER IF NOT EXISTS 'ecommerce_user'@'%' IDENTIFIED BY 'ecommerce_password';
-GRANT SELECT, INSERT, UPDATE, DELETE ON user_db.* TO 'ecommerce_user'@'%';
-FLUSH PRIVILEGES;
-```
-
-Prevention:
-
-DB credentials `.env` and Docker env same rakho.
-
-### `Unknown database 'user_db'`
-
-Cause:
-
-Migration nahi chali or DB create nahi hua.
-
-Fix:
+## Quick Start Summary
 
 ```bash
-docker exec -i ecommerce-user-mysql mysql -uroot -proot_password < backend/services/user-service/migrations/001_create_user_tables.up.sql
-```
+# 1. Start MySQL with Docker
+docker run --name ecommerce-user-mysql \
+  -e MYSQL_ROOT_PASSWORD=root \
+  -e MYSQL_DATABASE=user_db \
+  -e MYSQL_USER=ecommerce_user \
+  -e MYSQL_PASSWORD=change_me_local_password \
+  -p 3306:3306 \
+  -v ecommerce_user_mysql_data:/var/lib/mysql \
+  -d mysql:8
 
-Prevention:
-
-First setup checklist me migration step skip mat karo.
-
-### `Error 1146: Table ... doesn't exist`
-
-Cause:
-
-DB exists but tables missing.
-
-Fix:
-
-Run up migration again:
-
-```bash
+# 2. Apply migration from repo root
 mysql -h 127.0.0.1 -P 3306 -u root -p < backend/services/user-service/migrations/001_create_user_tables.up.sql
-```
 
-Prevention:
-
-After migration `SHOW TABLES;` verify karo.
-
-### Timestamp Scan Error
-
-Cause:
-
-DSN me `parseTime=true` missing hai.
-
-Fix:
-
-```env
-USER_SERVICE_DATABASE_DSN=ecommerce_user:ecommerce_password@tcp(127.0.0.1:3306)/user_db?parseTime=true&charset=utf8mb4&loc=UTC
-```
-
-Prevention:
-
-Always copy DSN from this guide or `.env.example`.
-
-### `listen tcp :50052: bind: address already in use`
-
-Cause:
-
-Another process same gRPC port use kar raha hai.
-
-Fix:
-
-```bash
-lsof -i :50052
-```
-
-Stop old process or change:
-
-```env
-USER_SERVICE_GRPC_ADDRESS=:50053
-```
-
-Prevention:
-
-One service instance per local port.
-
-### Docker Daemon Not Running
-
-Cause:
-
-Docker Desktop/Engine started nahi hai.
-
-Fix:
-
-Windows/macOS: Docker Desktop start karo.
-
-Linux:
-
-```bash
-sudo systemctl start docker
-sudo systemctl status docker
-```
-
-Prevention:
-
-Setup ke start me `docker ps` run karo.
-
-### Docker Container Name Already Exists
-
-Cause:
-
-`ecommerce-user-mysql` container pehle se created hai.
-
-Fix:
-
-```bash
-docker start ecommerce-user-mysql
-```
-
-If broken and data not needed:
-
-```bash
-docker rm ecommerce-user-mysql
-```
-
-Prevention:
-
-Use `docker ps -a` before creating new container.
-
-### `go: command not found`
-
-Cause:
-
-Go installed nahi hai or PATH me nahi hai.
-
-Fix:
-
-Install Go and restart terminal.
-
-Prevention:
-
-`go version` setup checklist ka first step banao.
-
-### `go mod download` Failed
-
-Cause:
-
-Network/proxy issue or Go proxy blocked.
-
-Fix:
-
-```bash
-go env GOPROXY
-go env -w GOPROXY=https://proxy.golang.org,direct
-go mod download
-```
-
-Corporate network me proxy settings configure karo.
-
-Prevention:
-
-Dependencies commit karo through `go.mod` and `go.sum`; CI me dependency download test karo.
-
-### `grpcurl: command not found`
-
-Cause:
-
-grpcurl installed nahi ya Go bin PATH me missing.
-
-Fix:
-
-```bash
-go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
-export PATH="$PATH:$(go env GOPATH)/bin"
-```
-
-Prevention:
-
-Dev setup checklist me grpcurl optional tool mention karo.
-
-### `grpcurl localhost:50052 list` Fails
-
-Cause:
-
-Service not running, wrong port, or reflection disabled.
-
-Fix:
-
-```bash
-docker ps
-go run ./cmd/server
-```
-
-If reflection disabled:
-
-```env
-USER_SERVICE_GRPC_REFLECTION=true
-```
-
-Prevention:
-
-Reflection local dev me true rakho, production me policy ke according disable karo.
-
-### Permission Denied On Docker
-
-Cause:
-
-Linux user docker group me nahi hai.
-
-Fix:
-
-```bash
-sudo usermod -aG docker "$USER"
-```
-
-Logout/login.
-
-Prevention:
-
-Docker setup ke baad `docker run hello-world` test karo.
-
----
-
-## 12. Security & Best Practices
-
-### Secrets
-
-Best practices:
-
-- `.env` commit mat karo.
-- DB password strong rakho.
-- Local dev passwords simple ho sakte hain, production me strong generated secrets use karo.
-- Root DB user app ko mat do.
-- Production secrets Kubernetes Secret, cloud secret manager, or CI secret store me rakho.
-
-### MySQL
-
-Best practices:
-
-- App user ko limited permissions do.
-- Production me backups enable karo.
-- Migration se pehle backup/snapshot lo.
-- `utf8mb4` charset use karo.
-- DB publicly expose mat karo.
-- Connection pool DB capacity ke according tune karo.
-
-### gRPC
-
-Best practices:
-
-- Production me gRPC reflection disabled rakho unless internal debugging allowed hai.
-- Internal service traffic mTLS/service mesh behind rakho.
-- API Gateway/Auth Service verified metadata pass kare.
-- Request deadlines/timeouts set karo.
-- Health service add karo for readiness/liveness.
-
-### Logging
-
-Current code JSON logs stdout par print karta hai.
-
-Avoid logging:
-
-- Passwords
-- Tokens
-- OTPs
-- Full phone numbers
-- Full KYC URLs
-- Full addresses
-- DB DSN with password
-
-### Docker
-
-Best practices:
-
-- Use volumes for DB data.
-- Do not put production passwords in compose files.
-- Use healthchecks.
-- Pin image versions for stable builds.
-- Run app containers as non-root when Dockerfile is added.
-
-### Development
-
-Best practices:
-
-- `go test ./...` before commit.
-- `go mod tidy` after dependency changes.
-- Keep `go.mod` and `go.sum` committed.
-- Keep migrations up/down paired.
-- Do not directly edit generated protobuf files unless generation process is unavailable.
-- Keep User Service DB private to User Service. Other services should use gRPC/events.
-
----
-
-## 13. Missing Or Misconfigured Things
-
-This is a professional audit of setup/devops gaps found while analyzing the current implementation.
-
-| Finding | Impact | Suggested fix |
-|---|---|---|
-| No `backend/services/user-service/.env.example` | Beginners do not know required env vars. | Add `.env.example` with safe placeholder DSN. |
-| No Dockerfile for User Service | Cannot containerize service directly yet. | Add service Dockerfile when deployment task starts. |
-| No repo Docker Compose stack | Beginners must create MySQL manually. | Add `infra/compose/docker-compose.local.yml` with MySQL and future services. |
-| No integrated migration runner | Migrations must be run manually through MySQL CLI. | Add documented `make migrate-up` or golang-migrate support. |
-| Migration hardcodes `user_db` | Local okay, multi-env less flexible. | Keep for local or introduce environment-specific migration workflow. |
-| No gRPC health service | Orchestrators cannot check readiness cleanly. | Add `grpc.health.v1.Health` service. |
-| gRPC reflection defaults to true | Good for local, risky if exposed broadly. | Set `USER_SERVICE_GRPC_REFLECTION=false` in production. |
-| No metrics/tracing config | Production observability incomplete. | Add Prometheus/OpenTelemetry in future infra task. |
-| No strict auth enforcement in service startup docs | Internal trust boundary can be misunderstood. | Gateway/Auth must pass verified metadata; add auth interceptor/mTLS before production. |
-| Current `requireSelfOrService` allows empty caller user id | Internal calls without identity may pass self-check. | Review security policy; require service identity or authenticated user for protected methods. |
-| No Redis/Kafka env in current config | Future event/cache docs may confuse beginners. | Clearly mark Redis/Kafka as optional/future until code is wired. |
-| No object storage config for KYC files | KYC upload flow not runnable yet. | Add MinIO/S3 config only when file upload feature is implemented. |
-| No API Gateway in current User Service run path | REST examples from task docs are not directly runnable. | Document direct gRPC now, REST via Gateway later. |
-
-### Hardcoded Credentials Audit
-
-Current code does not hardcode DB username/password. Good.
-
-Credentials are expected through env DSN:
-
-```text
-USER_SERVICE_DATABASE_DSN
-```
-
-But documentation/examples must never use production-like secrets. Local examples in this file are development-only.
-
-### Insecure Defaults Audit
-
-| Default | Local okay? | Production recommendation |
-|---|---:|---|
-| `USER_SERVICE_GRPC_REFLECTION=true` | Yes | Set false or internal-only |
-| Bind `:50052` | Yes | Bind within private network/container |
-| MySQL root password in Docker command | Local only | Use secret manager |
-| Plaintext gRPC local testing | Local only | Use mTLS/service mesh in prod |
-
----
-
-## 14. Final Checklist
-
-Use this checklist for fresh setup.
-
-- [ ] Clone repository.
-- [ ] Install Git.
-- [ ] Install Go 1.24+.
-- [ ] Install Docker or native MySQL.
-- [ ] Verify `go version`.
-- [ ] Verify `docker --version` if using Docker.
-- [ ] Start MySQL on port `3306`.
-- [ ] Create/preserve MySQL Docker volume.
-- [ ] Run `001_create_user_tables.up.sql`.
-- [ ] Verify `user_db` exists.
-- [ ] Verify tables: `users`, `user_addresses`, `seller_profiles`, `seller_kyc_documents`.
-- [ ] Create `backend/services/user-service/.env`.
-- [ ] Add `USER_SERVICE_DATABASE_DSN` with `parseTime=true`.
-- [ ] Load `.env` into shell.
-- [ ] Run `go mod download`.
-- [ ] Run `go test ./...`.
-- [ ] Run `go run ./cmd/server`.
-- [ ] Verify gRPC listens on `localhost:50052`.
-- [ ] Install `grpcurl` if manual API testing needed.
-- [ ] Run `grpcurl -plaintext localhost:50052 list`.
-- [ ] Never commit `.env`.
-- [ ] Keep Redis/Kafka/MinIO optional until future tasks wire them in.
-
----
-
-## Quick Reference
-
-### Most Important Commands
-
-```bash
-# Start DB
-docker start ecommerce-user-mysql
-
-# Run migration
-docker exec -i ecommerce-user-mysql mysql -uroot -proot_password < backend/services/user-service/migrations/001_create_user_tables.up.sql
-
-# Run service
+# 3. Start service
 cd backend/services/user-service
 set -a
-source .env
+. ./.env
 set +a
 go run ./cmd/server
 
-# Test service
+# 4. Verify
 grpcurl -plaintext localhost:50052 list
-
-# Run tests
-go test ./...
 ```
 
-### Most Important Env Variable
+Final note:
 
-```env
-USER_SERVICE_DATABASE_DSN=ecommerce_user:ecommerce_password@tcp(127.0.0.1:3306)/user_db?parseTime=true&charset=utf8mb4&loc=UTC
-```
-
-### Beginner Rule
-
-Pehle MySQL chalao, phir migration chalao, phir `.env` load karo, phir Go service run karo. Agar service start nahi ho rahi, 80% cases me issue DB, DSN, port, ya `.env` loading ka hota hai.
+Task 1 ka core output domain boundary hai: User Service profile data own karta hai; password, OTP, JWT, roles Auth Service me rahenge; admin permissions/audit Superadmin boundary me rahenge; actual KYC binary files object storage me rahenge. Runtime setup ke liye current service ko Go, MySQL, gRPC/proto generated code, and environment variables chahiye.

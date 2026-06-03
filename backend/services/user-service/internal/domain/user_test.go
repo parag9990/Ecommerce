@@ -22,6 +22,7 @@ func TestNewUserNormalizesProfileFields(t *testing.T) {
 		Phone:         strptr(" +919999999999 "),
 		FullName:      " Aarav Sharma ",
 		AvatarURL:     strptr("https://cdn.example.com/avatars/user_123.png"),
+		CreatedBy:     "service:auth-service",
 		CreatedAt:     fixedTime(),
 	})
 	if err != nil {
@@ -45,6 +46,7 @@ func TestUserRejectsInvalidEmail(t *testing.T) {
 		AuthAccountID: "auth_123",
 		Email:         "not-an-email",
 		FullName:      "Aarav Sharma",
+		CreatedBy:     "service:auth-service",
 		CreatedAt:     fixedTime(),
 	})
 	if !errors.Is(err, ErrValidation) {
@@ -58,18 +60,20 @@ func TestDeletedUserCannotBePatched(t *testing.T) {
 		AuthAccountID: "auth_123",
 		Email:         "buyer@example.com",
 		FullName:      "Aarav Sharma",
+		CreatedBy:     "service:auth-service",
 		CreatedAt:     fixedTime(),
 	})
 	if err != nil {
 		t.Fatalf("NewUser returned error: %v", err)
 	}
 
-	if err := user.TransitionStatus(UserStatusDeleted, fixedTime().Add(time.Minute)); err != nil {
+	if err := user.TransitionStatus(UserStatusDeleted, "admin_123", fixedTime().Add(time.Minute)); err != nil {
 		t.Fatalf("TransitionStatus returned error: %v", err)
 	}
 
 	err = user.ApplyProfilePatch(UserProfilePatch{
 		FullName:  strptr("New Name"),
+		UpdatedBy: "user_123",
 		UpdatedAt: fixedTime().Add(2 * time.Minute),
 	})
 	if !errors.Is(err, ErrDeletedResource) {

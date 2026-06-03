@@ -24,8 +24,8 @@ type SellerProfile struct {
 	Status       SellerStatus
 	ApprovedBy   *string
 	ApprovedAt   *time.Time
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	AuditFields
+	StatusAuditFields
 }
 
 type NewSellerProfileParams struct {
@@ -35,6 +35,7 @@ type NewSellerProfileParams struct {
 	DisplayName  *string
 	GSTNumber    *string
 	SupportEmail *string
+	CreatedBy    string
 	CreatedAt    time.Time
 }
 
@@ -43,6 +44,7 @@ type SellerProfilePatch struct {
 	DisplayName  *string
 	GSTNumber    *string
 	SupportEmail *string
+	UpdatedBy    string
 	UpdatedAt    time.Time
 }
 
@@ -51,13 +53,21 @@ func NewSellerProfile(params NewSellerProfileParams) (SellerProfile, error) {
 	profile := SellerProfile{
 		SellerID:     trim(params.SellerID),
 		UserID:       trim(params.UserID),
-		StoreName:    trim(params.StoreName),
-		DisplayName:  cleanOptional(params.DisplayName),
+		StoreName:    cleanText(params.StoreName),
+		DisplayName:  cleanOptionalText(params.DisplayName),
 		GSTNumber:    cleanOptionalUpper(params.GSTNumber),
-		SupportEmail: cleanOptional(params.SupportEmail),
+		SupportEmail: cleanOptionalEmail(params.SupportEmail),
 		Status:       SellerStatusDraft,
-		CreatedAt:    createdAt,
-		UpdatedAt:    createdAt,
+		AuditFields: AuditFields{
+			CreatedBy: trim(params.CreatedBy),
+			UpdatedBy: trim(params.CreatedBy),
+			CreatedAt: createdAt,
+			UpdatedAt: createdAt,
+		},
+		StatusAuditFields: StatusAuditFields{
+			StatusChangedBy: cleanOptional(&params.CreatedBy),
+			StatusChangedAt: &createdAt,
+		},
 	}
 
 	if err := profile.Validate(); err != nil {
@@ -81,19 +91,18 @@ func (s SellerProfile) Validate() error {
 
 	validateID(&v, "seller_id", s.SellerID)
 	validateID(&v, "user_id", s.UserID)
-	validateRequiredString(&v, "store_name", s.StoreName, maxNameLength)
-	validateOptionalString(&v, "display_name", s.DisplayName, maxNameLength)
+	validateRequiredSafeText(&v, "store_name", s.StoreName, 3, maxNameLength)
+	if s.DisplayName != nil {
+		validateOptionalSafeText(&v, "display_name", *s.DisplayName, 2, maxNameLength)
+	}
 	validateOptionalGSTNumber(&v, "gst_number", s.GSTNumber)
 	validateOptionalEmail(&v, "support_email", s.SupportEmail)
 	if !s.Status.Valid() {
 		v.add("status", "is not supported")
 	}
 	validateOptionalID(&v, "approved_by", s.ApprovedBy)
-	validateTimestamp(&v, "created_at", s.CreatedAt)
-	validateTimestamp(&v, "updated_at", s.UpdatedAt)
-	if !s.CreatedAt.IsZero() && !s.UpdatedAt.IsZero() && s.UpdatedAt.Before(s.CreatedAt) {
-		v.add("updated_at", "cannot be before created_at")
-	}
+	validateAuditFields(&v, s.AuditFields)
+	validateStatusAuditFields(&v, s.StatusAuditFields, s.CreatedAt)
 	if s.ApprovedAt != nil && s.ApprovedAt.Before(s.CreatedAt) {
 		v.add("approved_at", "cannot be before created_at")
 	}
@@ -103,28 +112,35 @@ func (s SellerProfile) Validate() error {
 	if s.Status != SellerStatusActive && s.ApprovedAt != nil && s.ApprovedBy == nil {
 		v.add("approved_by", "is required when approved_at is present")
 	}
+	if (s.Status == SellerStatusRejected || s.Status == SellerStatusSuspended) && s.StatusReason == nil {
+		v.add("status_reason", "is required for rejected or suspended seller")
+	}
 
 	return v.err()
 }
 
 func (s *SellerProfile) ApplyPatch(patch SellerProfilePatch) error {
+	if trim(patch.UpdatedBy) == "" {
+		return ValidationError{Fields: []FieldError{{Field: "updated_by", Message: "is required"}}}
+	}
 	if patch.UpdatedAt.IsZero() {
 		return ValidationError{Fields: []FieldError{{Field: "updated_at", Message: "is required"}}}
 	}
 
 	next := *s
 	if patch.StoreName != nil {
-		next.StoreName = trim(*patch.StoreName)
+		next.StoreName = cleanText(*patch.StoreName)
 	}
 	if patch.DisplayName != nil {
-		next.DisplayName = cleanOptional(patch.DisplayName)
+		next.DisplayName = cleanOptionalText(patch.DisplayName)
 	}
 	if patch.GSTNumber != nil {
 		next.GSTNumber = cleanOptionalUpper(patch.GSTNumber)
 	}
 	if patch.SupportEmail != nil {
-		next.SupportEmail = cleanOptional(patch.SupportEmail)
+		next.SupportEmail = cleanOptionalEmail(patch.SupportEmail)
 	}
+	next.UpdatedBy = trim(patch.UpdatedBy)
 	next.UpdatedAt = patch.UpdatedAt.UTC()
 
 	if err := next.Validate(); err != nil {
@@ -135,28 +151,35 @@ func (s *SellerProfile) ApplyPatch(patch SellerProfilePatch) error {
 	return nil
 }
 
-func (s *SellerProfile) SubmitForReview(at time.Time) error {
-	return s.transition(SellerStatusPendingReview, nil, nil, at)
+func (s *SellerProfile) SubmitForReview(actorID string, at time.Time) error {
+	return s.transition(SellerStatusPendingReview, actorID, nil, nil, nil, at)
 }
 
 func (s *SellerProfile) Approve(approvedBy string, at time.Time) error {
 	reviewer := trim(approvedBy)
-	return s.transition(SellerStatusActive, &reviewer, &at, at)
+	return s.transition(SellerStatusActive, reviewer, &reviewer, &at, nil, at)
 }
 
-func (s *SellerProfile) Reject(at time.Time) error {
-	return s.transition(SellerStatusRejected, nil, nil, at)
+func (s *SellerProfile) Reject(actorID string, reason string, at time.Time) error {
+	statusReason := trim(reason)
+	return s.transition(SellerStatusRejected, actorID, nil, nil, &statusReason, at)
 }
 
-func (s *SellerProfile) Suspend(at time.Time) error {
-	return s.transition(SellerStatusSuspended, s.ApprovedBy, s.ApprovedAt, at)
+func (s *SellerProfile) Suspend(actorID string, reason string, at time.Time) error {
+	statusReason := trim(reason)
+	return s.transition(SellerStatusSuspended, actorID, s.ApprovedBy, s.ApprovedAt, &statusReason, at)
 }
 
-func (s *SellerProfile) Reactivate(at time.Time) error {
-	return s.transition(SellerStatusActive, s.ApprovedBy, s.ApprovedAt, at)
+func (s *SellerProfile) Reactivate(actorID string, reason string, at time.Time) error {
+	statusReason := cleanOptional(&reason)
+	return s.transition(SellerStatusActive, actorID, s.ApprovedBy, s.ApprovedAt, statusReason, at)
 }
 
-func (s *SellerProfile) transition(to SellerStatus, approvedBy *string, approvedAt *time.Time, at time.Time) error {
+func (s *SellerProfile) transition(to SellerStatus, actorID string, approvedBy *string, approvedAt *time.Time, reason *string, at time.Time) error {
+	actorID = trim(actorID)
+	if actorID == "" {
+		return ValidationError{Fields: []FieldError{{Field: "updated_by", Message: "is required"}}}
+	}
 	if at.IsZero() {
 		return ValidationError{Fields: []FieldError{{Field: "updated_at", Message: "is required"}}}
 	}
@@ -164,6 +187,7 @@ func (s *SellerProfile) transition(to SellerStatus, approvedBy *string, approved
 		return ValidationError{Fields: []FieldError{{Field: "status", Message: "is not supported"}}}
 	}
 	if s.Status == to {
+		s.UpdatedBy = actorID
 		s.UpdatedAt = at.UTC()
 		return s.Validate()
 	}
@@ -180,7 +204,12 @@ func (s *SellerProfile) transition(to SellerStatus, approvedBy *string, approved
 	} else if to != SellerStatusActive {
 		next.ApprovedAt = nil
 	}
-	next.UpdatedAt = at.UTC()
+	changedAt := at.UTC()
+	next.StatusChangedBy = &actorID
+	next.StatusChangedAt = &changedAt
+	next.StatusReason = cleanOptional(reason)
+	next.UpdatedBy = actorID
+	next.UpdatedAt = changedAt
 
 	if err := next.Validate(); err != nil {
 		return err

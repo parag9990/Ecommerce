@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	sharedvalidation "github.com/parag/ecommerce/backend/shared/validation"
 )
 
 var (
@@ -17,16 +19,14 @@ var (
 	ErrDuplicateUser        = errors.New("user already exists")
 	ErrAddressNotFound      = errors.New("address not found")
 	ErrDuplicateAddress     = errors.New("address already exists")
+	ErrAddressLimitExceeded = errors.New("address limit exceeded")
 	ErrSellerNotFound       = errors.New("seller profile not found")
 	ErrDuplicateSeller      = errors.New("seller profile already exists")
 	ErrKYCDocumentNotFound  = errors.New("kyc document not found")
 	ErrDuplicateKYCDocument = errors.New("kyc document already exists")
 )
 
-type FieldError struct {
-	Field   string
-	Message string
-}
+type FieldError = sharedvalidation.FieldError
 
 type ValidationError struct {
 	Fields []FieldError
@@ -55,6 +55,10 @@ type validationCollector struct {
 
 func (v *validationCollector) add(field string, message string) {
 	v.fields = append(v.fields, FieldError{Field: field, Message: message})
+}
+
+func (v *validationCollector) addAll(fields []FieldError) {
+	v.fields = append(v.fields, fields...)
 }
 
 func (v *validationCollector) err() error {

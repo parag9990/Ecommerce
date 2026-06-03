@@ -5,6 +5,13 @@ import (
 	"time"
 )
 
+type AddressStatus string
+
+const (
+	AddressStatusActive  AddressStatus = "active"
+	AddressStatusDeleted AddressStatus = "deleted"
+)
+
 type Address struct {
 	AddressID  string
 	UserID     string
@@ -17,9 +24,9 @@ type Address struct {
 	PostalCode string
 	Country    string
 	IsDefault  bool
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-	DeletedAt  *time.Time
+	Status     AddressStatus
+	AuditFields
+	SoftDeleteFields
 }
 
 type NewAddressParams struct {
@@ -34,6 +41,7 @@ type NewAddressParams struct {
 	PostalCode string
 	Country    string
 	IsDefault  bool
+	CreatedBy  string
 	CreatedAt  time.Time
 }
 
@@ -47,7 +55,17 @@ type AddressPatch struct {
 	PostalCode *string
 	Country    *string
 	IsDefault  *bool
+	UpdatedBy  string
 	UpdatedAt  time.Time
+}
+
+func (s AddressStatus) Valid() bool {
+	switch s {
+	case AddressStatusActive, AddressStatusDeleted:
+		return true
+	default:
+		return false
+	}
 }
 
 func NewAddress(params NewAddressParams) (Address, error) {
@@ -55,17 +73,22 @@ func NewAddress(params NewAddressParams) (Address, error) {
 	address := Address{
 		AddressID:  trim(params.AddressID),
 		UserID:     trim(params.UserID),
-		Name:       trim(params.Name),
-		Phone:      cleanOptional(params.Phone),
-		Line1:      trim(params.Line1),
-		Line2:      cleanOptional(params.Line2),
-		City:       trim(params.City),
-		State:      trim(params.State),
+		Name:       cleanText(params.Name),
+		Phone:      cleanOptionalPhone(params.Phone),
+		Line1:      cleanText(params.Line1),
+		Line2:      cleanOptionalText(params.Line2),
+		City:       cleanText(params.City),
+		State:      cleanText(params.State),
 		PostalCode: trim(params.PostalCode),
-		Country:    trim(params.Country),
+		Country:    cleanCountry(params.Country),
 		IsDefault:  params.IsDefault,
-		CreatedAt:  createdAt,
-		UpdatedAt:  createdAt,
+		Status:     AddressStatusActive,
+		AuditFields: AuditFields{
+			CreatedBy: trim(params.CreatedBy),
+			UpdatedBy: trim(params.CreatedBy),
+			CreatedAt: createdAt,
+			UpdatedAt: createdAt,
+		},
 	}
 
 	if err := address.Validate(); err != nil {
@@ -80,24 +103,27 @@ func (a Address) Validate() error {
 
 	validateID(&v, "address_id", a.AddressID)
 	validateID(&v, "user_id", a.UserID)
-	validateRequiredString(&v, "name", a.Name, maxNameLength)
+	validateRequiredSafeText(&v, "name", a.Name, 2, maxNameLength)
 	validateOptionalPhone(&v, "phone", a.Phone)
-	validateRequiredString(&v, "line1", a.Line1, maxAddressLineLength)
+	validateRequiredSafeText(&v, "line1", a.Line1, 5, maxAddressLineLength)
 	validateOptionalString(&v, "line2", a.Line2, maxAddressLineLength)
-	validateRequiredString(&v, "city", a.City, maxCityStateLength)
-	validateRequiredString(&v, "state", a.State, maxCityStateLength)
-	validateRequiredString(&v, "postal_code", a.PostalCode, maxPostalCodeLength)
-	validateRequiredString(&v, "country", a.Country, maxCountryLength)
-	validateTimestamp(&v, "created_at", a.CreatedAt)
-	validateTimestamp(&v, "updated_at", a.UpdatedAt)
-	if !a.CreatedAt.IsZero() && !a.UpdatedAt.IsZero() && a.UpdatedAt.Before(a.CreatedAt) {
-		v.add("updated_at", "cannot be before created_at")
+	validateRequiredSafeText(&v, "city", a.City, 2, maxCityStateLength)
+	validateRequiredSafeText(&v, "state", a.State, 2, maxCityStateLength)
+	validateRequiredSafeText(&v, "country", a.Country, 2, maxCountryLength)
+	validatePostalCode(&v, "postal_code", a.PostalCode, a.Country)
+	if !a.Status.Valid() {
+		v.add("status", "is not supported")
 	}
-	if a.DeletedAt != nil && a.DeletedAt.Before(a.CreatedAt) {
-		v.add("deleted_at", "cannot be before created_at")
-	}
+	validateAuditFields(&v, a.AuditFields)
+	validateSoftDeleteFields(&v, a.SoftDeleteFields, a.CreatedAt)
 	if a.DeletedAt != nil && a.IsDefault {
 		v.add("is_default", "deleted address cannot be default")
+	}
+	if a.Status == AddressStatusDeleted && a.DeletedAt == nil {
+		v.add("deleted_at", "is required for deleted address")
+	}
+	if a.Status == AddressStatusActive && a.DeletedAt != nil {
+		v.add("status", "deleted_at requires deleted status")
 	}
 
 	return v.err()
@@ -108,7 +134,7 @@ func (a Address) BelongsTo(userID string) bool {
 }
 
 func (a Address) IsDeleted() bool {
-	return a.DeletedAt != nil
+	return a.Status == AddressStatusDeleted || a.DeletedAt != nil
 }
 
 func (a *Address) ApplyPatch(patch AddressPatch) error {
@@ -118,35 +144,39 @@ func (a *Address) ApplyPatch(patch AddressPatch) error {
 	if patch.UpdatedAt.IsZero() {
 		return ValidationError{Fields: []FieldError{{Field: "updated_at", Message: "is required"}}}
 	}
+	if trim(patch.UpdatedBy) == "" {
+		return ValidationError{Fields: []FieldError{{Field: "updated_by", Message: "is required"}}}
+	}
 
 	next := *a
 	if patch.Name != nil {
-		next.Name = trim(*patch.Name)
+		next.Name = cleanText(*patch.Name)
 	}
 	if patch.Phone != nil {
-		next.Phone = cleanOptional(patch.Phone)
+		next.Phone = cleanOptionalPhone(patch.Phone)
 	}
 	if patch.Line1 != nil {
-		next.Line1 = trim(*patch.Line1)
+		next.Line1 = cleanText(*patch.Line1)
 	}
 	if patch.Line2 != nil {
-		next.Line2 = cleanOptional(patch.Line2)
+		next.Line2 = cleanOptionalText(patch.Line2)
 	}
 	if patch.City != nil {
-		next.City = trim(*patch.City)
+		next.City = cleanText(*patch.City)
 	}
 	if patch.State != nil {
-		next.State = trim(*patch.State)
+		next.State = cleanText(*patch.State)
 	}
 	if patch.PostalCode != nil {
 		next.PostalCode = trim(*patch.PostalCode)
 	}
 	if patch.Country != nil {
-		next.Country = trim(*patch.Country)
+		next.Country = cleanCountry(*patch.Country)
 	}
 	if patch.IsDefault != nil {
 		next.IsDefault = *patch.IsDefault
 	}
+	next.UpdatedBy = trim(patch.UpdatedBy)
 	next.UpdatedAt = patch.UpdatedAt.UTC()
 
 	if err := next.Validate(); err != nil {
@@ -157,7 +187,11 @@ func (a *Address) ApplyPatch(patch AddressPatch) error {
 	return nil
 }
 
-func (a *Address) MarkDeleted(at time.Time) error {
+func (a *Address) MarkDeleted(actorID string, at time.Time) error {
+	actorID = trim(actorID)
+	if actorID == "" {
+		return ValidationError{Fields: []FieldError{{Field: "deleted_by", Message: "is required"}}}
+	}
 	if at.IsZero() {
 		return ValidationError{Fields: []FieldError{{Field: "deleted_at", Message: "is required"}}}
 	}
@@ -166,7 +200,10 @@ func (a *Address) MarkDeleted(at time.Time) error {
 	}
 
 	deletedAt := at.UTC()
+	a.Status = AddressStatusDeleted
+	a.DeletedBy = &actorID
 	a.DeletedAt = &deletedAt
+	a.UpdatedBy = actorID
 	a.UpdatedAt = deletedAt
 	a.IsDefault = false
 	return a.Validate()

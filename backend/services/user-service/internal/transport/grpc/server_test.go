@@ -74,6 +74,73 @@ func TestGetSellerProfileRequiresID(t *testing.T) {
 	}
 }
 
+func TestCreateAddressMapsRequestAndCallerMetadata(t *testing.T) {
+	fake := &fakeUserUsecase{address: grpcValidAddress()}
+	server := NewServer(fake)
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
+		"x-user-id", "user_123",
+		"x-service-name", "api-gateway",
+		"x-roles", "buyer",
+	))
+
+	got, err := server.CreateAddress(ctx, &userv1.CreateAddressRequest{
+		UserId: "user_123",
+		Address: &userv1.AddressInput{
+			Name:       "Aarav Sharma",
+			Line1:      "221B MG Road",
+			City:       "Bengaluru",
+			State:      "Karnataka",
+			PostalCode: "560001",
+			Country:    "IN",
+			IsDefault:  true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateAddress returned error: %v", err)
+	}
+	if got.GetAddressId() != "addr_123" {
+		t.Fatalf("AddressId = %q, want addr_123", got.GetAddressId())
+	}
+	if fake.createAddressInput.Caller.UserID != "user_123" {
+		t.Fatalf("caller user id = %q", fake.createAddressInput.Caller.UserID)
+	}
+	if !fake.createAddressInput.IsDefault {
+		t.Fatal("expected is_default to be mapped")
+	}
+}
+
+func TestDeleteAddressMapsNotFound(t *testing.T) {
+	server := NewServer(&fakeUserUsecase{deleteAddressErr: domain.ErrAddressNotFound})
+
+	_, err := server.DeleteAddress(context.Background(), &userv1.DeleteAddressRequest{
+		UserId:    "user_123",
+		AddressId: "addr_missing",
+	})
+	if status.Code(err) != codes.NotFound {
+		t.Fatalf("status.Code() = %v, want %v", status.Code(err), codes.NotFound)
+	}
+}
+
+func TestUpdateSellerProfileMapsMask(t *testing.T) {
+	fake := &fakeUserUsecase{seller: grpcValidSeller()}
+	server := NewServer(fake)
+
+	_, err := server.UpdateSellerProfile(context.Background(), &userv1.UpdateSellerProfileRequest{
+		SellerId:  "seller_123",
+		UserId:    "user_123",
+		StoreName: "Updated Store",
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{
+			"store_name",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("UpdateSellerProfile returned error: %v", err)
+	}
+	if len(fake.updateSellerInput.Mask) != 1 || fake.updateSellerInput.Mask[0] != "store_name" {
+		t.Fatalf("mask = %#v", fake.updateSellerInput.Mask)
+	}
+}
+
 func TestMapValidationError(t *testing.T) {
 	err := domain.ValidationError{Fields: []domain.FieldError{{Field: "user_id", Message: "is required"}}}
 
@@ -83,10 +150,17 @@ func TestMapValidationError(t *testing.T) {
 }
 
 type fakeUserUsecase struct {
-	user        domain.User
-	seller      domain.SellerProfile
-	getUserErr  error
-	updateInput usecase.UpdateUserProfileInput
+	user                    domain.User
+	seller                  domain.SellerProfile
+	address                 domain.Address
+	getUserErr              error
+	deleteAddressErr        error
+	updateInput             usecase.UpdateUserProfileInput
+	createAddressInput      usecase.CreateAddressInput
+	updateSellerInput       usecase.UpdateSellerProfileInput
+	updateUserStatusInput   usecase.UpdateUserStatusInput
+	updateSellerStatusInput usecase.UpdateSellerStatusInput
+	reviewKYCInput          usecase.ReviewKYCDocumentInput
 }
 
 func (u *fakeUserUsecase) CreateUser(ctx context.Context, input usecase.CreateUserInput) (domain.User, error) {
@@ -111,11 +185,69 @@ func (u *fakeUserUsecase) UpdateUserProfile(ctx context.Context, input usecase.U
 	return u.user, nil
 }
 
+func (u *fakeUserUsecase) ListUserAddresses(ctx context.Context, input usecase.ListUserAddressesInput) ([]domain.Address, error) {
+	if u.address.AddressID == "" {
+		return []domain.Address{grpcValidAddress()}, nil
+	}
+	return []domain.Address{u.address}, nil
+}
+
+func (u *fakeUserUsecase) CreateAddress(ctx context.Context, input usecase.CreateAddressInput) (domain.Address, error) {
+	u.createAddressInput = input
+	if u.address.AddressID == "" {
+		return grpcValidAddress(), nil
+	}
+	return u.address, nil
+}
+
+func (u *fakeUserUsecase) UpdateAddress(ctx context.Context, input usecase.UpdateAddressInput) (domain.Address, error) {
+	if u.address.AddressID == "" {
+		return grpcValidAddress(), nil
+	}
+	return u.address, nil
+}
+
+func (u *fakeUserUsecase) DeleteAddress(ctx context.Context, input usecase.DeleteAddressInput) error {
+	if u.deleteAddressErr != nil {
+		return u.deleteAddressErr
+	}
+	return nil
+}
+
 func (u *fakeUserUsecase) GetSellerProfile(ctx context.Context, input usecase.GetSellerProfileInput) (domain.SellerProfile, error) {
 	if u.seller.SellerID == "" {
 		return grpcValidSeller(), nil
 	}
 	return u.seller, nil
+}
+
+func (u *fakeUserUsecase) UpdateSellerProfile(ctx context.Context, input usecase.UpdateSellerProfileInput) (domain.SellerProfile, error) {
+	u.updateSellerInput = input
+	if u.seller.SellerID == "" {
+		return grpcValidSeller(), nil
+	}
+	return u.seller, nil
+}
+
+func (u *fakeUserUsecase) UpdateUserStatus(ctx context.Context, input usecase.UpdateUserStatusInput) (domain.User, error) {
+	u.updateUserStatusInput = input
+	if u.user.UserID == "" {
+		return grpcValidUser(), nil
+	}
+	return u.user, nil
+}
+
+func (u *fakeUserUsecase) UpdateSellerStatus(ctx context.Context, input usecase.UpdateSellerStatusInput) (domain.SellerProfile, error) {
+	u.updateSellerStatusInput = input
+	if u.seller.SellerID == "" {
+		return grpcValidSeller(), nil
+	}
+	return u.seller, nil
+}
+
+func (u *fakeUserUsecase) ReviewKYCDocument(ctx context.Context, input usecase.ReviewKYCDocumentInput) (domain.KYCDocument, error) {
+	u.reviewKYCInput = input
+	return grpcValidKYCDocument(), nil
 }
 
 func grpcValidUser() domain.User {
@@ -125,8 +257,16 @@ func grpcValidUser() domain.User {
 		Email:         "buyer@example.com",
 		FullName:      "Aarav Sharma",
 		Status:        domain.UserStatusActive,
-		CreatedAt:     fixedGRPCTime(),
-		UpdatedAt:     fixedGRPCTime(),
+		AuditFields: domain.AuditFields{
+			CreatedBy: "service:auth-service",
+			UpdatedBy: "service:auth-service",
+			CreatedAt: fixedGRPCTime(),
+			UpdatedAt: fixedGRPCTime(),
+		},
+		StatusAuditFields: domain.StatusAuditFields{
+			StatusChangedBy: grpcStringPtr("service:auth-service"),
+			StatusChangedAt: grpcTimePtr(fixedGRPCTime()),
+		},
 	}
 }
 
@@ -136,9 +276,68 @@ func grpcValidSeller() domain.SellerProfile {
 		UserID:    "user_123",
 		StoreName: "Aarav Store",
 		Status:    domain.SellerStatusDraft,
-		CreatedAt: fixedGRPCTime(),
-		UpdatedAt: fixedGRPCTime(),
+		AuditFields: domain.AuditFields{
+			CreatedBy: "user_123",
+			UpdatedBy: "user_123",
+			CreatedAt: fixedGRPCTime(),
+			UpdatedAt: fixedGRPCTime(),
+		},
+		StatusAuditFields: domain.StatusAuditFields{
+			StatusChangedBy: grpcStringPtr("user_123"),
+			StatusChangedAt: grpcTimePtr(fixedGRPCTime()),
+		},
 	}
+}
+
+func grpcValidAddress() domain.Address {
+	return domain.Address{
+		AddressID:  "addr_123",
+		UserID:     "user_123",
+		Name:       "Aarav Sharma",
+		Line1:      "221B MG Road",
+		City:       "Bengaluru",
+		State:      "Karnataka",
+		PostalCode: "560001",
+		Country:    "IN",
+		IsDefault:  true,
+		Status:     domain.AddressStatusActive,
+		AuditFields: domain.AuditFields{
+			CreatedBy: "user_123",
+			UpdatedBy: "user_123",
+			CreatedAt: fixedGRPCTime(),
+			UpdatedAt: fixedGRPCTime(),
+		},
+	}
+}
+
+func grpcValidKYCDocument() domain.KYCDocument {
+	return domain.KYCDocument{
+		DocumentID:   "doc_123",
+		SellerID:     "seller_123",
+		DocumentType: domain.KYCDocumentTypePANCard,
+		StorageURL:   "s3://private-kyc/seller_123/doc_123.pdf",
+		Status:       domain.KYCStatusApproved,
+		ReviewedBy:   grpcStringPtr("admin_123"),
+		ReviewedAt:   grpcTimePtr(fixedGRPCTime()),
+		AuditFields: domain.AuditFields{
+			CreatedBy: "user_123",
+			UpdatedBy: "admin_123",
+			CreatedAt: fixedGRPCTime().Add(-time.Hour),
+			UpdatedAt: fixedGRPCTime(),
+		},
+		StatusAuditFields: domain.StatusAuditFields{
+			StatusChangedBy: grpcStringPtr("admin_123"),
+			StatusChangedAt: grpcTimePtr(fixedGRPCTime()),
+		},
+	}
+}
+
+func grpcStringPtr(value string) *string {
+	return &value
+}
+
+func grpcTimePtr(value time.Time) *time.Time {
+	return &value
 }
 
 func fixedGRPCTime() time.Time {

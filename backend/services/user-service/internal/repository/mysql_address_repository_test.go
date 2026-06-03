@@ -22,19 +22,21 @@ func TestMySQLAddressRepositorySetDefaultAddress(t *testing.T) {
 		t.Fatalf("NewMySQLAddressRepository returned error: %v", err)
 	}
 
+	audit := domain.NewMutationAudit("user_123", fixedRepositoryTime())
+
 	mock.ExpectBegin()
 	mock.ExpectQuery(`(?s)SELECT address_id.*FROM user_addresses.*FOR UPDATE`).
 		WithArgs("user_123", "addr_123").
 		WillReturnRows(sqlmock.NewRows([]string{"address_id"}).AddRow("addr_123"))
 	mock.ExpectExec(`(?s)UPDATE user_addresses.*SET is_default = FALSE`).
-		WithArgs("user_123").
+		WithArgs(audit.ActorID, audit.At, "user_123").
 		WillReturnResult(sqlmock.NewResult(0, 2))
 	mock.ExpectExec(`(?s)UPDATE user_addresses.*SET is_default = TRUE`).
-		WithArgs("user_123", "addr_123").
+		WithArgs(audit.ActorID, audit.At, "user_123", "addr_123").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
-	err = repo.SetDefaultAddress(context.Background(), "user_123", "addr_123")
+	err = repo.SetDefaultAddress(context.Background(), "user_123", "addr_123", audit)
 	if err != nil {
 		t.Fatalf("SetDefaultAddress returned error: %v", err)
 	}
@@ -55,13 +57,15 @@ func TestMySQLAddressRepositorySetDefaultAddressNotFoundRollsBack(t *testing.T) 
 		t.Fatalf("NewMySQLAddressRepository returned error: %v", err)
 	}
 
+	audit := domain.NewMutationAudit("user_123", fixedRepositoryTime())
+
 	mock.ExpectBegin()
 	mock.ExpectQuery(`(?s)SELECT address_id.*FROM user_addresses.*FOR UPDATE`).
 		WithArgs("user_123", "addr_missing").
 		WillReturnError(sql.ErrNoRows)
 	mock.ExpectRollback()
 
-	err = repo.SetDefaultAddress(context.Background(), "user_123", "addr_missing")
+	err = repo.SetDefaultAddress(context.Background(), "user_123", "addr_missing", audit)
 	if !errors.Is(err, domain.ErrAddressNotFound) {
 		t.Fatalf("expected ErrAddressNotFound, got %v", err)
 	}
@@ -82,11 +86,13 @@ func TestMySQLAddressRepositoryDeleteAddressNotFound(t *testing.T) {
 		t.Fatalf("NewMySQLAddressRepository returned error: %v", err)
 	}
 
-	mock.ExpectExec(`(?s)UPDATE user_addresses.*SET.*deleted_at = CURRENT_TIMESTAMP`).
-		WithArgs("user_123", "addr_missing").
+	audit := domain.NewMutationAudit("user_123", fixedRepositoryTime())
+
+	mock.ExpectExec(`(?s)UPDATE user_addresses.*SET.*status = 'deleted'`).
+		WithArgs(audit.ActorID, audit.At, audit.ActorID, audit.At, "user_123", "addr_missing").
 		WillReturnResult(sqlmock.NewResult(0, 0))
 
-	err = repo.DeleteAddress(context.Background(), "user_123", "addr_missing")
+	err = repo.DeleteAddress(context.Background(), "user_123", "addr_missing", audit)
 	if !errors.Is(err, domain.ErrAddressNotFound) {
 		t.Fatalf("expected ErrAddressNotFound, got %v", err)
 	}
