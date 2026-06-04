@@ -76,14 +76,14 @@ Priority values:
 
 | S.No | Task Name | Task Detail (simple Hinglish + deep explanation) | Dependencies | Priority | Status |
 |---:|---|---|---|---|---|
-| 1 | Define payment state machine | Initiated, authorized, captured, failed, refunded, partially refunded states clear karo. | Order lifecycle | P0 | Pending |
-| 2 | Create MySQL schema | Payment financial record hai, consistency and audit ke liye MySQL use karo. | State machine | P0 | Pending |
-| 3 | Gateway abstraction | Stripe/Razorpay-like providers ke liye interface banao. Provider swap karna easy hoga. | Schema | P0 | Pending |
-| 4 | Create payment intent | Order amount, currency, customer, idempotency key ke saath provider intent create karo. | Order Service | P0 | Pending |
-| 5 | Webhook handler | Provider webhook signature verify karo, payment status update karo. Webhook source of truth hoga. | Gateway provider | P0 | Pending |
-| 6 | Refund flow | Full and partial refunds support karo. Refund records immutable rakho. | Paid payments | P1 | Pending |
-| 7 | Retry handling | Failed payment retry allowed karo without duplicate charge. Idempotency mandatory hai. | Intent flow | P1 | Pending |
-| 8 | Reconciliation job | Provider settlement report compare karo. Financial mismatch alert karo. | Monitoring | P2 | Pending |
+| 1 | Define payment state machine | Initiated, authorized, captured, failed, refunded, partially refunded states clear karo. | Order lifecycle | P0 | Completed |
+| 2 | Create MySQL schema | Payment financial record hai, consistency and audit ke liye MySQL use karo. | State machine | P0 | Completed |
+| 3 | Gateway abstraction | Stripe/Razorpay-like providers ke liye interface banao. Provider swap karna easy hoga. | Schema | P0 | Completed |
+| 4 | Create payment intent | Order amount, currency, customer, idempotency key ke saath provider intent create karo. | Order Service | P0 | Completed |
+| 5 | Webhook handler | Provider webhook signature verify karo, payment status update karo. Webhook source of truth hoga. | Gateway provider | P0 | Completed |
+| 6 | Refund flow | Full and partial refunds support karo. Refund records immutable rakho. | Paid payments | P1 | Completed |
+| 7 | Retry handling | Failed payment retry allowed karo without duplicate charge. Idempotency mandatory hai. | Intent flow | P1 | Completed |
+| 8 | Reconciliation job | Provider settlement report compare karo. Financial mismatch alert karo. | Monitoring | P2 | Completed |
 
 ## Cart Service
 
