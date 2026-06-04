@@ -102,6 +102,129 @@ func TestUpdateFulfillmentRejectsBuyerAndInvalidStatus(t *testing.T) {
 	}
 }
 
+func TestListSellerOrdersUsesTrustedSellerMetadata(t *testing.T) {
+	sellerList := &handlerSellerListExecutor{page: domain.SellerOrderPage{
+		Orders: []domain.SellerOrderView{{
+			OrderID: "ord_1", ParentOrderStatus: domain.OrderStatusPaid,
+			SellerFulfillmentStatus: domain.SellerFulfillmentStatusPacked,
+			Currency:                "INR", SellerItemsTotal: 1500,
+			Items: []domain.SellerOrderItemView{{
+				OrderItemID: "oi_1", OrderID: "ord_1", ProductID: "product_1",
+				TitleSnapshot: "Snapshot", Quantity: 1, Currency: "INR", UnitAmount: 1500,
+				TotalAmount: 1500, FulfillmentStatus: domain.FulfillmentStatusPacked,
+			}},
+		}},
+	}}
+	handler := newTestHandlerWithSeller(t, &handlerCreateExecutor{}, sellerList, &handlerSellerFulfillmentExecutor{})
+	ctx := authctx.WithActor(context.Background(), authctx.Actor{
+		UserID: "user_1", SellerID: "seller_1", Roles: []string{"seller_order_manager"},
+	})
+	response, err := handler.ListSellerOrders(ctx, &orderv1.ListSellerOrdersRequest{
+		PageSize:          10,
+		FulfillmentFilter: orderv1.SellerFulfillmentStatus_SELLER_FULFILLMENT_STATUS_PACKED,
+	})
+	if err != nil {
+		t.Fatalf("ListSellerOrders() error = %v", err)
+	}
+	if sellerList.query.SellerID != "seller_1" || sellerList.query.ActorUserID != "user_1" ||
+		sellerList.query.PageSize != 10 || sellerList.query.FulfillmentFilter == nil ||
+		*sellerList.query.FulfillmentFilter != domain.SellerFulfillmentStatusPacked {
+		t.Fatalf("query = %+v, want trusted seller metadata and filter", sellerList.query)
+	}
+	if len(response.GetOrders()) != 1 || response.GetOrders()[0].GetSellerItemsTotal().GetMinorUnits() != 1500 ||
+		len(response.GetOrders()[0].GetItems()) != 1 {
+		t.Fatalf("response = %+v, want seller projection", response)
+	}
+}
+
+func TestSellerFulfillmentReturnsSellerProjectionOnly(t *testing.T) {
+	sellerUpdate := &handlerSellerFulfillmentExecutor{view: domain.SellerOrderView{
+		OrderID: "ord_1", ParentOrderStatus: domain.OrderStatusPaid,
+		SellerFulfillmentStatus: domain.SellerFulfillmentStatusPacked,
+		Currency:                "INR", SellerItemsTotal: 1000,
+		Items: []domain.SellerOrderItemView{{
+			OrderItemID: "oi_1", OrderID: "ord_1", ProductID: "product_1",
+			TitleSnapshot: "Snapshot", Quantity: 1, Currency: "INR",
+			UnitAmount: 1000, TotalAmount: 1000, FulfillmentStatus: domain.FulfillmentStatusPacked,
+		}},
+	}}
+	handler := newTestHandlerWithSeller(t, &handlerCreateExecutor{}, &handlerSellerListExecutor{}, sellerUpdate)
+	ctx := authctx.WithActor(context.Background(), authctx.Actor{
+		UserID: "user_1", SellerID: "seller_1", Roles: []string{"seller"},
+	})
+	response, err := handler.UpdateFulfillment(ctx, &orderv1.UpdateFulfillmentRequest{
+		OrderId: "ord_1", TargetStatus: orderv1.OrderStatus_ORDER_STATUS_PACKED,
+	})
+	if err != nil {
+		t.Fatalf("UpdateFulfillment() error = %v", err)
+	}
+	if sellerUpdate.command.ActorUserID != "user_1" || sellerUpdate.command.SellerID != "seller_1" ||
+		sellerUpdate.command.TargetStatus != domain.FulfillmentStatusPacked {
+		t.Fatalf("command = %+v, want trusted seller update", sellerUpdate.command)
+	}
+	if response.GetOrder() != nil || response.GetSellerOrder().GetOrderId() != "ord_1" ||
+		len(response.GetSellerOrder().GetItems()) != 1 {
+		t.Fatalf("response = %+v, want seller projection only", response)
+	}
+}
+
+func TestSellerRoutesRequireSellerIDMetadata(t *testing.T) {
+	handler := newTestHandler(t, &handlerCreateExecutor{})
+	ctx := authctx.WithActor(context.Background(), authctx.Actor{UserID: "user_1", Roles: []string{"seller"}})
+	_, err := handler.ListSellerOrders(ctx, &orderv1.ListSellerOrdersRequest{})
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("ListSellerOrders(no seller id) code = %v, want Unauthenticated", status.Code(err))
+	}
+	_, err = handler.UpdateFulfillment(ctx, &orderv1.UpdateFulfillmentRequest{
+		OrderId: "ord_1", TargetStatus: orderv1.OrderStatus_ORDER_STATUS_PACKED,
+	})
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("UpdateFulfillment(no seller id) code = %v, want Unauthenticated", status.Code(err))
+	}
+}
+
+func TestCancelOrderMapsAuthorizedActorAndReason(t *testing.T) {
+	cancel := &handlerCancelExecutor{order: domain.Order{
+		OrderID: "ord_1", UserID: "user_1", Status: domain.OrderStatusCancelled,
+	}}
+	handler, err := NewServer(
+		&handlerCreateExecutor{},
+		handlerGetExecutor{},
+		handlerListExecutor{},
+		&handlerSellerListExecutor{},
+		handlerFulfillmentExecutor{},
+		cancel,
+		&handlerSellerFulfillmentExecutor{},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	ctx := authctx.WithActor(context.Background(), authctx.Actor{
+		UserID: "user_1", Roles: []string{"buyer"}, RequestID: "req_1",
+	})
+	response, err := handler.CancelOrder(ctx, &orderv1.CancelOrderRequest{
+		OrderId: "ord_1", ReasonCode: "Buyer Requested",
+	})
+	if err != nil {
+		t.Fatalf("CancelOrder() error = %v", err)
+	}
+	if cancel.command.ActorID != "user_1" || cancel.command.OrderID != "ord_1" ||
+		cancel.command.TraceID != "req_1" || cancel.command.ReasonCode != "Buyer Requested" ||
+		response.GetOrder().GetStatus() != orderv1.OrderStatus_ORDER_STATUS_CANCELLED {
+		t.Fatalf("command/response = %+v/%+v, want mapped cancellation", cancel.command, response)
+	}
+}
+
+func TestCancelOrderRejectsUnprivilegedActor(t *testing.T) {
+	handler := newTestHandler(t, &handlerCreateExecutor{})
+	ctx := authctx.WithActor(context.Background(), authctx.Actor{UserID: "seller_1", Roles: []string{"seller"}})
+	_, err := handler.CancelOrder(ctx, &orderv1.CancelOrderRequest{OrderId: "ord_1"})
+	if status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("CancelOrder(seller) code = %v, want PermissionDenied", status.Code(err))
+	}
+}
+
 func TestRegisteredServiceRequiresTrustedCallerMetadata(t *testing.T) {
 	handler := newTestHandler(t, &handlerCreateExecutor{})
 	server, err := NewGRPCServer(
@@ -169,15 +292,70 @@ func (handlerListExecutor) Execute(context.Context, usecase.ListOrdersQuery) (do
 	return domain.OrderPage{}, nil
 }
 
+type handlerSellerListExecutor struct {
+	query usecase.ListSellerOrdersQuery
+	page  domain.SellerOrderPage
+	err   error
+}
+
+func (f *handlerSellerListExecutor) Execute(_ context.Context, query usecase.ListSellerOrdersQuery) (domain.SellerOrderPage, error) {
+	f.query = query
+	return f.page, f.err
+}
+
 type handlerFulfillmentExecutor struct{}
 
 func (handlerFulfillmentExecutor) Execute(context.Context, usecase.UpdateFulfillmentCommand) (domain.Order, error) {
 	return domain.Order{}, nil
 }
 
+type handlerCancelExecutor struct {
+	command usecase.CancelOrderCommand
+	order   domain.Order
+	err     error
+}
+
+func (f *handlerCancelExecutor) Execute(_ context.Context, command usecase.CancelOrderCommand) (domain.Order, error) {
+	f.command = command
+	if f.order.OrderID == "" {
+		f.order = domain.Order{OrderID: command.OrderID, UserID: command.ActorID, Status: domain.OrderStatusCancelled}
+	}
+	return f.order, f.err
+}
+
+type handlerSellerFulfillmentExecutor struct {
+	command usecase.UpdateSellerFulfillmentCommand
+	view    domain.SellerOrderView
+	err     error
+}
+
+func (f *handlerSellerFulfillmentExecutor) Execute(_ context.Context, command usecase.UpdateSellerFulfillmentCommand) (domain.SellerOrderView, error) {
+	f.command = command
+	return f.view, f.err
+}
+
 func newTestHandler(t *testing.T, create usecase.CreateOrderExecutor) *Server {
 	t.Helper()
-	handler, err := NewServer(create, handlerGetExecutor{}, handlerListExecutor{}, handlerFulfillmentExecutor{}, nil)
+	return newTestHandlerWithSeller(t, create, &handlerSellerListExecutor{}, &handlerSellerFulfillmentExecutor{})
+}
+
+func newTestHandlerWithSeller(
+	t *testing.T,
+	create usecase.CreateOrderExecutor,
+	listSeller usecase.ListSellerOrdersExecutor,
+	updateSeller usecase.UpdateSellerFulfillmentExecutor,
+) *Server {
+	t.Helper()
+	handler, err := NewServer(
+		create,
+		handlerGetExecutor{},
+		handlerListExecutor{},
+		listSeller,
+		handlerFulfillmentExecutor{},
+		&handlerCancelExecutor{},
+		updateSeller,
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}

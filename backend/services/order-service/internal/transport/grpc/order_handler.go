@@ -94,10 +94,91 @@ func (s *Server) ListOrders(ctx context.Context, request *orderv1.ListOrdersRequ
 	}, nil
 }
 
+func (s *Server) ListSellerOrders(ctx context.Context, request *orderv1.ListSellerOrdersRequest) (*orderv1.ListSellerOrdersResponse, error) {
+	actor, err := authctx.ActorFromContext(ctx)
+	if err != nil {
+		return nil, toStatusError(err)
+	}
+	if !isSellerOrderActor(actor) {
+		return nil, status.Error(codes.PermissionDenied, "seller order role required")
+	}
+	if actor.SellerID == "" {
+		return nil, toStatusError(domain.ErrUnauthenticated)
+	}
+	pageSize, filter, token, err := validateListSellerOrdersRequest(request)
+	if err != nil {
+		return nil, toStatusError(err)
+	}
+	page, err := s.listSellerOrders.Execute(ctx, usecase.ListSellerOrdersQuery{
+		SellerID:          actor.SellerID,
+		ActorUserID:       actor.UserID,
+		PageSize:          pageSize,
+		PageToken:         token,
+		FulfillmentFilter: filter,
+	})
+	if err != nil {
+		return nil, toStatusError(err)
+	}
+	return &orderv1.ListSellerOrdersResponse{
+		Orders:        mapSellerOrderViews(page.Orders),
+		NextPageToken: page.NextPageToken,
+	}, nil
+}
+
+func (s *Server) CancelOrder(ctx context.Context, request *orderv1.CancelOrderRequest) (*orderv1.CancelOrderResponse, error) {
+	actor, err := authctx.ActorFromContext(ctx)
+	if err != nil {
+		return nil, toStatusError(err)
+	}
+	if !authctx.HasRole(actor, "buyer") && !authctx.HasRole(actor, "admin") && !authctx.HasRole(actor, "order_manager") {
+		return nil, status.Error(codes.PermissionDenied, "order cancellation role required")
+	}
+	if err := validateCancelOrderRequest(request); err != nil {
+		return nil, toStatusError(err)
+	}
+	order, err := s.cancelOrder.Execute(ctx, usecase.CancelOrderCommand{
+		ActorID:    actor.UserID,
+		Roles:      actor.Roles,
+		OrderID:    request.GetOrderId(),
+		TraceID:    actor.RequestID,
+		ReasonCode: request.GetReasonCode(),
+		OccurredAt: s.now().UTC(),
+	})
+	if err != nil {
+		return nil, toStatusError(err)
+	}
+	return &orderv1.CancelOrderResponse{Order: mapOrder(order)}, nil
+}
+
 func (s *Server) UpdateFulfillment(ctx context.Context, request *orderv1.UpdateFulfillmentRequest) (*orderv1.UpdateFulfillmentResponse, error) {
 	actor, err := authctx.ActorFromContext(ctx)
 	if err != nil {
 		return nil, toStatusError(err)
+	}
+	if isSellerOrderActor(actor) {
+		if actor.SellerID == "" {
+			return nil, toStatusError(domain.ErrUnauthenticated)
+		}
+		targetStatus, err := validateSellerFulfillmentRequest(request)
+		if err != nil {
+			return nil, toStatusError(err)
+		}
+		view, err := s.updateSeller.Execute(ctx, usecase.UpdateSellerFulfillmentCommand{
+			ActorUserID:    actor.UserID,
+			SellerID:       actor.SellerID,
+			Roles:          actor.Roles,
+			OrderID:        request.GetOrderId(),
+			TargetStatus:   targetStatus,
+			TrackingNumber: request.GetTrackingNumber(),
+			Carrier:        request.GetCarrier(),
+			Note:           request.GetNote(),
+			RequestID:      actor.RequestID,
+			OccurredAt:     s.now().UTC(),
+		})
+		if err != nil {
+			return nil, toStatusError(err)
+		}
+		return &orderv1.UpdateFulfillmentResponse{SellerOrder: mapSellerOrderView(view)}, nil
 	}
 	if !authctx.HasRole(actor, "seller", "order_manager", "admin", "logistics") {
 		return nil, status.Error(codes.PermissionDenied, "fulfillment role required")
@@ -108,6 +189,7 @@ func (s *Server) UpdateFulfillment(ctx context.Context, request *orderv1.UpdateF
 	}
 	order, err := s.updateFulfillment.Execute(ctx, usecase.UpdateFulfillmentCommand{
 		ActorID:        actor.UserID,
+		SellerID:       actor.SellerID,
 		Roles:          actor.Roles,
 		OrderID:        request.GetOrderId(),
 		TraceID:        actor.RequestID,
@@ -121,4 +203,8 @@ func (s *Server) UpdateFulfillment(ctx context.Context, request *orderv1.UpdateF
 		return nil, toStatusError(err)
 	}
 	return &orderv1.UpdateFulfillmentResponse{Order: mapOrder(order)}, nil
+}
+
+func isSellerOrderActor(actor authctx.Actor) bool {
+	return authctx.HasRole(actor, "seller", "seller_manager", "seller_order_manager")
 }

@@ -53,6 +53,32 @@ func validateListOrdersRequest(request *orderv1.ListOrdersRequest) (int, *domain
 	return pageSize, filter, request.GetPageToken(), nil
 }
 
+func validateListSellerOrdersRequest(request *orderv1.ListSellerOrdersRequest) (int, *domain.SellerFulfillmentStatus, string, error) {
+	if request == nil {
+		return usecase.DefaultOrderPageSize, nil, "", nil
+	}
+	pageSize := int(request.GetPageSize())
+	if pageSize == 0 {
+		pageSize = usecase.DefaultOrderPageSize
+	}
+	if pageSize < 1 || pageSize > usecase.MaxOrderPageSize {
+		return 0, nil, "", domain.ErrInvalidRequest
+	}
+	filter, ok := mapSellerFulfillmentStatusFromProto(request.GetFulfillmentFilter())
+	if !ok {
+		return 0, nil, "", domain.ErrInvalidRequest
+	}
+	return pageSize, filter, request.GetPageToken(), nil
+}
+
+func validateCancelOrderRequest(request *orderv1.CancelOrderRequest) error {
+	if request == nil || strings.TrimSpace(request.GetOrderId()) == "" ||
+		len(strings.TrimSpace(request.GetReasonCode())) > 80 {
+		return domain.ErrInvalidRequest
+	}
+	return nil
+}
+
 func validateFulfillmentRequest(request *orderv1.UpdateFulfillmentRequest) (domain.OrderStatus, error) {
 	if request == nil || strings.TrimSpace(request.GetOrderId()) == "" {
 		return "", domain.ErrInvalidRequest
@@ -66,4 +92,21 @@ func validateFulfillmentRequest(request *orderv1.UpdateFulfillmentRequest) (doma
 		return "", domain.ErrTrackingRequired
 	}
 	return status, nil
+}
+
+func validateSellerFulfillmentRequest(request *orderv1.UpdateFulfillmentRequest) (domain.FulfillmentStatus, error) {
+	status, err := validateFulfillmentRequest(request)
+	if err != nil {
+		return "", err
+	}
+	switch status {
+	case domain.OrderStatusPacked:
+		return domain.FulfillmentStatusPacked, nil
+	case domain.OrderStatusShipped:
+		return domain.FulfillmentStatusShipped, nil
+	case domain.OrderStatusDelivered:
+		return domain.FulfillmentStatusDelivered, nil
+	default:
+		return "", domain.ErrInvalidRequest
+	}
 }

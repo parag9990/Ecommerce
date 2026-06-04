@@ -22,6 +22,8 @@ const (
 	OrderService_CreateOrder_FullMethodName       = "/ecommerce.order.v1.OrderService/CreateOrder"
 	OrderService_GetOrder_FullMethodName          = "/ecommerce.order.v1.OrderService/GetOrder"
 	OrderService_ListOrders_FullMethodName        = "/ecommerce.order.v1.OrderService/ListOrders"
+	OrderService_ListSellerOrders_FullMethodName  = "/ecommerce.order.v1.OrderService/ListSellerOrders"
+	OrderService_CancelOrder_FullMethodName       = "/ecommerce.order.v1.OrderService/CancelOrder"
 	OrderService_UpdateFulfillment_FullMethodName = "/ecommerce.order.v1.OrderService/UpdateFulfillment"
 )
 
@@ -32,6 +34,8 @@ type OrderServiceClient interface {
 	CreateOrder(ctx context.Context, in *CreateOrderRequest, opts ...grpc.CallOption) (*CreateOrderResponse, error)
 	GetOrder(ctx context.Context, in *GetOrderRequest, opts ...grpc.CallOption) (*GetOrderResponse, error)
 	ListOrders(ctx context.Context, in *ListOrdersRequest, opts ...grpc.CallOption) (*ListOrdersResponse, error)
+	ListSellerOrders(ctx context.Context, in *ListSellerOrdersRequest, opts ...grpc.CallOption) (*ListSellerOrdersResponse, error)
+	CancelOrder(ctx context.Context, in *CancelOrderRequest, opts ...grpc.CallOption) (*CancelOrderResponse, error)
 	UpdateFulfillment(ctx context.Context, in *UpdateFulfillmentRequest, opts ...grpc.CallOption) (*UpdateFulfillmentResponse, error)
 }
 
@@ -73,6 +77,26 @@ func (c *orderServiceClient) ListOrders(ctx context.Context, in *ListOrdersReque
 	return out, nil
 }
 
+func (c *orderServiceClient) ListSellerOrders(ctx context.Context, in *ListSellerOrdersRequest, opts ...grpc.CallOption) (*ListSellerOrdersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListSellerOrdersResponse)
+	err := c.cc.Invoke(ctx, OrderService_ListSellerOrders_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orderServiceClient) CancelOrder(ctx context.Context, in *CancelOrderRequest, opts ...grpc.CallOption) (*CancelOrderResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CancelOrderResponse)
+	err := c.cc.Invoke(ctx, OrderService_CancelOrder_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *orderServiceClient) UpdateFulfillment(ctx context.Context, in *UpdateFulfillmentRequest, opts ...grpc.CallOption) (*UpdateFulfillmentResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(UpdateFulfillmentResponse)
@@ -90,6 +114,8 @@ type OrderServiceServer interface {
 	CreateOrder(context.Context, *CreateOrderRequest) (*CreateOrderResponse, error)
 	GetOrder(context.Context, *GetOrderRequest) (*GetOrderResponse, error)
 	ListOrders(context.Context, *ListOrdersRequest) (*ListOrdersResponse, error)
+	ListSellerOrders(context.Context, *ListSellerOrdersRequest) (*ListSellerOrdersResponse, error)
+	CancelOrder(context.Context, *CancelOrderRequest) (*CancelOrderResponse, error)
 	UpdateFulfillment(context.Context, *UpdateFulfillmentRequest) (*UpdateFulfillmentResponse, error)
 	mustEmbedUnimplementedOrderServiceServer()
 }
@@ -109,6 +135,12 @@ func (UnimplementedOrderServiceServer) GetOrder(context.Context, *GetOrderReques
 }
 func (UnimplementedOrderServiceServer) ListOrders(context.Context, *ListOrdersRequest) (*ListOrdersResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListOrders not implemented")
+}
+func (UnimplementedOrderServiceServer) ListSellerOrders(context.Context, *ListSellerOrdersRequest) (*ListSellerOrdersResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListSellerOrders not implemented")
+}
+func (UnimplementedOrderServiceServer) CancelOrder(context.Context, *CancelOrderRequest) (*CancelOrderResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CancelOrder not implemented")
 }
 func (UnimplementedOrderServiceServer) UpdateFulfillment(context.Context, *UpdateFulfillmentRequest) (*UpdateFulfillmentResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateFulfillment not implemented")
@@ -188,6 +220,42 @@ func _OrderService_ListOrders_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OrderService_ListSellerOrders_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListSellerOrdersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrderServiceServer).ListSellerOrders(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OrderService_ListSellerOrders_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrderServiceServer).ListSellerOrders(ctx, req.(*ListSellerOrdersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OrderService_CancelOrder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CancelOrderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrderServiceServer).CancelOrder(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OrderService_CancelOrder_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrderServiceServer).CancelOrder(ctx, req.(*CancelOrderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _OrderService_UpdateFulfillment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UpdateFulfillmentRequest)
 	if err := dec(in); err != nil {
@@ -224,6 +292,14 @@ var OrderService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListOrders",
 			Handler:    _OrderService_ListOrders_Handler,
+		},
+		{
+			MethodName: "ListSellerOrders",
+			Handler:    _OrderService_ListSellerOrders_Handler,
+		},
+		{
+			MethodName: "CancelOrder",
+			Handler:    _OrderService_CancelOrder_Handler,
 		},
 		{
 			MethodName: "UpdateFulfillment",

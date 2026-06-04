@@ -485,6 +485,65 @@ func (r *MySQLOrderRepository) TransitionPaymentResult(
 	`, to.String(), strings.TrimSpace(orderID), strings.TrimSpace(paymentID), from.String())
 }
 
+func (r *MySQLOrderRepository) CancelOrder(
+	ctx context.Context,
+	orderID string,
+	from domain.OrderStatus,
+	history domain.OrderStatusHistoryEntry,
+	event domain.OutboxEvent,
+) (domain.Order, error) {
+	orderID = strings.TrimSpace(orderID)
+	if err := validateTransitionHistory(history, orderID, from, domain.OrderStatusCancelled); err != nil {
+		return domain.Order{}, err
+	}
+	if err := validateOutboxEventForHistory(event, orderID, history.ID); err != nil {
+		return domain.Order{}, err
+	}
+
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		return domain.Order{}, databaseUnavailable("begin cancel order transaction", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	result, err := tx.ExecContext(ctx, `
+		UPDATE orders
+		SET status = ?
+		WHERE order_id = ?
+		  AND status = ?
+	`, domain.OrderStatusCancelled.String(), orderID, from.String())
+	if err != nil {
+		return domain.Order{}, databaseUnavailable("cancel order", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return domain.Order{}, databaseUnavailable("read cancel order result", err)
+	}
+	if affected != 1 {
+		return domain.Order{}, domain.ErrInvalidOrderStatusTransition
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE order_items
+		SET fulfillment_status = ?
+		WHERE order_id = ?
+		  AND fulfillment_status NOT IN ('cancelled', 'returned', 'delivered')
+	`, string(domain.FulfillmentStatusCancelled), orderID); err != nil {
+		return domain.Order{}, databaseUnavailable("cancel order item fulfillment statuses", err)
+	}
+	if err := insertStatusHistory(ctx, tx, history); err != nil {
+		return domain.Order{}, databaseUnavailable("insert cancellation status history", err)
+	}
+	if err := insertOutboxEvent(ctx, tx, event); err != nil {
+		return domain.Order{}, databaseUnavailable("insert cancellation outbox event", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.Order{}, databaseUnavailable("commit cancel order transaction", err)
+	}
+	return r.GetOrder(ctx, orderID)
+}
+
 func (r *MySQLOrderRepository) UpdateFulfillment(ctx context.Context, transition domain.FulfillmentTransition, event *domain.OutboxEvent) (domain.Order, error) {
 	if event != nil {
 		if err := validateOutboxEventForHistory(*event, transition.OrderID, transition.History.ID); err != nil {

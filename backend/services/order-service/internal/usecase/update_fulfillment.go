@@ -45,6 +45,7 @@ func (u *UpdateFulfillmentUsecase) WithClock(clock Clock) {
 
 func (u *UpdateFulfillmentUsecase) Execute(ctx context.Context, command UpdateFulfillmentCommand) (domain.Order, error) {
 	command.ActorID = strings.TrimSpace(command.ActorID)
+	command.SellerID = strings.TrimSpace(command.SellerID)
 	command.OrderID = strings.TrimSpace(command.OrderID)
 	command.TraceID = strings.TrimSpace(command.TraceID)
 	command.Carrier = strings.TrimSpace(command.Carrier)
@@ -55,7 +56,7 @@ func (u *UpdateFulfillmentUsecase) Execute(ctx context.Context, command UpdateFu
 		len(command.TraceID) > maxSessionIDLength {
 		return domain.Order{}, domain.ErrInvalidRequest
 	}
-	actorType, requiredSellerID, err := fulfillmentActor(command.ActorID, command.Roles)
+	actorType, requiredSellerID, err := fulfillmentActor(command.ActorID, command.SellerID, command.Roles)
 	if err != nil {
 		return domain.Order{}, err
 	}
@@ -145,14 +146,17 @@ func (u *UpdateFulfillmentUsecase) Execute(ctx context.Context, command UpdateFu
 	return order, nil
 }
 
-func fulfillmentActor(actorID string, roles []string) (domain.OrderStatusActorType, string, error) {
+func fulfillmentActor(actorID string, sellerID string, roles []string) (domain.OrderStatusActorType, string, error) {
 	switch {
 	case hasAnyRole(roles, "admin", "order_manager"):
 		return domain.OrderStatusActorAdmin, "", nil
 	case hasAnyRole(roles, "logistics"):
 		return domain.OrderStatusActorLogistics, "", nil
 	case hasAnyRole(roles, "seller"):
-		return domain.OrderStatusActorSeller, actorID, nil
+		if strings.TrimSpace(sellerID) == "" {
+			return "", "", domain.ErrUnauthenticated
+		}
+		return domain.OrderStatusActorSeller, strings.TrimSpace(sellerID), nil
 	default:
 		return "", "", domain.ErrForbidden
 	}

@@ -10,6 +10,8 @@ service OrderService {
   rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
   rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
   rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
+  rpc ListSellerOrders(ListSellerOrdersRequest) returns (ListSellerOrdersResponse);
+  rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
   rpc UpdateFulfillment(UpdateFulfillmentRequest) returns (UpdateFulfillmentResponse);
 }
 
@@ -24,6 +26,36 @@ enum OrderStatus {
   ORDER_STATUS_CANCELLED = 7;
   ORDER_STATUS_REFUNDED = 8;
   ORDER_STATUS_PAYMENT_FAILED = 9;
+}
+
+enum SellerFulfillmentStatus {
+  SELLER_FULFILLMENT_STATUS_UNSPECIFIED = 0;
+  SELLER_FULFILLMENT_STATUS_PENDING = 1;
+  SELLER_FULFILLMENT_STATUS_PARTIALLY_PACKED = 2;
+  SELLER_FULFILLMENT_STATUS_PACKED = 3;
+  SELLER_FULFILLMENT_STATUS_PARTIALLY_SHIPPED = 4;
+  SELLER_FULFILLMENT_STATUS_SHIPPED = 5;
+  SELLER_FULFILLMENT_STATUS_PARTIALLY_DELIVERED = 6;
+  SELLER_FULFILLMENT_STATUS_DELIVERED = 7;
+}
+
+enum ItemFulfillmentStatus {
+  ITEM_FULFILLMENT_STATUS_UNSPECIFIED = 0;
+  ITEM_FULFILLMENT_STATUS_PENDING = 1;
+  ITEM_FULFILLMENT_STATUS_PACKED = 2;
+  ITEM_FULFILLMENT_STATUS_SHIPPED = 3;
+  ITEM_FULFILLMENT_STATUS_DELIVERED = 4;
+  ITEM_FULFILLMENT_STATUS_CANCELLED = 5;
+  ITEM_FULFILLMENT_STATUS_RETURNED = 6;
+}
+
+enum ShipmentStatus {
+  SHIPMENT_STATUS_UNSPECIFIED = 0;
+  SHIPMENT_STATUS_PENDING = 1;
+  SHIPMENT_STATUS_PACKED = 2;
+  SHIPMENT_STATUS_SHIPPED = 3;
+  SHIPMENT_STATUS_DELIVERED = 4;
+  SHIPMENT_STATUS_FAILED = 5;
 }
 
 message Money {
@@ -101,6 +133,58 @@ message ListOrdersResponse {
   string next_page_token = 2;
 }
 
+message SellerOrderItem {
+  string order_item_id = 1;
+  string product_id = 2;
+  string variant_id = 3;
+  string sku = 4;
+  string title_snapshot = 5;
+  string image_url_snapshot = 6;
+  int32 quantity = 7;
+  Money unit_price = 8;
+  Money line_total = 9;
+  ItemFulfillmentStatus fulfillment_status = 10;
+}
+
+message SellerShipment {
+  string shipment_id = 1;
+  ShipmentStatus status = 2;
+  string carrier = 3;
+  string tracking_number = 4;
+  google.protobuf.Timestamp shipped_at = 5;
+  google.protobuf.Timestamp delivered_at = 6;
+}
+
+message SellerOrderView {
+  string order_id = 1;
+  OrderStatus parent_order_status = 2;
+  SellerFulfillmentStatus seller_fulfillment_status = 3;
+  Money seller_items_total = 4;
+  repeated SellerOrderItem items = 5;
+  repeated SellerShipment shipments = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message ListSellerOrdersRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  SellerFulfillmentStatus fulfillment_filter = 3;
+}
+
+message ListSellerOrdersResponse {
+  repeated SellerOrderView orders = 1;
+  string next_page_token = 2;
+}
+
+message CancelOrderRequest {
+  string order_id = 1;
+  string reason_code = 2;
+}
+
+message CancelOrderResponse {
+  Order order = 1;
+}
+
 message UpdateFulfillmentRequest {
   string order_id = 1;
   OrderStatus target_status = 2;
@@ -111,4 +195,5 @@ message UpdateFulfillmentRequest {
 
 message UpdateFulfillmentResponse {
   Order order = 1;
+  SellerOrderView seller_order = 2;
 }

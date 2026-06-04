@@ -9,6 +9,8 @@ var (
 	ErrInvalidPageToken              = errors.New("invalid page token")
 	ErrTrackingRequired              = errors.New("tracking number and carrier are required")
 	ErrMultiSellerFulfillmentPending = errors.New("multi-seller fulfillment is not supported by the order-level operation")
+	ErrInvalidFulfillmentTransition  = errors.New("invalid fulfillment transition")
+	ErrOrderNotPaid                  = errors.New("order has not been paid")
 	ErrTemporarilyUnavailable        = errors.New("order dependency temporarily unavailable")
 
 	ErrUnknownOrderStatus           = errors.New("unknown order status")

@@ -17,6 +17,7 @@ const (
 
 type Actor struct {
 	UserID    string
+	SellerID  string
 	Roles     []string
 	RequestID string
 	SessionID string
@@ -49,18 +50,21 @@ func AuthenticateIncoming(ctx context.Context, trustedToken string, fallbackRequ
 		return ctx, domain.ErrUnauthenticated
 	}
 	userID := strings.TrimSpace(first(md.Get("x-user-id")))
+	sellerID := strings.TrimSpace(first(md.Get("x-seller-id")))
 	requestID := strings.TrimSpace(first(md.Get("x-request-id")))
 	sessionID := strings.TrimSpace(first(md.Get("x-session-id")))
 	if requestID == "" {
 		requestID = fallbackRequestID
 	}
 	if userID == "" || len(userID) > maxActorIDLength ||
+		len(sellerID) > maxActorIDLength ||
 		len(requestID) > maxRequestIDLength || len(sessionID) > maxSessionIDLength {
 		return ctx, domain.ErrUnauthenticated
 	}
 	roles := normalizeRoles(first(md.Get("x-roles")))
 	return WithActor(ctx, Actor{
 		UserID:    userID,
+		SellerID:  sellerID,
 		Roles:     roles,
 		RequestID: requestID,
 		SessionID: sessionID,

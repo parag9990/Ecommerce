@@ -11,6 +11,8 @@ import (
 type OrderApplicationRepository interface {
 	usecase.OrderReadRepository
 	usecase.FulfillmentRepository
+	usecase.SellerOrderRepository
+	usecase.OrderCancellationRepository
 }
 
 type ApplicationDependencies struct {
@@ -51,6 +53,14 @@ func NewApplicationServer(dependencies ApplicationDependencies) (*grpc.Server, e
 	if err != nil {
 		return nil, err
 	}
+	listSeller, err := usecase.NewListSellerOrdersUsecase(
+		dependencies.Orders,
+		dependencies.PageTokenSigningKey,
+		dependencies.Logger,
+	)
+	if err != nil {
+		return nil, err
+	}
 	update, err := usecase.NewUpdateFulfillmentUsecase(
 		dependencies.Orders,
 		dependencies.Orders,
@@ -60,7 +70,25 @@ func NewApplicationServer(dependencies ApplicationDependencies) (*grpc.Server, e
 	if err != nil {
 		return nil, err
 	}
-	handler, err := NewServer(create, get, list, update, dependencies.Logger)
+	cancel, err := usecase.NewCancelOrderUsecase(
+		dependencies.Orders,
+		dependencies.Orders,
+		dependencies.IDs,
+		dependencies.Logger,
+	)
+	if err != nil {
+		return nil, err
+	}
+	updateSeller, err := usecase.NewUpdateSellerFulfillmentUsecase(
+		dependencies.Orders,
+		dependencies.Orders,
+		dependencies.IDs,
+		dependencies.Logger,
+	)
+	if err != nil {
+		return nil, err
+	}
+	handler, err := NewServer(create, get, list, listSeller, update, cancel, updateSeller, dependencies.Logger)
 	if err != nil {
 		return nil, err
 	}

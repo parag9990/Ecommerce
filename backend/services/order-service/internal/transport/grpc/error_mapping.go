@@ -38,7 +38,8 @@ func toStatusError(err error) error {
 		errors.Is(err, domain.ErrMultiSellerFulfillmentPending), errors.Is(err, domain.ErrCartEmpty),
 		errors.Is(err, domain.ErrProductUnavailable), errors.Is(err, domain.ErrVariantUnavailable),
 		errors.Is(err, domain.ErrOrderNotPayable), errors.Is(err, domain.ErrInventoryReservationExpired),
-		errors.Is(err, domain.ErrInvalidPaymentTransition), errors.Is(err, domain.ErrCheckoutFailed):
+		errors.Is(err, domain.ErrInvalidPaymentTransition), errors.Is(err, domain.ErrCheckoutFailed),
+		errors.Is(err, domain.ErrInvalidFulfillmentTransition), errors.Is(err, domain.ErrOrderNotPaid):
 		return status.Error(codes.FailedPrecondition, "operation cannot be applied in the current state")
 	case errors.Is(err, domain.ErrPaymentIntentPendingResolution):
 		return status.Error(codes.Unavailable, "payment state is being resolved")

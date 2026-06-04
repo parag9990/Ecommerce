@@ -157,6 +157,43 @@ func TestListOrdersUsecaseSignsAndValidatesCursor(t *testing.T) {
 	}
 }
 
+func TestListSellerOrdersUsecaseSignsCursorAndPassesSellerFilter(t *testing.T) {
+	now := paymentTestTime()
+	repository := &fakeSellerOrderRepository{page: domain.SellerOrderPage{
+		Orders:     []domain.SellerOrderView{{OrderID: "ord_2", SellerItemsTotal: 1000, Currency: "INR"}},
+		NextCursor: &domain.OrderCursor{CreatedAt: now, OrderID: "ord_2"},
+	}}
+	list, err := NewListSellerOrdersUsecase(
+		repository,
+		[]byte("a pagination signing key that is secure"),
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	if err != nil {
+		t.Fatalf("NewListSellerOrdersUsecase() error = %v", err)
+	}
+	filter := domain.SellerFulfillmentStatusPacked
+	page, err := list.Execute(context.Background(), ListSellerOrdersQuery{
+		SellerID: "seller_1", ActorUserID: "user_1", PageSize: 20, FulfillmentFilter: &filter,
+	})
+	if err != nil || page.NextPageToken == "" {
+		t.Fatalf("Execute() page/error = %+v/%v, want a continuation token", page, err)
+	}
+	if repository.filter.SellerID != "seller_1" || repository.filter.FulfillmentFilter == nil ||
+		*repository.filter.FulfillmentFilter != domain.SellerFulfillmentStatusPacked {
+		t.Fatalf("filter = %+v, want trusted seller filter", repository.filter)
+	}
+	repository.page.NextCursor = nil
+	if _, err := list.Execute(context.Background(), ListSellerOrdersQuery{
+		SellerID: "seller_1", ActorUserID: "user_1", PageSize: 20, PageToken: page.NextPageToken,
+	}); err != nil {
+		t.Fatalf("Execute(next page) error = %v", err)
+	}
+	if repository.filter.Cursor == nil || repository.filter.Cursor.OrderID != "ord_2" ||
+		!repository.filter.Cursor.CreatedAt.Equal(now) {
+		t.Fatalf("decoded cursor = %+v, want original cursor", repository.filter.Cursor)
+	}
+}
+
 func TestUpdateFulfillmentUsecaseDelegatesLegalSellerTransition(t *testing.T) {
 	now := paymentTestTime()
 	reader := &fakeOrderReader{order: domain.Order{OrderID: "ord_1", Status: domain.OrderStatusPaid}}
@@ -170,15 +207,48 @@ func TestUpdateFulfillmentUsecaseDelegatesLegalSellerTransition(t *testing.T) {
 	}
 	update.WithClock(fixedClock{now: now})
 	order, err := update.Execute(context.Background(), UpdateFulfillmentCommand{
-		ActorID: "seller_1", Roles: []string{"seller"}, OrderID: "ord_1",
+		ActorID: "user_1", SellerID: "seller_1", Roles: []string{"seller"}, OrderID: "ord_1",
 		TargetStatus: domain.OrderStatusPacked, OccurredAt: now,
 	})
 	if err != nil || order.Status != domain.OrderStatusPacked {
 		t.Fatalf("Execute() order/error = %+v/%v", order, err)
 	}
 	if writer.transition.RequiredSellerID != "seller_1" || writer.transition.History.FromStatus == nil ||
-		*writer.transition.History.FromStatus != domain.OrderStatusPaid {
+		*writer.transition.History.FromStatus != domain.OrderStatusPaid ||
+		writer.transition.History.ActorID != "user_1" {
 		t.Fatalf("transition = %+v, want seller-scoped paid-to-packed audit", writer.transition)
+	}
+}
+
+func TestUpdateSellerFulfillmentUsecaseDelegatesTrustedSellerTransition(t *testing.T) {
+	now := paymentTestTime()
+	repository := &fakeSellerOrderRepository{view: domain.SellerOrderView{
+		OrderID: "ord_1", ParentOrderStatus: domain.OrderStatusPacked,
+		SellerFulfillmentStatus: domain.SellerFulfillmentStatusShipped,
+		Currency:                "INR", SellerItemsTotal: 1000,
+	}}
+	update, err := NewUpdateSellerFulfillmentUsecase(
+		repository,
+		&fakeOrderReader{order: domain.Order{OrderID: "ord_1", UserID: "user_1", Status: domain.OrderStatusPacked}},
+		&sequenceIDGenerator{values: []string{"osh_1", "shp_1"}},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	if err != nil {
+		t.Fatalf("NewUpdateSellerFulfillmentUsecase() error = %v", err)
+	}
+	update.WithClock(fixedClock{now: now})
+	view, err := update.Execute(context.Background(), UpdateSellerFulfillmentCommand{
+		ActorUserID: "user_1", SellerID: "seller_1", Roles: []string{"seller_order_manager"},
+		OrderID: "ord_1", TargetStatus: domain.FulfillmentStatusShipped,
+		Carrier: "Delhivery", TrackingNumber: "TRK-1", RequestID: "req_1", OccurredAt: now,
+	})
+	if err != nil || view.SellerFulfillmentStatus != domain.SellerFulfillmentStatusShipped {
+		t.Fatalf("Execute() view/error = %+v/%v, want seller projection", view, err)
+	}
+	if repository.transition.SellerID != "seller_1" || repository.transition.ActorID != "user_1" ||
+		repository.transition.ShipmentID != "shp_1" || repository.transition.HistoryID != "osh_1" ||
+		repository.transition.TargetStatus != domain.FulfillmentStatusShipped {
+		t.Fatalf("transition = %+v, want trusted seller transition", repository.transition)
 	}
 }
 
@@ -217,6 +287,88 @@ func TestUpdateFulfillmentUsecaseCreatesDeliveredOutboxEvent(t *testing.T) {
 	if writer.event == nil || writer.event.EventType != "OrderDelivered" ||
 		writer.event.AggregateID != "ord_1" || writer.event.TraceID != "trace_1" {
 		t.Fatalf("event = %+v, want OrderDelivered outbox event", writer.event)
+	}
+}
+
+func TestCancelOrderUsecaseCreatesCancelledOutboxEvent(t *testing.T) {
+	now := paymentTestTime()
+	reader := &fakeOrderReader{order: domain.Order{
+		OrderID: "ord_1", UserID: "user_1", Status: domain.OrderStatusPendingPayment,
+	}}
+	writer := &fakeCancellationRepository{order: domain.Order{
+		OrderID: "ord_1", UserID: "user_1", Status: domain.OrderStatusCancelled,
+	}}
+	cancel, err := NewCancelOrderUsecase(
+		reader,
+		writer,
+		&sequenceIDGenerator{values: []string{"osh_cancelled", "evt_cancelled"}},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	if err != nil {
+		t.Fatalf("NewCancelOrderUsecase() error = %v", err)
+	}
+	cancel.WithClock(fixedClock{now: now})
+	order, err := cancel.Execute(context.Background(), CancelOrderCommand{
+		ActorID: "user_1", Roles: []string{"buyer"}, OrderID: "ord_1", TraceID: "trace_1",
+		ReasonCode: "Buyer Requested", OccurredAt: now,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if order.Status != domain.OrderStatusCancelled || writer.from != domain.OrderStatusPendingPayment ||
+		writer.history.Reason != "buyer_requested" || writer.event.EventType != "OrderCancelled" ||
+		writer.event.AggregateID != "ord_1" || writer.event.TraceID != "trace_1" {
+		t.Fatalf("order/history/event = %+v/%+v/%+v, want cancelled outbox fact", order, writer.history, writer.event)
+	}
+}
+
+func TestCancelOrderUsecaseDoesNotReemitAlreadyCancelledOrder(t *testing.T) {
+	reader := &fakeOrderReader{order: domain.Order{
+		OrderID: "ord_1", UserID: "user_1", Status: domain.OrderStatusCancelled,
+	}}
+	writer := &fakeCancellationRepository{}
+	cancel, err := NewCancelOrderUsecase(reader, writer, &sequenceIDGenerator{values: []string{"unused"}}, nil)
+	if err != nil {
+		t.Fatalf("NewCancelOrderUsecase() error = %v", err)
+	}
+	order, err := cancel.Execute(context.Background(), CancelOrderCommand{
+		ActorID: "user_1", Roles: []string{"buyer"}, OrderID: "ord_1",
+	})
+	if err != nil || order.Status != domain.OrderStatusCancelled || writer.calls != 0 {
+		t.Fatalf("order/error/calls = %+v/%v/%d, want idempotent cancelled replay", order, err, writer.calls)
+	}
+}
+
+func TestUpdateSellerFulfillmentUsecaseCreatesDeliveredOutboxEventForParentAggregation(t *testing.T) {
+	now := paymentTestTime()
+	reader := &fakeOrderReader{order: domain.Order{OrderID: "ord_1", UserID: "user_1", Status: domain.OrderStatusShipped}}
+	repository := &fakeSellerOrderRepository{view: domain.SellerOrderView{
+		OrderID: "ord_1", ParentOrderStatus: domain.OrderStatusDelivered,
+		SellerFulfillmentStatus: domain.SellerFulfillmentStatusDelivered,
+		Currency:                "INR", SellerItemsTotal: 1000,
+	}}
+	update, err := NewUpdateSellerFulfillmentUsecase(
+		repository,
+		reader,
+		&sequenceIDGenerator{values: []string{"osh_delivered", "shp_1", "evt_delivered"}},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	if err != nil {
+		t.Fatalf("NewUpdateSellerFulfillmentUsecase() error = %v", err)
+	}
+	update.WithClock(fixedClock{now: now})
+	_, err = update.Execute(context.Background(), UpdateSellerFulfillmentCommand{
+		ActorUserID: "user_1", SellerID: "seller_1", Roles: []string{"seller_order_manager"},
+		OrderID: "ord_1", TargetStatus: domain.FulfillmentStatusDelivered,
+		RequestID: "req_1", OccurredAt: now,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if repository.event == nil || repository.event.EventType != "OrderDelivered" ||
+		repository.event.AggregateID != "ord_1" || repository.event.SourceHistoryID != "osh_delivered" ||
+		repository.event.TraceID != "req_1" {
+		t.Fatalf("event = %+v, want seller aggregation OrderDelivered event", repository.event)
 	}
 }
 
@@ -273,6 +425,41 @@ type fakeFulfillmentRepository struct {
 func (f *fakeFulfillmentRepository) UpdateFulfillment(_ context.Context, transition domain.FulfillmentTransition, event *domain.OutboxEvent) (domain.Order, error) {
 	f.calls++
 	f.transition = transition
+	f.event = event
+	return f.order, nil
+}
+
+type fakeSellerOrderRepository struct {
+	page       domain.SellerOrderPage
+	view       domain.SellerOrderView
+	filter     domain.ListSellerOrdersFilter
+	transition domain.SellerFulfillmentTransition
+	event      *domain.OutboxEvent
+}
+
+func (f *fakeSellerOrderRepository) ListSellerOrders(_ context.Context, filter domain.ListSellerOrdersFilter) (domain.SellerOrderPage, error) {
+	f.filter = filter
+	return f.page, nil
+}
+
+func (f *fakeSellerOrderRepository) UpdateSellerFulfillment(_ context.Context, transition domain.SellerFulfillmentTransition, event *domain.OutboxEvent) (domain.SellerOrderView, error) {
+	f.transition = transition
+	f.event = event
+	return f.view, nil
+}
+
+type fakeCancellationRepository struct {
+	order   domain.Order
+	from    domain.OrderStatus
+	history domain.OrderStatusHistoryEntry
+	event   domain.OutboxEvent
+	calls   int
+}
+
+func (f *fakeCancellationRepository) CancelOrder(_ context.Context, _ string, from domain.OrderStatus, history domain.OrderStatusHistoryEntry, event domain.OutboxEvent) (domain.Order, error) {
+	f.calls++
+	f.from = from
+	f.history = history
 	f.event = event
 	return f.order, nil
 }

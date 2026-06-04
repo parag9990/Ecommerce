@@ -66,7 +66,7 @@ func (u *ListOrdersUsecase) Execute(ctx context.Context, query ListOrdersQuery) 
 	if page.NextCursor == nil {
 		return page, nil
 	}
-	token, err := u.encodeToken(*page.NextCursor)
+	token, err := encodePageToken(u.tokenKey, *page.NextCursor)
 	if err != nil {
 		return OrderPage{}, err
 	}
@@ -76,6 +76,14 @@ func (u *ListOrdersUsecase) Execute(ctx context.Context, query ListOrdersQuery) 
 }
 
 func (u *ListOrdersUsecase) encodeToken(cursor OrderCursor) (string, error) {
+	return encodePageToken(u.tokenKey, cursor)
+}
+
+func (u *ListOrdersUsecase) decodeToken(token string) (*OrderCursor, error) {
+	return decodePageToken(u.tokenKey, token)
+}
+
+func encodePageToken(tokenKey []byte, cursor OrderCursor) (string, error) {
 	payload, err := json.Marshal(pageTokenPayload{
 		CreatedAt: cursor.CreatedAt.UTC().Format(time.RFC3339Nano),
 		OrderID:   cursor.OrderID,
@@ -83,13 +91,13 @@ func (u *ListOrdersUsecase) encodeToken(cursor OrderCursor) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	signature := hmac.New(sha256.New, u.tokenKey)
+	signature := hmac.New(sha256.New, tokenKey)
 	_, _ = signature.Write(payload)
 	return base64.RawURLEncoding.EncodeToString(payload) + "." +
 		base64.RawURLEncoding.EncodeToString(signature.Sum(nil)), nil
 }
 
-func (u *ListOrdersUsecase) decodeToken(token string) (*OrderCursor, error) {
+func decodePageToken(tokenKey []byte, token string) (*OrderCursor, error) {
 	if token == "" {
 		return nil, nil
 	}
@@ -108,7 +116,7 @@ func (u *ListOrdersUsecase) decodeToken(token string) (*OrderCursor, error) {
 	if err != nil {
 		return nil, domain.ErrInvalidPageToken
 	}
-	expected := hmac.New(sha256.New, u.tokenKey)
+	expected := hmac.New(sha256.New, tokenKey)
 	_, _ = expected.Write(payload)
 	if !hmac.Equal(signature, expected.Sum(nil)) {
 		return nil, domain.ErrInvalidPageToken
