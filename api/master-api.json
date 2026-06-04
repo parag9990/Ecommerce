@@ -932,7 +932,7 @@
     "ProductListResponse": {"type": "object", "properties": {"products": {"type": "array", "items": {"$ref": "#/schemas/Product"}}, "total": {"type": "integer"}}},
     "CategoryListRequest": {"type": "object", "properties": {"parent_id": {"type": "string"}}},
     "CategoryListResponse": {"type": "object", "properties": {"categories": {"type": "array", "items": {"type": "object", "properties": {"category_id": {"type": "string"}, "name": {"type": "string"}, "parent_id": {"type": "string"}}}}}},
-    "InventoryReservationRequest": {"type": "object", "required": ["order_id", "items"], "properties": {"order_id": {"type": "string"}, "items": {"type": "array", "items": {"type": "object"}}, "ttl_seconds": {"type": "integer"}}},
+    "InventoryReservationRequest": {"type": "object", "required": ["order_id", "items"], "properties": {"order_id": {"type": "string"}, "items": {"type": "array", "items": {"type": "object", "required": ["product_id", "variant_id", "quantity"], "properties": {"product_id": {"type": "string"}, "variant_id": {"type": "string"}, "quantity": {"type": "integer", "minimum": 1}}}}, "ttl_seconds": {"type": "integer"}, "idempotency_key": {"type": "string"}}},
     "InventoryReservationResponse": {"type": "object", "properties": {"reservation_id": {"type": "string"}, "expires_at": {"type": "string", "format": "date-time"}}},
     "InventoryReservationActionRequest": {"type": "object", "required": ["reservation_id"], "properties": {"reservation_id": {"type": "string"}, "reason": {"type": "string"}}},
     "SearchRequest": {"type": "object", "properties": {"q": {"type": "string"}, "filters": {"type": "object"}, "sort": {"type": "string"}, "page": {"type": "integer"}, "page_size": {"type": "integer"}}},

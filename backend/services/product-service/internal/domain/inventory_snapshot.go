@@ -14,8 +14,9 @@ const (
 )
 
 type InventoryReference struct {
-	Type string `json:"type"`
-	ID   string `json:"id"`
+	Type    string `json:"type"`
+	ID      string `json:"id"`
+	OrderID string `json:"order_id,omitempty"`
 }
 
 type InventorySnapshot struct {

@@ -2,7 +2,10 @@ module product-service
 
 go 1.26.3
 
-require go.mongodb.org/mongo-driver/v2 v2.6.0
+require (
+	github.com/rabbitmq/amqp091-go v1.10.0
+	go.mongodb.org/mongo-driver/v2 v2.6.0
+)
 
 require (
 	github.com/klauspost/compress v1.17.6 // indirect

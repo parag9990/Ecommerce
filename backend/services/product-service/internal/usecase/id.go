@@ -13,6 +13,10 @@ type IDGenerator interface {
 	NewImageID() string
 }
 
+type ProductEventIDGenerator interface {
+	NewProductEventID() string
+}
+
 type Clock interface {
 	Now() time.Time
 }
@@ -33,6 +37,18 @@ func (RandomIDGenerator) NewVariantID() string {
 
 func (RandomIDGenerator) NewImageID() string {
 	return randomID("img")
+}
+
+func (RandomIDGenerator) NewInventoryReservationID() string {
+	return randomID("res")
+}
+
+func (RandomIDGenerator) NewInventorySnapshotID() string {
+	return randomID("inv_snap")
+}
+
+func (RandomIDGenerator) NewProductEventID() string {
+	return randomID("evt")
 }
 
 type SystemClock struct{}

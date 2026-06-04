@@ -20,16 +20,29 @@ const (
 )
 
 const (
-	ErrorCodeValidation              = "VALIDATION_ERROR"
-	ErrorCodeUnauthenticated         = "UNAUTHENTICATED"
-	ErrorCodePermissionDenied        = "PERMISSION_DENIED"
-	ErrorCodeProductNotFound         = "PRODUCT_NOT_FOUND"
-	ErrorCodeProductOwnership        = "PRODUCT_OWNERSHIP_MISMATCH"
-	ErrorCodeDuplicateSKU            = "DUPLICATE_SKU"
-	ErrorCodeSellerCatalogDisabled   = "SELLER_CATALOG_DISABLED"
-	ErrorCodeProductNotEditable      = "PRODUCT_NOT_EDITABLE"
-	ErrorCodeInvalidStatusTransition = "INVALID_STATUS_TRANSITION"
-	ErrorCodeCMSUnavailable          = "CMS_UNAVAILABLE"
+	ErrorCodeValidation                  = "VALIDATION_ERROR"
+	ErrorCodeUnauthenticated             = "UNAUTHENTICATED"
+	ErrorCodePermissionDenied            = "PERMISSION_DENIED"
+	ErrorCodeProductNotFound             = "PRODUCT_NOT_FOUND"
+	ErrorCodeProductOwnership            = "PRODUCT_OWNERSHIP_MISMATCH"
+	ErrorCodeDuplicateSKU                = "DUPLICATE_SKU"
+	ErrorCodeSellerCatalogDisabled       = "SELLER_CATALOG_DISABLED"
+	ErrorCodeProductNotEditable          = "PRODUCT_NOT_EDITABLE"
+	ErrorCodeInvalidStatusTransition     = "INVALID_STATUS_TRANSITION"
+	ErrorCodeCMSUnavailable              = "CMS_UNAVAILABLE"
+	ErrorCodeOrderIDRequired             = "ORDER_ID_REQUIRED"
+	ErrorCodeReservationIDRequired       = "RESERVATION_ID_REQUIRED"
+	ErrorCodeReservationItemsRequired    = "RESERVATION_ITEMS_REQUIRED"
+	ErrorCodeInvalidQuantity             = "INVALID_QUANTITY"
+	ErrorCodeInvalidReservationTTL       = "INVALID_RESERVATION_TTL"
+	ErrorCodeProductNotAvailable         = "PRODUCT_NOT_AVAILABLE"
+	ErrorCodeVariantNotAvailable         = "VARIANT_NOT_AVAILABLE"
+	ErrorCodeOutOfStock                  = "OUT_OF_STOCK"
+	ErrorCodeReservationNotFound         = "RESERVATION_NOT_FOUND"
+	ErrorCodeReservationAlreadyCommitted = "RESERVATION_ALREADY_COMMITTED"
+	ErrorCodeReservationNotActive        = "RESERVATION_NOT_ACTIVE"
+	ErrorCodeReservationExpired          = "RESERVATION_EXPIRED"
+	ErrorCodeInventoryWriteConflict      = "INVENTORY_WRITE_CONFLICT"
 )
 
 type ServiceError struct {
@@ -61,7 +74,7 @@ func validationFailed(report domain.ValidationReport) error {
 	return &ServiceError{
 		Kind:    ErrorKindInvalidArgument,
 		Code:    ErrorCodeValidation,
-		Message: "product validation failed",
+		Message: "validation failed",
 		Report:  report,
 	}
 }

@@ -69,11 +69,23 @@ const (
 	CodeInventorySnapshotIDRequired  = "INVENTORY_SNAPSHOT_ID_REQUIRED"
 	CodeInvalidInventorySnapshot     = "INVALID_INVENTORY_SNAPSHOT"
 	CodeInvalidInventorySnapshotType = "INVALID_INVENTORY_SNAPSHOT_TYPE"
+	CodeReservationIDRequired        = "RESERVATION_ID_REQUIRED"
+	CodeOrderIDRequired              = "ORDER_ID_REQUIRED"
+	CodeReservationItemsRequired     = "RESERVATION_ITEMS_REQUIRED"
+	CodeInvalidReservationStatus     = "INVALID_RESERVATION_STATUS"
+	CodeInvalidReservationItem       = "INVALID_RESERVATION_ITEM"
+	CodeInvalidReservationTTL        = "INVALID_RESERVATION_TTL"
 	CodePriceBookIDRequired          = "PRICE_BOOK_ID_REQUIRED"
 	CodePriceBookEntryRequired       = "PRICE_BOOK_ENTRY_REQUIRED"
 	CodeDuplicatePriceBookEntry      = "DUPLICATE_PRICE_BOOK_ENTRY"
 	CodeInvalidPriceBookStatus       = "INVALID_PRICE_BOOK_STATUS"
 	CodeInvalidPriceBookWindow       = "INVALID_PRICE_BOOK_WINDOW"
+	CodeEventIDRequired              = "EVENT_ID_REQUIRED"
+	CodeInvalidEventType             = "INVALID_EVENT_TYPE"
+	CodeInvalidEventEnvelope         = "INVALID_EVENT_ENVELOPE"
+	CodeInvalidEventPayload          = "INVALID_EVENT_PAYLOAD"
+	CodeInvalidSearchAction          = "INVALID_SEARCH_ACTION"
+	CodeInvalidOutboxStatus          = "INVALID_OUTBOX_STATUS"
 )
 
 type ValidationIssue struct {

@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"product-service/internal/domain"
+
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -22,8 +24,10 @@ func ProductMongoCollectionDefinitions() []MongoCollectionDefinition {
 		productsCollectionDefinition(),
 		categoriesCollectionDefinition(),
 		brandsCollectionDefinition(),
+		inventoryReservationsCollectionDefinition(),
 		inventorySnapshotsCollectionDefinition(),
 		priceBooksCollectionDefinition(),
+		productEventOutboxCollectionDefinition(),
 	}
 }
 
@@ -226,6 +230,49 @@ func brandsCollectionDefinition() MongoCollectionDefinition {
 	}
 }
 
+func inventoryReservationsCollectionDefinition() MongoCollectionDefinition {
+	return MongoCollectionDefinition{
+		Name: CollectionInventoryReservations,
+		Validator: jsonSchema(
+			bson.A{"_id", "order_id", "status", "items", "expires_at", "created_at", "updated_at"},
+			bson.D{
+				prop("_id", bson.D{e("bsonType", "string")}),
+				prop("order_id", bson.D{e("bsonType", "string")}),
+				prop("idempotency_key", nullable("string")),
+				prop("status", enum("reserved", "committed", "released", "expired")),
+				prop("items", bson.D{
+					e("bsonType", "array"),
+					e("minItems", 1),
+					e("items", bson.D{
+						e("bsonType", "object"),
+						e("required", bson.A{"product_id", "variant_id", "sku", "seller_id", "quantity"}),
+						e("properties", bson.D{
+							prop("product_id", bson.D{e("bsonType", "string")}),
+							prop("variant_id", bson.D{e("bsonType", "string")}),
+							prop("sku", bson.D{e("bsonType", "string")}),
+							prop("seller_id", bson.D{e("bsonType", "string")}),
+							prop("quantity", bson.D{e("bsonType", bson.A{"int", "long"}), e("minimum", 1)}),
+						}),
+					}),
+				}),
+				prop("expires_at", bson.D{e("bsonType", "date")}),
+				prop("created_at", bson.D{e("bsonType", "date")}),
+				prop("updated_at", bson.D{e("bsonType", "date")}),
+				prop("committed_at", bson.D{e("bsonType", bson.A{"date", "null"})}),
+				prop("released_at", bson.D{e("bsonType", bson.A{"date", "null"})}),
+				prop("expired_at", bson.D{e("bsonType", bson.A{"date", "null"})}),
+				prop("reason", nullable("string")),
+			},
+		),
+		Indexes: []MongoIndexDefinition{
+			uniqueIndex("uq_inventory_reservations_order", bson.D{e("order_id", 1)}),
+			sparseUniqueIndex("uq_inventory_reservations_idempotency", bson.D{e("idempotency_key", 1)}),
+			index("idx_inventory_reservations_status_expires", bson.D{e("status", 1), e("expires_at", 1)}),
+			ttlIndex("ttl_inventory_reservations_cleanup", bson.D{e("expires_at", 1)}, 86400),
+		},
+	}
+}
+
 func inventorySnapshotsCollectionDefinition() MongoCollectionDefinition {
 	return MongoCollectionDefinition{
 		Name: CollectionInventorySnapshots,
@@ -259,6 +306,7 @@ func inventorySnapshotsCollectionDefinition() MongoCollectionDefinition {
 					e("properties", bson.D{
 						prop("type", nullable("string")),
 						prop("id", nullable("string")),
+						prop("order_id", nullable("string")),
 					}),
 				})),
 				prop("created_at", bson.D{e("bsonType", "date")}),
@@ -314,6 +362,64 @@ func priceBooksCollectionDefinition() MongoCollectionDefinition {
 			index("idx_price_books_active_window_priority", bson.D{e("status", 1), e("starts_at", 1), e("ends_at", 1), e("priority", -1)}),
 			index("idx_price_books_entry_product_variant_status", bson.D{e("entries.product_id", 1), e("entries.variant_id", 1), e("status", 1)}),
 			index("idx_price_books_entry_sku_status", bson.D{e("entries.sku", 1), e("status", 1)}),
+		},
+	}
+}
+
+func productEventOutboxCollectionDefinition() MongoCollectionDefinition {
+	return MongoCollectionDefinition{
+		Name: CollectionProductEventOutbox,
+		Validator: jsonSchema(
+			bson.A{
+				"_id",
+				"topic",
+				"event_type",
+				"version",
+				"source",
+				"request_id",
+				"trace_id",
+				"payload",
+				"status",
+				"attempts",
+				"next_attempt_at",
+				"occurred_at",
+			},
+			bson.D{
+				prop("_id", bson.D{e("bsonType", "string")}),
+				prop("topic", bson.D{e("bsonType", "string")}),
+				prop("event_type", enum(
+					string(domain.ProductEventCreated),
+					string(domain.ProductEventUpdated),
+					string(domain.ProductEventPublished),
+					string(domain.ProductEventUnpublished),
+					string(domain.ProductEventInventoryChanged),
+				)),
+				prop("version", bson.D{e("bsonType", "int"), e("minimum", 1)}),
+				prop("source", bson.D{e("bsonType", "string")}),
+				prop("request_id", bson.D{e("bsonType", "string")}),
+				prop("trace_id", bson.D{e("bsonType", "string")}),
+				prop("payload", bson.D{e("bsonType", "object")}),
+				prop("status", enum(
+					string(domain.OutboxStatusPending),
+					string(domain.OutboxStatusPublishing),
+					string(domain.OutboxStatusPublished),
+					string(domain.OutboxStatusDeadLettered),
+				)),
+				prop("attempts", bson.D{e("bsonType", "int"), e("minimum", 0)}),
+				prop("next_attempt_at", bson.D{e("bsonType", "date")}),
+				prop("occurred_at", bson.D{e("bsonType", "date")}),
+				prop("published_at", bson.D{e("bsonType", bson.A{"date", "null"})}),
+				prop("last_error", nullable("string")),
+			},
+		),
+		Indexes: []MongoIndexDefinition{
+			index("idx_product_event_outbox_status_next_occurred", bson.D{
+				e("status", 1),
+				e("next_attempt_at", 1),
+				e("occurred_at", 1),
+			}),
+			index("idx_product_event_outbox_type_occurred", bson.D{e("event_type", 1), e("occurred_at", -1)}),
+			ttlIndex("ttl_product_event_outbox_published", bson.D{e("published_at", 1)}, 2592000),
 		},
 	}
 }
@@ -376,6 +482,12 @@ func uniqueIndex(name string, keys bson.D) MongoIndexDefinition {
 func sparseUniqueIndex(name string, keys bson.D) MongoIndexDefinition {
 	definition := uniqueIndex(name, keys)
 	definition.Model.Options = definition.Model.Options.SetSparse(true)
+	return definition
+}
+
+func ttlIndex(name string, keys bson.D, expireAfterSeconds int32) MongoIndexDefinition {
+	definition := index(name, keys)
+	definition.Model.Options = definition.Model.Options.SetExpireAfterSeconds(expireAfterSeconds)
 	return definition
 }
 

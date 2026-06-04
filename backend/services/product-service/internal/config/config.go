@@ -6,9 +6,12 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"product-service/internal/client"
 	"product-service/internal/domain"
+	"product-service/internal/events"
+	"product-service/internal/usecase"
 )
 
 const DefaultMongoDatabaseName = "product_db"
@@ -21,6 +24,8 @@ type Config struct {
 	Read        ReadConfig
 	CMS         CMSConfig
 	Mongo       MongoConfig
+	Inventory   InventoryConfig
+	Events      ProductEventsConfig
 }
 
 type CatalogConfig struct {
@@ -41,6 +46,25 @@ type MongoConfig struct {
 	URI                   string
 	DatabaseName          string
 	AutoCreateCollections bool
+}
+
+type InventoryConfig struct {
+	DefaultReservationTTLSeconds int
+	MinReservationTTLSeconds     int
+	MaxReservationTTLSeconds     int
+	ExpiryBatchLimit             int64
+}
+
+type ProductEventsConfig struct {
+	Enabled              bool
+	Topic                string
+	Broker               string
+	RabbitMQURL          string
+	OutboxPollIntervalMS int
+	OutboxBatchSize      int
+	OutboxMaxAttempts    int
+	OutboxWorkerEnabled  bool
+	PublishTimeoutMS     int
 }
 
 type CMSConfig struct {
@@ -67,6 +91,19 @@ func Load() (Config, error) {
 	cfg.Mongo.URI = stringEnv("PRODUCT_MONGO_URI", cfg.Mongo.URI)
 	cfg.Mongo.DatabaseName = stringEnv("PRODUCT_MONGO_DATABASE", cfg.Mongo.DatabaseName)
 	cfg.Mongo.AutoCreateCollections = boolEnv("PRODUCT_MONGO_AUTO_CREATE_COLLECTIONS", cfg.Mongo.AutoCreateCollections)
+	cfg.Inventory.DefaultReservationTTLSeconds = intEnv("PRODUCT_INVENTORY_DEFAULT_TTL_SECONDS", cfg.Inventory.DefaultReservationTTLSeconds)
+	cfg.Inventory.MinReservationTTLSeconds = intEnv("PRODUCT_INVENTORY_MIN_TTL_SECONDS", cfg.Inventory.MinReservationTTLSeconds)
+	cfg.Inventory.MaxReservationTTLSeconds = intEnv("PRODUCT_INVENTORY_MAX_TTL_SECONDS", cfg.Inventory.MaxReservationTTLSeconds)
+	cfg.Inventory.ExpiryBatchLimit = int64Env("PRODUCT_INVENTORY_EXPIRY_BATCH_LIMIT", cfg.Inventory.ExpiryBatchLimit)
+	cfg.Events.Enabled = boolEnv("PRODUCT_EVENTS_ENABLED", cfg.Events.Enabled)
+	cfg.Events.Topic = stringEnv("PRODUCT_EVENTS_TOPIC", cfg.Events.Topic)
+	cfg.Events.Broker = stringEnv("PRODUCT_EVENT_BROKER", cfg.Events.Broker)
+	cfg.Events.RabbitMQURL = stringEnv("RABBITMQ_URL", cfg.Events.RabbitMQURL)
+	cfg.Events.OutboxPollIntervalMS = intEnv("PRODUCT_OUTBOX_POLL_INTERVAL_MS", cfg.Events.OutboxPollIntervalMS)
+	cfg.Events.OutboxBatchSize = intEnv("PRODUCT_OUTBOX_BATCH_SIZE", cfg.Events.OutboxBatchSize)
+	cfg.Events.OutboxMaxAttempts = intEnv("PRODUCT_OUTBOX_MAX_ATTEMPTS", cfg.Events.OutboxMaxAttempts)
+	cfg.Events.OutboxWorkerEnabled = boolEnv("PRODUCT_OUTBOX_WORKER_ENABLED", cfg.Events.OutboxWorkerEnabled)
+	cfg.Events.PublishTimeoutMS = intEnv("PRODUCT_OUTBOX_PUBLISH_TIMEOUT_MS", cfg.Events.PublishTimeoutMS)
 
 	level, err := parseLogLevel(stringEnv("LOG_LEVEL", cfg.LogLevel.String()))
 	if err != nil {
@@ -108,6 +145,23 @@ func Default() Config {
 			DatabaseName:          DefaultMongoDatabaseName,
 			AutoCreateCollections: false,
 		},
+		Inventory: InventoryConfig{
+			DefaultReservationTTLSeconds: 900,
+			MinReservationTTLSeconds:     30,
+			MaxReservationTTLSeconds:     3600,
+			ExpiryBatchLimit:             100,
+		},
+		Events: ProductEventsConfig{
+			Enabled:              true,
+			Topic:                domain.ProductEventDefaultTopic,
+			Broker:               "rabbitmq",
+			RabbitMQURL:          "amqp://ecommerce:ecommerce@localhost:5672/",
+			OutboxPollIntervalMS: 1000,
+			OutboxBatchSize:      100,
+			OutboxMaxAttempts:    5,
+			OutboxWorkerEnabled:  true,
+			PublishTimeoutMS:     10000,
+		},
 	}
 }
 
@@ -142,6 +196,49 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Mongo.DatabaseName) == "" {
 		return fmt.Errorf("PRODUCT_MONGO_DATABASE is required")
 	}
+	if c.Inventory.MinReservationTTLSeconds <= 0 {
+		return fmt.Errorf("PRODUCT_INVENTORY_MIN_TTL_SECONDS must be greater than zero")
+	}
+	if c.Inventory.DefaultReservationTTLSeconds <= 0 {
+		return fmt.Errorf("PRODUCT_INVENTORY_DEFAULT_TTL_SECONDS must be greater than zero")
+	}
+	if c.Inventory.MaxReservationTTLSeconds <= 0 {
+		return fmt.Errorf("PRODUCT_INVENTORY_MAX_TTL_SECONDS must be greater than zero")
+	}
+	if c.Inventory.MinReservationTTLSeconds > c.Inventory.DefaultReservationTTLSeconds {
+		return fmt.Errorf("PRODUCT_INVENTORY_MIN_TTL_SECONDS cannot exceed PRODUCT_INVENTORY_DEFAULT_TTL_SECONDS")
+	}
+	if c.Inventory.DefaultReservationTTLSeconds > c.Inventory.MaxReservationTTLSeconds {
+		return fmt.Errorf("PRODUCT_INVENTORY_DEFAULT_TTL_SECONDS cannot exceed PRODUCT_INVENTORY_MAX_TTL_SECONDS")
+	}
+	if c.Inventory.ExpiryBatchLimit <= 0 {
+		return fmt.Errorf("PRODUCT_INVENTORY_EXPIRY_BATCH_LIMIT must be greater than zero")
+	}
+	if c.Events.Enabled {
+		if strings.TrimSpace(c.Events.Topic) == "" {
+			return fmt.Errorf("PRODUCT_EVENTS_TOPIC is required when PRODUCT_EVENTS_ENABLED is true")
+		}
+		switch strings.ToLower(strings.TrimSpace(c.Events.Broker)) {
+		case "rabbitmq", "kafka":
+		default:
+			return fmt.Errorf("PRODUCT_EVENT_BROKER must be rabbitmq or kafka")
+		}
+		if strings.EqualFold(strings.TrimSpace(c.Events.Broker), "rabbitmq") && strings.TrimSpace(c.Events.RabbitMQURL) == "" {
+			return fmt.Errorf("RABBITMQ_URL is required when PRODUCT_EVENT_BROKER is rabbitmq")
+		}
+		if c.Events.OutboxPollIntervalMS <= 0 {
+			return fmt.Errorf("PRODUCT_OUTBOX_POLL_INTERVAL_MS must be greater than zero")
+		}
+		if c.Events.OutboxBatchSize <= 0 {
+			return fmt.Errorf("PRODUCT_OUTBOX_BATCH_SIZE must be greater than zero")
+		}
+		if c.Events.OutboxMaxAttempts <= 0 {
+			return fmt.Errorf("PRODUCT_OUTBOX_MAX_ATTEMPTS must be greater than zero")
+		}
+		if c.Events.PublishTimeoutMS <= 0 {
+			return fmt.Errorf("PRODUCT_OUTBOX_PUBLISH_TIMEOUT_MS must be greater than zero")
+		}
+	}
 	if !client.NormalizeModerationDecision(c.CMS.ModerationDecision).Valid() {
 		return fmt.Errorf("PRODUCT_CMS_MODERATION_DECISION must be one of %s or %s", client.ModerationAutoPublish, client.ModerationReviewRequired)
 	}
@@ -159,6 +256,32 @@ func (c Config) ValidationOptions() domain.ValidationOptions {
 		MaxImagesPerProduct:           c.Catalog.MaxImagesPerProduct,
 		MaxVariantsPerProduct:         c.Catalog.MaxVariantsPerProduct,
 		DefaultCurrency:               strings.ToUpper(c.Catalog.DefaultCurrency),
+	}
+}
+
+func (c Config) InventoryOptions() usecase.InventoryServiceOptions {
+	return usecase.InventoryServiceOptions{
+		DefaultReservationTTL: time.Duration(c.Inventory.DefaultReservationTTLSeconds) * time.Second,
+		MinReservationTTL:     time.Duration(c.Inventory.MinReservationTTLSeconds) * time.Second,
+		MaxReservationTTL:     time.Duration(c.Inventory.MaxReservationTTLSeconds) * time.Second,
+		ExpiryBatchLimit:      c.Inventory.ExpiryBatchLimit,
+	}
+}
+
+func (c Config) ProductEventOptions() usecase.ProductEventServiceOptions {
+	return usecase.ProductEventServiceOptions{
+		Disabled: !c.Events.Enabled,
+		Topic:    c.Events.Topic,
+		Source:   c.ServiceName,
+	}
+}
+
+func (c Config) OutboxRelayOptions() events.OutboxRelayOptions {
+	return events.OutboxRelayOptions{
+		PollInterval:   time.Duration(c.Events.OutboxPollIntervalMS) * time.Millisecond,
+		BatchSize:      c.Events.OutboxBatchSize,
+		MaxAttempts:    c.Events.OutboxMaxAttempts,
+		PublishTimeout: time.Duration(c.Events.PublishTimeoutMS) * time.Millisecond,
 	}
 }
 
@@ -188,6 +311,18 @@ func intEnv(key string, fallback int) int {
 		return fallback
 	}
 	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func int64Env(key string, fallback int64) int64 {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback
+	}
+	parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
 	if err != nil {
 		return fallback
 	}

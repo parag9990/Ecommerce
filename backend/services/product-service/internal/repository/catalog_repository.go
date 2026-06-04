@@ -10,6 +10,8 @@ import (
 var ErrNotFound = errors.New("repository: not found")
 var ErrDuplicateKey = errors.New("repository: duplicate key")
 var ErrWriteConflict = errors.New("repository: write conflict")
+var ErrInsufficientStock = errors.New("repository: insufficient stock")
+var ErrInventoryUnavailable = errors.New("repository: inventory unavailable")
 
 type CategoryReader interface {
 	GetCategoryByID(ctx context.Context, categoryID string) (*domain.Category, error)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"product-service/internal/client"
 	"product-service/internal/domain"
@@ -57,6 +58,7 @@ type SellerProductService struct {
 	clock     Clock
 	logger    *slog.Logger
 	options   SellerProductServiceOptions
+	events    ProductEventRecorder
 }
 
 func NewSellerProductService(
@@ -97,6 +99,10 @@ func NewSellerProductService(
 	}, nil
 }
 
+func (s *SellerProductService) EnableProductEventRecording(events ProductEventRecorder) {
+	s.events = events
+}
+
 func (s *SellerProductService) CreateProduct(ctx context.Context, request CreateProductRequest) (*domain.Product, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -134,7 +140,12 @@ func (s *SellerProductService) CreateProduct(ctx context.Context, request Create
 		return nil, validationFailed(report)
 	}
 
-	if err := s.repo.InsertProduct(ctx, &product); err != nil {
+	event, err := s.buildProductEvent(ctx, domain.ProductEventCreated, product, now)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.insertProductWithOptionalEvent(ctx, &product, event); err != nil {
 		if errors.Is(err, repository.ErrDuplicateKey) {
 			return nil, serviceError(ErrorKindAlreadyExists, ErrorCodeDuplicateSKU, "variant SKU already exists", err)
 		}
@@ -207,7 +218,12 @@ func (s *SellerProductService) UpdateProduct(ctx context.Context, request Update
 		return nil, validationFailed(report)
 	}
 
-	if err := s.repo.UpdateProduct(ctx, &updated, currentStatus); err != nil {
+	event, err := s.buildProductEvent(ctx, domain.ProductEventUpdated, updated, updated.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.updateProductWithOptionalEvent(ctx, &updated, event, currentStatus); err != nil {
 		return nil, s.mapProductWriteError(err, "update seller product")
 	}
 
@@ -271,7 +287,16 @@ func (s *SellerProductService) PublishProduct(ctx context.Context, request Produ
 		product.PublishedAt = &now
 	}
 
-	if err := s.repo.UpdateProduct(ctx, product, currentStatus); err != nil {
+	eventType := domain.ProductEventUpdated
+	if product.Status == domain.ProductStatusPublished {
+		eventType = domain.ProductEventPublished
+	}
+	event, err := s.buildProductEvent(ctx, eventType, *product, product.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.updateProductWithOptionalEvent(ctx, product, event, currentStatus); err != nil {
 		return nil, s.mapProductWriteError(err, "publish seller product")
 	}
 
@@ -305,7 +330,12 @@ func (s *SellerProductService) UnpublishProduct(ctx context.Context, request Pro
 	product.Status = domain.ProductStatusUnpublished
 	product.UpdatedBy = request.Actor.ActorID()
 	product.UpdatedAt = s.clock.Now().UTC()
-	if err := s.repo.UpdateProduct(ctx, product, currentStatus); err != nil {
+	event, err := s.buildProductEvent(ctx, domain.ProductEventUnpublished, *product, product.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.updateProductWithOptionalEvent(ctx, product, event, currentStatus); err != nil {
 		return nil, s.mapProductWriteError(err, "unpublish seller product")
 	}
 
@@ -316,6 +346,57 @@ func (s *SellerProductService) UnpublishProduct(ctx context.Context, request Pro
 		"actor_id", request.Actor.ActorID(),
 	)
 	return product, nil
+}
+
+func (s *SellerProductService) buildProductEvent(
+	ctx context.Context,
+	eventType domain.ProductEventType,
+	product domain.Product,
+	occurredAt time.Time,
+) (*domain.ProductOutboxEvent, error) {
+	if s.events == nil {
+		return nil, nil
+	}
+	return s.events.BuildProductEvent(ctx, eventType, product, occurredAt)
+}
+
+func (s *SellerProductService) insertProductWithOptionalEvent(
+	ctx context.Context,
+	product *domain.Product,
+	event *domain.ProductOutboxEvent,
+) error {
+	if event != nil {
+		if writer, ok := s.repo.(repository.ProductWriteRepositoryWithOutbox); ok {
+			return writer.InsertProductWithOutbox(ctx, product, event)
+		}
+	}
+	if err := s.repo.InsertProduct(ctx, product); err != nil {
+		return err
+	}
+	if event != nil {
+		return s.events.QueueProductEvent(ctx, *event)
+	}
+	return nil
+}
+
+func (s *SellerProductService) updateProductWithOptionalEvent(
+	ctx context.Context,
+	product *domain.Product,
+	event *domain.ProductOutboxEvent,
+	expectedStatuses ...domain.ProductStatus,
+) error {
+	if event != nil {
+		if writer, ok := s.repo.(repository.ProductWriteRepositoryWithOutbox); ok {
+			return writer.UpdateProductWithOutbox(ctx, product, event, expectedStatuses...)
+		}
+	}
+	if err := s.repo.UpdateProduct(ctx, product, expectedStatuses...); err != nil {
+		return err
+	}
+	if event != nil {
+		return s.events.QueueProductEvent(ctx, *event)
+	}
+	return nil
 }
 
 func (s *SellerProductService) loadOwnedProduct(ctx context.Context, productID string, actor domain.ActorContext) (*domain.Product, error) {

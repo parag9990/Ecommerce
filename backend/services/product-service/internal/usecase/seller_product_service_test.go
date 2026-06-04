@@ -130,6 +130,48 @@ func TestUnpublishProductMovesPublishedProductToUnpublished(t *testing.T) {
 	}
 }
 
+func TestSellerProductServiceQueuesSearchEvents(t *testing.T) {
+	repo := newMemoryProductRepository()
+	service := newTestSellerProductService(t, repo, client.ModerationAutoPublish)
+	outbox := &productEventMemoryOutbox{}
+	eventService, err := NewProductEventService(
+		outbox,
+		&eventSequenceIDs{},
+		fixedClock{},
+		slog.Default(),
+		ProductEventServiceOptions{Topic: "product.events", Source: "product-service"},
+	)
+	if err != nil {
+		t.Fatalf("NewProductEventService returned error: %v", err)
+	}
+	service.EnableProductEventRecording(eventService)
+
+	ctx := WithTraceID(WithRequestID(context.Background(), "req_create"), "trace_create")
+	product, err := service.CreateProduct(ctx, CreateProductRequest{
+		Actor:   sellerActor(),
+		Product: validProductInput(),
+	})
+	if err != nil {
+		t.Fatalf("CreateProduct returned error: %v", err)
+	}
+	if _, err := service.PublishProduct(ctx, ProductLifecycleRequest{
+		Actor:     sellerActor(),
+		ProductID: product.ID,
+	}); err != nil {
+		t.Fatalf("PublishProduct returned error: %v", err)
+	}
+
+	if len(outbox.events) != 2 {
+		t.Fatalf("queued event count = %d, want 2", len(outbox.events))
+	}
+	if outbox.events[0].EventType != string(domain.ProductEventCreated) {
+		t.Fatalf("first event type = %s, want ProductCreated", outbox.events[0].EventType)
+	}
+	if outbox.events[1].EventType != string(domain.ProductEventPublished) {
+		t.Fatalf("second event type = %s, want ProductPublished", outbox.events[1].EventType)
+	}
+}
+
 func newTestSellerProductService(t *testing.T, repo *memoryProductRepository, decision client.ModerationDecision) *SellerProductService {
 	t.Helper()
 	validator := NewCatalogModelService(repo, repo, slog.Default(), domain.DefaultValidationOptions())

@@ -4,16 +4,18 @@ import "testing"
 
 func TestProductMongoCollectionDefinitionsCoverTask3Collections(t *testing.T) {
 	definitions := ProductMongoCollectionDefinitions()
-	if len(definitions) != 5 {
-		t.Fatalf("definition count = %d, want 5", len(definitions))
+	if len(definitions) != 7 {
+		t.Fatalf("definition count = %d, want 7", len(definitions))
 	}
 
 	want := []string{
 		CollectionProducts,
 		CollectionCategories,
 		CollectionBrands,
+		CollectionInventoryReservations,
 		CollectionInventorySnapshots,
 		CollectionPriceBooks,
+		CollectionProductEventOutbox,
 	}
 	for _, name := range want {
 		definition := findDefinition(definitions, name)
@@ -57,6 +59,12 @@ func TestProductMongoCollectionDefinitionsExposeRequiredIndexes(t *testing.T) {
 		"idx_brands_status_name",
 		"idx_brands_name_text",
 	)
+	assertIndexes(t, definitions, CollectionInventoryReservations,
+		"uq_inventory_reservations_order",
+		"uq_inventory_reservations_idempotency",
+		"idx_inventory_reservations_status_expires",
+		"ttl_inventory_reservations_cleanup",
+	)
 	assertIndexes(t, definitions, CollectionInventorySnapshots,
 		"idx_inventory_product_variant_created",
 		"idx_inventory_seller_created",
@@ -68,6 +76,11 @@ func TestProductMongoCollectionDefinitionsExposeRequiredIndexes(t *testing.T) {
 		"idx_price_books_active_window_priority",
 		"idx_price_books_entry_product_variant_status",
 		"idx_price_books_entry_sku_status",
+	)
+	assertIndexes(t, definitions, CollectionProductEventOutbox,
+		"idx_product_event_outbox_status_next_occurred",
+		"idx_product_event_outbox_type_occurred",
+		"ttl_product_event_outbox_published",
 	)
 }
 

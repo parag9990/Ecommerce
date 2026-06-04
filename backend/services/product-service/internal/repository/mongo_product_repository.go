@@ -16,9 +16,13 @@ import (
 )
 
 type MongoProductRepository struct {
-	products   *mongo.Collection
-	categories *mongo.Collection
-	logger     *slog.Logger
+	database     *mongo.Database
+	products     *mongo.Collection
+	categories   *mongo.Collection
+	outbox       *mongo.Collection
+	reservations *mongo.Collection
+	snapshots    *mongo.Collection
+	logger       *slog.Logger
 }
 
 func NewMongoProductRepository(database *mongo.Database, logger *slog.Logger) (*MongoProductRepository, error) {
@@ -29,9 +33,13 @@ func NewMongoProductRepository(database *mongo.Database, logger *slog.Logger) (*
 		logger = slog.Default()
 	}
 	return &MongoProductRepository{
-		products:   database.Collection(CollectionProducts),
-		categories: database.Collection(CollectionCategories),
-		logger:     logger,
+		database:     database,
+		products:     database.Collection(CollectionProducts),
+		categories:   database.Collection(CollectionCategories),
+		outbox:       database.Collection(CollectionProductEventOutbox),
+		reservations: database.Collection(CollectionInventoryReservations),
+		snapshots:    database.Collection(CollectionInventorySnapshots),
+		logger:       logger,
 	}, nil
 }
 
@@ -42,12 +50,8 @@ func (r *MongoProductRepository) InsertProduct(ctx context.Context, product *dom
 	if product == nil {
 		return fmt.Errorf("product is required")
 	}
-	_, err := r.products.InsertOne(ctx, productDocumentFromDomain(*product))
-	if mongo.IsDuplicateKeyError(err) {
-		return ErrDuplicateKey
-	}
-	if err != nil {
-		return fmt.Errorf("insert product %q: %w", product.ID, err)
+	if err := r.insertProductDocument(ctx, product); err != nil {
+		return err
 	}
 	r.logger.Debug("product document inserted", "product_id", product.ID, "seller_id", product.SellerID)
 	return nil
@@ -89,6 +93,114 @@ func (r *MongoProductRepository) UpdateProduct(ctx context.Context, product *dom
 		filter = append(filter, e("status", bson.D{e("$in", statuses)}))
 	}
 
+	if err := r.replaceProductDocument(ctx, product, filter); err != nil {
+		return err
+	}
+	r.logger.Debug("product document updated", "product_id", product.ID, "seller_id", product.SellerID)
+	return nil
+}
+
+func (r *MongoProductRepository) InsertProductWithOutbox(
+	ctx context.Context,
+	product *domain.Product,
+	event *domain.ProductOutboxEvent,
+) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if product == nil {
+		return fmt.Errorf("product is required")
+	}
+	if event == nil {
+		return fmt.Errorf("outbox event is required")
+	}
+	err := r.withTransaction(ctx, func(tx context.Context) error {
+		if err := r.insertProductDocument(tx, product); err != nil {
+			return err
+		}
+		if err := r.insertOutboxEventDocument(tx, event); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	r.logger.Debug(
+		"product document and outbox event inserted",
+		"product_id", product.ID,
+		"seller_id", product.SellerID,
+		"event_id", event.ID,
+		"event_type", event.EventType,
+	)
+	return nil
+}
+
+func (r *MongoProductRepository) UpdateProductWithOutbox(
+	ctx context.Context,
+	product *domain.Product,
+	event *domain.ProductOutboxEvent,
+	expectedStatuses ...domain.ProductStatus,
+) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if product == nil {
+		return fmt.Errorf("product is required")
+	}
+	if event == nil {
+		return fmt.Errorf("outbox event is required")
+	}
+	filter := bson.D{
+		e("_id", product.ID),
+		e("seller_id", product.SellerID),
+	}
+	if len(expectedStatuses) > 0 {
+		statuses := make(bson.A, 0, len(expectedStatuses))
+		for _, status := range expectedStatuses {
+			statuses = append(statuses, string(status))
+		}
+		filter = append(filter, e("status", bson.D{e("$in", statuses)}))
+	}
+
+	err := r.withTransaction(ctx, func(tx context.Context) error {
+		if err := r.replaceProductDocument(tx, product, filter); err != nil {
+			return err
+		}
+		if err := r.insertOutboxEventDocument(tx, event); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	r.logger.Debug(
+		"product document updated and outbox event inserted",
+		"product_id", product.ID,
+		"seller_id", product.SellerID,
+		"event_id", event.ID,
+		"event_type", event.EventType,
+	)
+	return nil
+}
+
+func (r *MongoProductRepository) insertProductDocument(ctx context.Context, product *domain.Product) error {
+	_, err := r.products.InsertOne(ctx, productDocumentFromDomain(*product))
+	if mongo.IsDuplicateKeyError(err) {
+		return ErrDuplicateKey
+	}
+	if err != nil {
+		return fmt.Errorf("insert product %q: %w", product.ID, err)
+	}
+	return nil
+}
+
+func (r *MongoProductRepository) replaceProductDocument(
+	ctx context.Context,
+	product *domain.Product,
+	filter bson.D,
+) error {
 	result, err := r.products.ReplaceOne(ctx, filter, productDocumentFromDomain(*product))
 	if mongo.IsDuplicateKeyError(err) {
 		return ErrDuplicateKey
@@ -99,7 +211,25 @@ func (r *MongoProductRepository) UpdateProduct(ctx context.Context, product *dom
 	if result.MatchedCount == 0 {
 		return ErrWriteConflict
 	}
-	r.logger.Debug("product document updated", "product_id", product.ID, "seller_id", product.SellerID)
+	return nil
+}
+
+func (r *MongoProductRepository) withTransaction(ctx context.Context, fn func(context.Context) error) error {
+	session, err := r.database.Client().StartSession()
+	if err != nil {
+		return fmt.Errorf("start mongo session: %w", err)
+	}
+	defer session.EndSession(ctx)
+
+	_, err = session.WithTransaction(ctx, func(tx context.Context) (any, error) {
+		if err := fn(tx); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	})
+	if err != nil {
+		return fmt.Errorf("mongo transaction: %w", err)
+	}
 	return nil
 }
 

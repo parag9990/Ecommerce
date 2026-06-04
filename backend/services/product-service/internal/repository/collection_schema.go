@@ -3,12 +3,14 @@ package repository
 import "context"
 
 const (
-	ProductDatabaseName          = "product_db"
-	CollectionProducts           = "products"
-	CollectionCategories         = "categories"
-	CollectionBrands             = "brands"
-	CollectionInventorySnapshots = "inventory_snapshots"
-	CollectionPriceBooks         = "price_books"
+	ProductDatabaseName             = "product_db"
+	CollectionProducts              = "products"
+	CollectionCategories            = "categories"
+	CollectionBrands                = "brands"
+	CollectionInventoryReservations = "inventory_reservations"
+	CollectionInventorySnapshots    = "inventory_snapshots"
+	CollectionPriceBooks            = "price_books"
+	CollectionProductEventOutbox    = "product_event_outbox"
 )
 
 type CollectionSchemaManager interface {

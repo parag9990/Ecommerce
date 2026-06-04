@@ -50,14 +50,14 @@ Priority values:
 
 | S.No | Task Name | Task Detail (simple Hinglish + deep explanation) | Dependencies | Priority | Status |
 |---:|---|---|---|---|---|
-| 1 | Define catalog model | Product, variant, category, attribute, image, inventory rules finalize karo. E-commerce catalog flexible hona chahiye. | Platform foundation | P0 | Pending |
-| 2 | Choose MongoDB | Product attributes category-wise dynamic hote hain, isliye MongoDB flexible schema ke liye better hai. | Catalog model | P0 | Pending |
-| 3 | Create collections | `products`, `categories`, `brands`, `inventory_snapshots`, `price_books` collections design karo. | MongoDB choice | P0 | Pending |
-| 4 | Implement seller CRUD | Seller apne products create/update/publish kar sake. Draft and published workflow banao. | CMS Service | P1 | Pending |
-| 5 | Implement read APIs | Product listing, detail, category browse, seller catalog APIs banao. Fast read path ke liye indexes zaruri hain. | Collections | P1 | Pending |
-| 6 | Inventory operations | Reserve, release, decrement stock methods implement karo. Checkout race condition avoid hogi. | Order Service | P0 | Pending |
-| 7 | Publish search events | Product changes ko Search Service me index karne ke liye events publish karo. Search data async sync hoga. | Message queue | P1 | Pending |
-| 8 | Add media metadata | Images CDN URLs, alt text, order, status maintain karo. Frontend clean gallery render karega. | Collections | P2 | Pending |
+| 1 | Define catalog model | Product, variant, category, attribute, image, inventory rules finalize karo. E-commerce catalog flexible hona chahiye. | Platform foundation | P0 | Completed |
+| 2 | Choose MongoDB | Product attributes category-wise dynamic hote hain, isliye MongoDB flexible schema ke liye better hai. | Catalog model | P0 | Completed |
+| 3 | Create collections | `products`, `categories`, `brands`, `inventory_snapshots`, `price_books` collections design karo. | MongoDB choice | P0 | Completed |
+| 4 | Implement seller CRUD | Seller apne products create/update/publish kar sake. Draft and published workflow banao. | CMS Service | P1 | Completed |
+| 5 | Implement read APIs | Product listing, detail, category browse, seller catalog APIs banao. Fast read path ke liye indexes zaruri hain. | Collections | P1 | Completed |
+| 6 | Inventory operations | Reserve, release, decrement stock methods implement karo. Checkout race condition avoid hogi. | Order Service | P0 | Completed |
+| 7 | Publish search events | Product changes ko Search Service me index karne ke liye events publish karo. Search data async sync hoga. | Message queue | P1 | Completed |
+| 8 | Add media metadata | Images CDN URLs, alt text, order, status maintain karo. Frontend clean gallery render karega. | Collections | P2 | Completed |
 
 ## Order Service
 
@@ -253,4 +253,3 @@ Priority values:
 | 6 | Session oversight | High-risk sessions, live traffic, suspicious activity view banao. | Session APIs | P2 | Pending |
 | 7 | Platform settings | Commission, search synonyms, feature flags, maintenance mode UI banao. | Superadmin APIs | P2 | Pending |
 | 8 | Audit log viewer | Admin actions filterable table with export banao. Security review ke liye important hai. | Audit APIs | P0 | Pending |
-
