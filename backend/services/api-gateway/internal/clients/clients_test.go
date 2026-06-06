@@ -13,6 +13,7 @@ import (
 	"ecommerce/api-gateway/internal/config"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health"
 	healthv1 "google.golang.org/grpc/health/grpc_health_v1"
@@ -36,6 +37,9 @@ func TestNewWithDialerInitializesAllServiceClients(t *testing.T) {
 		if client.Descriptor().Name != service {
 			t.Fatalf("expected descriptor service %s, got %s", service, client.Descriptor().Name)
 		}
+		if client.Conn() == nil {
+			t.Fatalf("expected %s client to expose its reusable grpc transport", service)
+		}
 		if _, ok := registry.Connection(service); !ok {
 			t.Fatalf("expected %s connection to be stored", service)
 		}
@@ -43,8 +47,16 @@ func TestNewWithDialerInitializesAllServiceClients(t *testing.T) {
 	if registry.Auth == nil || registry.Product == nil || registry.Superadmin == nil {
 		t.Fatal("expected typed service client fields to be populated")
 	}
+	if healthv1.NewHealthClient(registry.Auth) == nil {
+		t.Fatal("expected typed service clients to satisfy grpc.ClientConnInterface")
+	}
 	if err := registry.Close(); err != nil {
 		t.Fatalf("second close should be idempotent: %v", err)
+	}
+	for service, conn := range dialer.connections {
+		if conn.GetState() != connectivity.Shutdown {
+			t.Fatalf("expected %s connection to be closed, got %s", service, conn.GetState())
+		}
 	}
 }
 
@@ -57,6 +69,60 @@ func TestNewWithDialerClosesPartialRegistryOnFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "dial product service") {
 		t.Fatalf("expected service-specific dial error, got %v", err)
+	}
+	if got := strings.Join(downstreamNames(dialer.calls), ","); got != "auth,user,product" {
+		t.Fatalf("expected dialing to stop at product, got %s", got)
+	}
+	for service, conn := range dialer.connections {
+		if conn.GetState() != connectivity.Shutdown {
+			t.Fatalf("expected partial %s connection to be closed, got %s", service, conn.GetState())
+		}
+	}
+}
+
+func TestNewWithDialerRejectsInvalidDescriptorSetBeforeDialing(t *testing.T) {
+	tests := []struct {
+		name        string
+		descriptors func([]ServiceDescriptor) []ServiceDescriptor
+		wantError   string
+	}{
+		{
+			name: "missing",
+			descriptors: func(descriptors []ServiceDescriptor) []ServiceDescriptor {
+				return descriptors[:len(descriptors)-1]
+			},
+			wantError: "superadmin grpc client descriptor is required",
+		},
+		{
+			name: "duplicate",
+			descriptors: func(descriptors []ServiceDescriptor) []ServiceDescriptor {
+				return append(descriptors, descriptors[0])
+			},
+			wantError: "duplicate grpc client descriptor for auth",
+		},
+		{
+			name: "unsupported",
+			descriptors: func(descriptors []ServiceDescriptor) []ServiceDescriptor {
+				descriptors[0].Name = "recommendation"
+				return descriptors
+			},
+			wantError: `unsupported downstream service "recommendation"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dialer := &stubDialer{}
+			descriptors := tt.descriptors(ServiceDescriptorsFromConfig(testClientConfig(t)))
+
+			_, err := NewWithDialer(context.Background(), descriptors, dialer, nil)
+			if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+				t.Fatalf("expected %q error, got %v", tt.wantError, err)
+			}
+			if len(dialer.calls) != 0 {
+				t.Fatalf("invalid descriptors must fail before dialing, got calls %v", dialer.calls)
+			}
+		})
 	}
 }
 
@@ -110,6 +176,7 @@ func TestHealthCheckReportsServingAndNotServing(t *testing.T) {
 	conn, cleanup := newHealthConn(t, map[string]healthv1.HealthCheckResponse_ServingStatus{
 		"ecommerce.auth.v1.AuthService":       healthv1.HealthCheckResponse_SERVING,
 		"ecommerce.product.v1.ProductService": healthv1.HealthCheckResponse_NOT_SERVING,
+		"ecommerce.search.v1.SearchService":   healthv1.HealthCheckResponse_UNKNOWN,
 	})
 	defer cleanup()
 
@@ -117,10 +184,12 @@ func TestHealthCheckReportsServingAndNotServing(t *testing.T) {
 		conns: map[Downstream]*grpc.ClientConn{
 			DownstreamAuth:    conn,
 			DownstreamProduct: conn,
+			DownstreamSearch:  conn,
 		},
 		descriptors: map[Downstream]ServiceDescriptor{
 			DownstreamAuth:    newServiceDescriptor(DownstreamAuth, "bufnet", "ecommerce.auth.v1.AuthService"),
 			DownstreamProduct: newServiceDescriptor(DownstreamProduct, "bufnet", "ecommerce.product.v1.ProductService"),
+			DownstreamSearch:  newServiceDescriptor(DownstreamSearch, "bufnet", "ecommerce.search.v1.SearchService"),
 		},
 	}
 
@@ -131,23 +200,45 @@ func TestHealthCheckReportsServingAndNotServing(t *testing.T) {
 	if report[DownstreamProduct].Status != HealthStatusNotServing {
 		t.Fatalf("expected product not serving, got %+v", report[DownstreamProduct])
 	}
+	if report[DownstreamSearch].Status != HealthStatusUnknown {
+		t.Fatalf("expected search health unknown, got %+v", report[DownstreamSearch])
+	}
 	if report.Ready() {
 		t.Fatal("partial unhealthy registry should not be ready")
 	}
 }
 
 type stubDialer struct {
-	fail Downstream
+	fail        Downstream
+	calls       []Downstream
+	connections map[Downstream]*grpc.ClientConn
 }
 
 func (d *stubDialer) Dial(_ context.Context, descriptor ServiceDescriptor) (*grpc.ClientConn, error) {
+	d.calls = append(d.calls, descriptor.Name)
 	if descriptor.Name == d.fail {
 		return nil, errors.New("dial failed")
 	}
-	return grpc.NewClient(
+	conn, err := grpc.NewClient(
 		"passthrough:///"+string(descriptor.Name),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
+	if err != nil {
+		return nil, err
+	}
+	if d.connections == nil {
+		d.connections = make(map[Downstream]*grpc.ClientConn)
+	}
+	d.connections[descriptor.Name] = conn
+	return conn, nil
+}
+
+func downstreamNames(services []Downstream) []string {
+	names := make([]string, len(services))
+	for i, service := range services {
+		names[i] = string(service)
+	}
+	return names
 }
 
 func testClientConfig(t *testing.T) config.Config {

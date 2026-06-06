@@ -62,6 +62,12 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger, options ..
 		DialTimeout: cfg.GRPCDialTimeout,
 	}, logger, []DialOptionProvider{
 		func(descriptor ServiceDescriptor) grpc.DialOption {
+			return grpc.WithChainUnaryInterceptor(UnaryDeadlineInterceptor(descriptor.DefaultTimeout))
+		},
+		func(descriptor ServiceDescriptor) grpc.DialOption {
+			return grpc.WithChainStreamInterceptor(StreamDeadlineInterceptor(descriptor.DefaultTimeout))
+		},
+		func(descriptor ServiceDescriptor) grpc.DialOption {
 			return grpc.WithChainUnaryInterceptor(observability.UnaryClientInterceptor(
 				observabilityConfig,
 				clientOpts.metrics,
@@ -86,6 +92,9 @@ func NewWithDialer(ctx context.Context, descriptors []ServiceDescriptor, dialer 
 	if dialer == nil {
 		return nil, errors.New("grpc dialer is required")
 	}
+	if err := validateServiceDescriptors(descriptors); err != nil {
+		return nil, err
+	}
 
 	registry := &Clients{
 		conns:       make(map[Downstream]*grpc.ClientConn, len(descriptors)),
@@ -93,10 +102,6 @@ func NewWithDialer(ctx context.Context, descriptors []ServiceDescriptor, dialer 
 		logger:      logger,
 	}
 	for _, descriptor := range descriptors {
-		if err := descriptor.Validate(); err != nil {
-			_ = registry.Close()
-			return nil, err
-		}
 		conn, err := dialer.Dial(ctx, descriptor)
 		if err != nil {
 			_ = registry.Close()
@@ -238,6 +243,39 @@ func (c *Clients) validateComplete() error {
 		}
 		if _, ok := c.Client(service); !ok {
 			errs = append(errs, fmt.Errorf("%s grpc client is not initialized", service))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func validateServiceDescriptors(descriptors []ServiceDescriptor) error {
+	expected := make(map[Downstream]struct{}, len(serviceOrder))
+	for _, service := range serviceOrder {
+		expected[service] = struct{}{}
+	}
+
+	seen := make(map[Downstream]struct{}, len(descriptors))
+	var errs []error
+	for _, descriptor := range descriptors {
+		if err := descriptor.Validate(); err != nil {
+			errs = append(errs, err)
+		}
+		if descriptor.Name == "" {
+			continue
+		}
+		if _, ok := expected[descriptor.Name]; !ok {
+			errs = append(errs, fmt.Errorf("unsupported downstream service %q", descriptor.Name))
+			continue
+		}
+		if _, duplicate := seen[descriptor.Name]; duplicate {
+			errs = append(errs, fmt.Errorf("duplicate grpc client descriptor for %s", descriptor.Name))
+			continue
+		}
+		seen[descriptor.Name] = struct{}{}
+	}
+	for _, service := range serviceOrder {
+		if _, ok := seen[service]; !ok {
+			errs = append(errs, fmt.Errorf("%s grpc client descriptor is required", service))
 		}
 	}
 	return errors.Join(errs...)

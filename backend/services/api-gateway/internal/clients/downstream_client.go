@@ -3,19 +3,20 @@ package clients
 import "google.golang.org/grpc"
 
 type OutboundClient interface {
+	grpc.ClientConnInterface
 	Descriptor() ServiceDescriptor
 	Conn() grpc.ClientConnInterface
 }
 
 type downstreamClient struct {
 	descriptor ServiceDescriptor
-	conn       grpc.ClientConnInterface
+	grpc.ClientConnInterface
 }
 
 func newOutboundClient(descriptor ServiceDescriptor, conn grpc.ClientConnInterface) OutboundClient {
 	return &downstreamClient{
-		descriptor: descriptor,
-		conn:       conn,
+		descriptor:          descriptor,
+		ClientConnInterface: conn,
 	}
 }
 
@@ -24,5 +25,5 @@ func (c *downstreamClient) Descriptor() ServiceDescriptor {
 }
 
 func (c *downstreamClient) Conn() grpc.ClientConnInterface {
-	return c.conn
+	return c.ClientConnInterface
 }

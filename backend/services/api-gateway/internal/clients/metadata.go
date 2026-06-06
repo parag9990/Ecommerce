@@ -48,7 +48,13 @@ func WithMetadata(ctx context.Context, values map[string]string) context.Context
 	if len(values) == 0 {
 		return ctx
 	}
-	pairs := make([]string, 0, len(values)*2)
+	outgoing, ok := metadata.FromOutgoingContext(ctx)
+	if ok {
+		outgoing = outgoing.Copy()
+	} else {
+		outgoing = metadata.MD{}
+	}
+	changed := false
 	for key, value := range values {
 		key = strings.ToLower(strings.TrimSpace(key))
 		value = strings.TrimSpace(value)
@@ -58,10 +64,11 @@ func WithMetadata(ctx context.Context, values map[string]string) context.Context
 		if _, allowed := propagatedMetadataKeys[key]; !allowed {
 			continue
 		}
-		pairs = append(pairs, key, value)
+		outgoing.Set(key, value)
+		changed = true
 	}
-	if len(pairs) == 0 {
+	if !changed {
 		return ctx
 	}
-	return metadata.AppendToOutgoingContext(ctx, pairs...)
+	return metadata.NewOutgoingContext(ctx, outgoing)
 }

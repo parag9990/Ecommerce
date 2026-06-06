@@ -41,6 +41,15 @@ type RequestValidationConfig struct {
 	MaxQueryBytes       int
 }
 
+type GRPCWebConfig struct {
+	Enabled            bool
+	Address            string
+	PolicyPath         string
+	ExposedServices    []string
+	MaxReceiveMsgBytes int
+	MaxSendMsgBytes    int
+}
+
 type Config struct {
 	ServiceName       string
 	Environment       string
@@ -57,6 +66,7 @@ type Config struct {
 	Redis         RedisConfig
 	RateLimit     RateLimitConfig
 	Validation    RequestValidationConfig
+	GRPCWeb       GRPCWebConfig
 	Observability observability.Config
 
 	JWTIssuer           string
@@ -105,6 +115,22 @@ func Load(ctx context.Context) (Config, error) {
 		return Config{}, err
 	}
 	grpcTLSEnabled, err := getBool("GRPC_TLS_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
+	grpcWebEnabled, err := getBool("GRPC_WEB_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
+	grpcWebPolicyPath, err := resolveGRPCWebPolicyPath(getenv("GRPC_WEB_POLICY_PATH", ""))
+	if err != nil {
+		return Config{}, err
+	}
+	grpcWebMaxReceiveMsgBytes, err := getInt("GRPC_WEB_MAX_RECEIVE_MESSAGE_BYTES", 4*1024*1024)
+	if err != nil {
+		return Config{}, err
+	}
+	grpcWebMaxSendMsgBytes, err := getInt("GRPC_WEB_MAX_SEND_MESSAGE_BYTES", 4*1024*1024)
 	if err != nil {
 		return Config{}, err
 	}
@@ -235,6 +261,14 @@ func Load(ctx context.Context) (Config, error) {
 			MaxHeaderBytes:      maxHeaderBytes,
 			MaxQueryBytes:       maxQueryBytes,
 		},
+		GRPCWeb: GRPCWebConfig{
+			Enabled:            grpcWebEnabled,
+			Address:            getenv("GRPC_ADDR", ":9090"),
+			PolicyPath:         grpcWebPolicyPath,
+			ExposedServices:    getCSV("GRPC_WEB_EXPOSED_SERVICES", nil),
+			MaxReceiveMsgBytes: grpcWebMaxReceiveMsgBytes,
+			MaxSendMsgBytes:    grpcWebMaxSendMsgBytes,
+		},
 		Observability:          observabilityConfig,
 		JWTIssuer:              getenv("JWT_ISSUER", "ecommerce-auth"),
 		JWTAudience:            getenv("JWT_AUDIENCE", "ecommerce-api"),
@@ -336,6 +370,41 @@ func (c Config) Validate() error {
 		}
 		if c.Validation.MaxQueryBytes <= 0 {
 			errs = append(errs, errors.New("REQUEST_VALIDATION_MAX_QUERY_BYTES must be positive"))
+		}
+	}
+	if c.GRPCWeb.Enabled {
+		if strings.TrimSpace(c.GRPCWeb.Address) == "" {
+			errs = append(errs, errors.New("GRPC_ADDR is required when gRPC-Web is enabled"))
+		} else if strings.ContainsAny(c.GRPCWeb.Address, " \t\r\n") {
+			errs = append(errs, errors.New("GRPC_ADDR must not contain whitespace"))
+		}
+		if strings.TrimSpace(c.GRPCWeb.PolicyPath) == "" {
+			errs = append(errs, errors.New("GRPC_WEB_POLICY_PATH is required when gRPC-Web is enabled"))
+		} else if stat, err := os.Stat(c.GRPCWeb.PolicyPath); err != nil {
+			errs = append(errs, fmt.Errorf("GRPC_WEB_POLICY_PATH is not readable: %w", err))
+		} else if stat.IsDir() {
+			errs = append(errs, errors.New("GRPC_WEB_POLICY_PATH must be a file"))
+		}
+		if len(c.GRPCWeb.ExposedServices) == 0 {
+			errs = append(errs, errors.New("GRPC_WEB_EXPOSED_SERVICES must contain at least one service when gRPC-Web is enabled"))
+		}
+		for _, service := range c.GRPCWeb.ExposedServices {
+			if strings.TrimSpace(service) == "" || strings.ContainsAny(service, " \t\r\n/") {
+				errs = append(errs, fmt.Errorf("GRPC_WEB_EXPOSED_SERVICES contains invalid service %q", service))
+			}
+		}
+		if c.GRPCWeb.MaxReceiveMsgBytes <= 0 {
+			errs = append(errs, errors.New("GRPC_WEB_MAX_RECEIVE_MESSAGE_BYTES must be positive"))
+		}
+		if c.GRPCWeb.MaxSendMsgBytes <= 0 {
+			errs = append(errs, errors.New("GRPC_WEB_MAX_SEND_MESSAGE_BYTES must be positive"))
+		}
+		observabilityConfig := c.Observability.Normalize(c.ServiceName, c.Environment)
+		if observabilityConfig.MetricsEnabled && strings.TrimSpace(c.GRPCWeb.Address) == strings.TrimSpace(observabilityConfig.MetricsAddress) {
+			errs = append(errs, errors.New("GRPC_ADDR must not equal METRICS_ADDR"))
+		}
+		if strings.TrimSpace(c.GRPCWeb.Address) == strings.TrimSpace(c.HTTPAddress) {
+			errs = append(errs, errors.New("GRPC_ADDR must not equal HTTP_ADDR"))
 		}
 	}
 	observabilityConfig := c.Observability.Normalize(c.ServiceName, c.Environment)
@@ -548,4 +617,25 @@ func resolveContractPath(configured string) (string, error) {
 		}
 	}
 	return "", errors.New("API_CONTRACT_PATH is required when api/master-api.json cannot be discovered")
+}
+
+func resolveGRPCWebPolicyPath(configured string) (string, error) {
+	if configured != "" {
+		return filepath.Abs(configured)
+	}
+	candidates := []string{
+		"config/grpcweb-policies.json",
+		"backend/services/api-gateway/config/grpcweb-policies.json",
+		"services/api-gateway/config/grpcweb-policies.json",
+		"../config/grpcweb-policies.json",
+		"../../config/grpcweb-policies.json",
+		"../../../config/grpcweb-policies.json",
+		"../../../../backend/services/api-gateway/config/grpcweb-policies.json",
+	}
+	for _, candidate := range candidates {
+		if stat, err := os.Stat(candidate); err == nil && !stat.IsDir() {
+			return filepath.Abs(candidate)
+		}
+	}
+	return "", nil
 }

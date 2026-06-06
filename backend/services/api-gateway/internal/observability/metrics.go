@@ -19,6 +19,8 @@ type Metrics struct {
 	httpRequestDuration       *prometheus.HistogramVec
 	grpcClientRequestsTotal   *prometheus.CounterVec
 	grpcClientDuration        *prometheus.HistogramVec
+	grpcServerRequestsTotal   *prometheus.CounterVec
+	grpcServerDuration        *prometheus.HistogramVec
 	gatewayRateLimitedTotal   *prometheus.CounterVec
 	gatewayAuthFailuresTotal  *prometheus.CounterVec
 	gatewayValidationFailures *prometheus.CounterVec
@@ -55,6 +57,15 @@ func NewMetrics(cfg Config, registry *prometheus.Registry) (*Metrics, error) {
 			Help:    "Outbound gRPC request duration in seconds.",
 			Buckets: prometheus.DefBuckets,
 		}, []string{"service", "target_service", "grpc_method"}),
+		grpcServerRequestsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "grpc_server_requests_total",
+			Help: "Total inbound gRPC requests handled by the API Gateway facade.",
+		}, []string{"service", "grpc_method", "grpc_code"}),
+		grpcServerDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "grpc_server_duration_seconds",
+			Help:    "Inbound API Gateway gRPC facade request duration in seconds.",
+			Buckets: prometheus.DefBuckets,
+		}, []string{"service", "grpc_method"}),
 		gatewayRateLimitedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "gateway_rate_limited_total",
 			Help: "Total API Gateway requests blocked by rate limiting.",
@@ -83,6 +94,8 @@ func NewMetrics(cfg Config, registry *prometheus.Registry) (*Metrics, error) {
 		metrics.httpRequestDuration,
 		metrics.grpcClientRequestsTotal,
 		metrics.grpcClientDuration,
+		metrics.grpcServerRequestsTotal,
+		metrics.grpcServerDuration,
 		metrics.gatewayRateLimitedTotal,
 		metrics.gatewayAuthFailuresTotal,
 		metrics.gatewayValidationFailures,
@@ -135,6 +148,16 @@ func (m *Metrics) ObserveGRPCClient(targetService, grpcMethod, grpcCode string, 
 	grpcCode = emptyToNone(grpcCode)
 	m.grpcClientRequestsTotal.WithLabelValues(m.serviceName, targetService, grpcMethod, grpcCode).Inc()
 	m.grpcClientDuration.WithLabelValues(m.serviceName, targetService, grpcMethod).Observe(time.Since(started).Seconds())
+}
+
+func (m *Metrics) ObserveGRPCServer(grpcMethod, grpcCode string, started time.Time) {
+	if m == nil {
+		return
+	}
+	grpcMethod = emptyToUnknown(grpcMethod)
+	grpcCode = emptyToNone(grpcCode)
+	m.grpcServerRequestsTotal.WithLabelValues(m.serviceName, grpcMethod, grpcCode).Inc()
+	m.grpcServerDuration.WithLabelValues(m.serviceName, grpcMethod).Observe(time.Since(started).Seconds())
 }
 
 func (m *Metrics) ObserveRateLimited(route, limitType string) {

@@ -31,6 +31,21 @@ func TestWithAuthMetadataPropagatesSafeClaims(t *testing.T) {
 	assertMetadataValue(t, md, "x-seller-id", "seller_123")
 }
 
+func TestWithMetadataReplacesTrustedValueAndPreservesOtherMetadata(t *testing.T) {
+	ctx := metadata.NewOutgoingContext(context.Background(), metadata.Pairs(
+		"x-user-id", "untrusted-user",
+		"authorization", "Bearer internal-token",
+	))
+
+	ctx = WithMetadata(ctx, map[string]string{"x-user-id": "trusted-user"})
+	md, ok := metadata.FromOutgoingContext(ctx)
+	if !ok {
+		t.Fatal("expected outgoing metadata")
+	}
+	assertMetadataValue(t, md, "x-user-id", "trusted-user")
+	assertMetadataValue(t, md, "authorization", "Bearer internal-token")
+}
+
 func assertMetadataValue(t *testing.T, md metadata.MD, key string, want string) {
 	t.Helper()
 	values := md.Get(key)

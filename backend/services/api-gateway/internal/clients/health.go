@@ -130,15 +130,27 @@ func checkHealth(ctx context.Context, descriptor ServiceDescriptor, conn *grpc.C
 			Error:   err.Error(),
 		}
 	}
-	if resp.GetStatus() != healthv1.HealthCheckResponse_SERVING {
+	status := healthStatusFromGRPC(resp.GetStatus())
+	if status != HealthStatusServing {
 		return DependencyHealth{
 			Service: string(descriptor.Name),
-			Status:  HealthStatusNotServing,
+			Status:  status,
 			Error:   resp.GetStatus().String(),
 		}
 	}
 	return DependencyHealth{
 		Service: string(descriptor.Name),
 		Status:  HealthStatusServing,
+	}
+}
+
+func healthStatusFromGRPC(status healthv1.HealthCheckResponse_ServingStatus) HealthStatus {
+	switch status {
+	case healthv1.HealthCheckResponse_SERVING:
+		return HealthStatusServing
+	case healthv1.HealthCheckResponse_NOT_SERVING:
+		return HealthStatusNotServing
+	default:
+		return HealthStatusUnknown
 	}
 }

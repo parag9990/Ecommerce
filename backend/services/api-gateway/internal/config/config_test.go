@@ -44,6 +44,65 @@ func TestConfigLoadReadsGRPCSettings(t *testing.T) {
 	}
 }
 
+func TestConfigLoadReadsGRPCWebSettings(t *testing.T) {
+	contractPath := writeTestContract(t)
+	policyPath := filepath.Join(t.TempDir(), "grpcweb-policies.json")
+	if err := os.WriteFile(policyPath, []byte(`{"policies":[]}`), 0o600); err != nil {
+		t.Fatalf("write grpc-web policy: %v", err)
+	}
+	t.Setenv("API_CONTRACT_PATH", contractPath)
+	t.Setenv("GRPC_WEB_ENABLED", "true")
+	t.Setenv("GRPC_ADDR", ":19090")
+	t.Setenv("GRPC_WEB_POLICY_PATH", policyPath)
+	t.Setenv("GRPC_WEB_EXPOSED_SERVICES", "ecommerce.session.v1.SessionService,ecommerce.superadmin.v1.SuperadminService")
+	t.Setenv("GRPC_WEB_MAX_RECEIVE_MESSAGE_BYTES", "2048")
+	t.Setenv("GRPC_WEB_MAX_SEND_MESSAGE_BYTES", "4096")
+	setGRPCTargetEnv(t)
+
+	cfg, err := Load(context.Background())
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if !cfg.GRPCWeb.Enabled || cfg.GRPCWeb.Address != ":19090" {
+		t.Fatalf("unexpected grpc-web config: %+v", cfg.GRPCWeb)
+	}
+	if cfg.GRPCWeb.PolicyPath != policyPath || cfg.GRPCWeb.MaxReceiveMsgBytes != 2048 || cfg.GRPCWeb.MaxSendMsgBytes != 4096 {
+		t.Fatalf("unexpected grpc-web policy/message config: %+v", cfg.GRPCWeb)
+	}
+	if strings.Join(cfg.GRPCWeb.ExposedServices, ",") != "ecommerce.session.v1.SessionService,ecommerce.superadmin.v1.SuperadminService" {
+		t.Fatalf("unexpected exposed services: %v", cfg.GRPCWeb.ExposedServices)
+	}
+}
+
+func TestConfigValidateRejectsEnabledGRPCWebWithoutAllowlist(t *testing.T) {
+	cfg := validConfig(t)
+	cfg.GRPCWeb.Enabled = true
+	cfg.GRPCWeb.Address = ":19090"
+	cfg.GRPCWeb.PolicyPath = writeTestContract(t)
+	cfg.GRPCWeb.MaxReceiveMsgBytes = 1024
+	cfg.GRPCWeb.MaxSendMsgBytes = 1024
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "GRPC_WEB_EXPOSED_SERVICES") {
+		t.Fatalf("expected missing grpc-web allowlist error, got %v", err)
+	}
+}
+
+func TestConfigValidateRejectsGRPCWebHTTPAddressConflict(t *testing.T) {
+	cfg := validConfig(t)
+	cfg.GRPCWeb.Enabled = true
+	cfg.GRPCWeb.Address = cfg.HTTPAddress
+	cfg.GRPCWeb.PolicyPath = writeTestContract(t)
+	cfg.GRPCWeb.ExposedServices = []string{"ecommerce.session.v1.SessionService"}
+	cfg.GRPCWeb.MaxReceiveMsgBytes = 1024
+	cfg.GRPCWeb.MaxSendMsgBytes = 1024
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "GRPC_ADDR must not equal HTTP_ADDR") {
+		t.Fatalf("expected grpc/http address conflict error, got %v", err)
+	}
+}
+
 func TestConfigLoadReadsJWTSettings(t *testing.T) {
 	contractPath := writeTestContract(t)
 	t.Setenv("API_CONTRACT_PATH", contractPath)
