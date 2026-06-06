@@ -271,6 +271,36 @@ func TestHandleGetHeatmapReturnsPointsForAdmin(t *testing.T) {
 	}
 }
 
+func TestHandleGetHeatmapAcceptsRFC3339Range(t *testing.T) {
+	heatmap := &fakeSessionHeatmapUsecase{
+		output: usecase.HeatmapOutput{
+			Path:        "/products/prod_123",
+			DeviceType:  domain.DeviceTypeMobile,
+			HeatmapType: domain.HeatmapTypeClick,
+			From:        "2026-05-22",
+			To:          "2026-05-23",
+			Points:      []usecase.HeatmapPointOutput{},
+		},
+	}
+	handler := newTestHandlerWithHeatmap(t, &fakeEventIngestUsecase{}, &fakeSessionJourneyUsecase{}, heatmap, 64<<10)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/heatmaps?path=/products/prod_123&device_type=mobile&from=2026-05-22T10:30:00Z&to=2026-05-23T11:45:00Z", nil)
+	req.Header.Set("X-User-Roles", "admin")
+	rr := httptest.NewRecorder()
+
+	NewRouter(handler).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	if !heatmap.input.From.Equal(time.Date(2026, 5, 22, 10, 30, 0, 0, time.UTC)) {
+		t.Fatalf("unexpected from timestamp: %s", heatmap.input.From)
+	}
+	if !heatmap.input.To.Equal(time.Date(2026, 5, 23, 11, 45, 0, 0, time.UTC)) {
+		t.Fatalf("unexpected to timestamp: %s", heatmap.input.To)
+	}
+}
+
 func TestHandleGetHeatmapRequiresAdminRole(t *testing.T) {
 	handler := newTestHandler(t, &fakeEventIngestUsecase{}, 64<<10)
 

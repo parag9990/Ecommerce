@@ -912,11 +912,11 @@ func parseDayQuery(value string, field string) (time.Time, error) {
 	if value == "" {
 		return time.Time{}, fmt.Errorf("%s is required", field)
 	}
-	parsed, err := time.Parse("2006-01-02", value)
+	parsed, err := parseOptionalTimeQuery(value, field)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("%s must use YYYY-MM-DD format", field)
+		return time.Time{}, err
 	}
-	return parsed.UTC(), nil
+	return parsed, nil
 }
 
 func requireAdminAccess(w http.ResponseWriter, r *http.Request) bool {
