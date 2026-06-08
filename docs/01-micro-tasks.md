@@ -193,14 +193,14 @@ Priority values:
 
 | S.No | Task Name | Task Detail (simple Hinglish + deep explanation) | Dependencies | Priority | Status |
 |---:|---|---|---|---|---|
-| 1 | Define admin domain | Users, sellers, orders, payments, sessions, platform settings ke control rules define karo. | Auth RBAC | P1 | Pending |
-| 2 | Choose MySQL | Admin actions and permissions highly structured and auditable hain, MySQL suitable hai. | Admin domain | P1 | Pending |
-| 3 | Admin RBAC | Superadmin, operations admin, finance admin, catalog admin permissions define karo. | Auth Service | P0 | Pending |
-| 4 | User/seller controls | Block user, approve seller, suspend seller, verify KYC flows banao. | User Service | P1 | Pending |
-| 5 | Order/payment controls | Refund approve, manual order status review, dispute view APIs banao. | Order and Payment | P1 | Pending |
-| 6 | Session visibility | Session analytics dashboard ko admin level access control do. | Session Service | P2 | Pending |
-| 7 | Platform settings | Search synonyms, commission, feature flags, maintenance mode settings banao. | CMS/Search | P2 | Pending |
-| 8 | Admin audit logs | Har admin action immutable audit log me store karo. Compliance and security ke liye must hai. | Schema | P0 | Pending |
+| 1 | Define admin domain | Users, sellers, orders, payments, sessions, platform settings ke control rules define karo. | Auth RBAC | P1 | Completed |
+| 2 | Choose MySQL | Admin actions and permissions highly structured and auditable hain, MySQL suitable hai. | Admin domain | P1 | Completed |
+| 3 | Admin RBAC | Superadmin, operations admin, finance admin, catalog admin permissions define karo. | Auth Service | P0 | Completed |
+| 4 | User/seller controls | Block user, approve seller, suspend seller, verify KYC flows banao. | User Service | P1 | Completed |
+| 5 | Order/payment controls | Refund approve, manual order status review, dispute view APIs banao. | Order and Payment | P1 | Completed |
+| 6 | Session visibility | Session analytics dashboard ko admin level access control do. | Session Service | P2 | Completed |
+| 7 | Platform settings | Search synonyms, commission, feature flags, maintenance mode settings banao. | CMS/Search | P2 | Completed |
+| 8 | Admin audit logs | Har admin action immutable audit log me store karo. Compliance and security ke liye must hai. | Schema | P0 | Completed |
 
 ## User App Frontend
 
