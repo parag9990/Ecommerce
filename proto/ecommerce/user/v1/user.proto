@@ -1,0 +1,189 @@
+syntax = "proto3";
+
+package ecommerce.user.v1;
+
+option go_package = "github.com/parag/ecommerce/backend/shared/gen/go/ecommerce/user/v1;userv1";
+
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+
+service UserService {
+  rpc CreateUser(CreateUserRequest) returns (UserProfile);
+  rpc GetUser(GetUserRequest) returns (UserProfile);
+  rpc UpdateUserProfile(UpdateUserProfileRequest) returns (UserProfile);
+  rpc ListUserAddresses(ListUserAddressesRequest) returns (AddressListResponse);
+  rpc CreateAddress(CreateAddressRequest) returns (Address);
+  rpc UpdateAddress(UpdateAddressRequest) returns (Address);
+  rpc DeleteAddress(DeleteAddressRequest) returns (SuccessResponse);
+  rpc GetSellerProfile(GetSellerProfileRequest) returns (SellerProfile);
+  rpc UpdateSellerProfile(UpdateSellerProfileRequest) returns (SellerProfile);
+  rpc UpdateUserStatus(UpdateUserStatusRequest) returns (UserProfile);
+  rpc UpdateSellerStatus(UpdateSellerStatusRequest) returns (SellerProfile);
+  rpc ReviewKYCDocument(ReviewKYCDocumentRequest) returns (KYCDocument);
+}
+
+message CreateUserRequest {
+  string auth_account_id = 1;
+  string email = 2;
+  string phone = 3;
+  string full_name = 4;
+}
+
+message GetUserRequest {
+  string user_id = 1;
+}
+
+message UpdateUserProfileRequest {
+  string user_id = 1;
+  string full_name = 2;
+  string phone = 3;
+  string avatar_url = 4;
+  google.protobuf.FieldMask update_mask = 5;
+}
+
+message GetSellerProfileRequest {
+  string seller_id = 1;
+  string user_id = 2;
+}
+
+message UpdateSellerProfileRequest {
+  string seller_id = 1;
+  string user_id = 2;
+  string store_name = 3;
+  string display_name = 4;
+  string gst_number = 5;
+  string support_email = 6;
+  google.protobuf.FieldMask update_mask = 7;
+}
+
+message UpdateUserStatusRequest {
+  string user_id = 1;
+  string status = 2;
+}
+
+message UpdateSellerStatusRequest {
+  string seller_id = 1;
+  string status = 2;
+  string reason = 3;
+}
+
+message ReviewKYCDocumentRequest {
+  string seller_id = 1;
+  string document_id = 2;
+  string status = 3;
+  string rejection_reason = 4;
+}
+
+message ListUserAddressesRequest {
+  string user_id = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+message AddressInput {
+  string name = 1;
+  string phone = 2;
+  string line1 = 3;
+  string line2 = 4;
+  string city = 5;
+  string state = 6;
+  string postal_code = 7;
+  string country = 8;
+  bool is_default = 9;
+}
+
+message CreateAddressRequest {
+  string user_id = 1;
+  AddressInput address = 2;
+}
+
+message UpdateAddressRequest {
+  string user_id = 1;
+  string address_id = 2;
+  AddressInput address = 3;
+}
+
+message DeleteAddressRequest {
+  string user_id = 1;
+  string address_id = 2;
+}
+
+message AuditInfo {
+  string created_by = 1;
+  string updated_by = 2;
+  google.protobuf.Timestamp created_at = 3;
+  google.protobuf.Timestamp updated_at = 4;
+  string status_changed_by = 5;
+  google.protobuf.Timestamp status_changed_at = 6;
+  string status_reason = 7;
+  string deleted_by = 8;
+  google.protobuf.Timestamp deleted_at = 9;
+}
+
+message UserProfile {
+  string user_id = 1;
+  string auth_account_id = 2;
+  string email = 3;
+  string phone = 4;
+  string full_name = 5;
+  string avatar_url = 6;
+  string status = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+  AuditInfo audit = 10;
+}
+
+message SellerProfile {
+  string seller_id = 1;
+  string user_id = 2;
+  string store_name = 3;
+  string display_name = 4;
+  string gst_number = 5;
+  string support_email = 6;
+  string status = 7;
+  google.protobuf.Timestamp approved_at = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+  AuditInfo audit = 11;
+}
+
+message Address {
+  string address_id = 1;
+  string user_id = 2;
+  string name = 3;
+  string phone = 4;
+  string line1 = 5;
+  string line2 = 6;
+  string city = 7;
+  string state = 8;
+  string postal_code = 9;
+  string country = 10;
+  bool is_default = 11;
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp updated_at = 13;
+  AuditInfo audit = 14;
+}
+
+message KYCDocument {
+  string document_id = 1;
+  string seller_id = 2;
+  string document_type = 3;
+  string storage_url = 4;
+  string status = 5;
+  string reviewed_by = 6;
+  google.protobuf.Timestamp reviewed_at = 7;
+  string rejection_reason = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+  AuditInfo audit = 11;
+}
+
+message AddressListResponse {
+  repeated Address addresses = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+message SuccessResponse {
+  bool success = 1;
+}

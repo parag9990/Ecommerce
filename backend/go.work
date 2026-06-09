@@ -1,3 +1,9 @@
 go 1.26.3
 
-use ./services/auth-service
+use (
+	./services/auth-service
+	./services/api-gateway
+	./services/user-service
+	./shared/gen/go
+	./shared/validation
+)
