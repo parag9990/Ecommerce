@@ -206,14 +206,14 @@ Priority values:
 
 | S.No | Task Name | Task Detail (simple Hinglish + deep explanation) | Dependencies | Priority | Status |
 |---:|---|---|---|---|---|
-| 1 | Setup React TS app | Vite/React/TypeScript/Tailwind setup karo. Strict TS and linting enable karo. | Repo foundation | P0 | Pending |
-| 2 | App shell | Header, nav, search bar, account menu, cart badge layout banao. | Design system | P0 | Pending |
-| 3 | Auth screens | Signup, login, OTP, forgot password screens banao. Form validation strong rakho. | Auth APIs | P0 | Pending |
-| 4 | Product browsing | Home listing, category listing, filters, sort, product detail pages banao. | Product/Search APIs | P1 | Pending |
-| 5 | Cart and checkout | Cart, address select, coupon, payment intent, order success/failure flows banao. | Cart/Order/Payment | P0 | Pending |
-| 6 | Profile module | Profile, addresses, orders, wishlist pages banao. | User/Order/Wishlist | P1 | Pending |
-| 7 | State management | Zustand for UI/session state, React Query for server cache. Global state minimal rakho. | App shell | P1 | Pending |
-| 8 | gRPC-Web client | Proto generated TS client integrate karo for typed internal calls where needed. | Proto and Envoy | P2 | Pending |
+| 1 | Setup React TS app | Vite/React/TypeScript/Tailwind setup karo. Strict TS and linting enable karo. | Repo foundation | P0 | Completed |
+| 2 | App shell | Header, nav, search bar, account menu, cart badge layout banao. | Design system | P0 | Completed |
+| 3 | Auth screens | Signup, login, OTP, forgot password screens banao. Form validation strong rakho. | Auth APIs | P0 | Completed |
+| 4 | Product browsing | Home listing, category listing, filters, sort, product detail pages banao. | Product/Search APIs | P1 | Completed |
+| 5 | Cart and checkout | Cart, address select, coupon, payment intent, order success/failure flows banao. | Cart/Order/Payment | P0 | Completed |
+| 6 | Profile module | Profile, addresses, orders, wishlist pages banao. | User/Order/Wishlist | P1 | Completed |
+| 7 | State management | Zustand for UI/session state, React Query for server cache. Global state minimal rakho. | App shell | P1 | Completed |
+| 8 | gRPC-Web client | Proto generated TS client integrate karo for typed internal calls where needed. | Proto and Envoy | P2 | Completed |
 
 ## Seller Dashboard (CMS)
 
