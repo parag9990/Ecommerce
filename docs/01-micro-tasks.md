@@ -24,14 +24,14 @@ Priority values:
 
 | S.No | Task Name | Task Detail (simple Hinglish + deep explanation) | Dependencies | Priority | Status |
 |---:|---|---|---|---|---|
-| 1 | Define user domain | Buyer, seller, admin profile fields final karo. User Service sirf profile ownership rakhega, password Auth Service me rahega. | Platform foundation | P0 | Completed |
-| 2 | Create MySQL schema | `users`, `addresses`, `seller_profiles`, `kyc_documents` tables banao. Structured relationships ke liye MySQL best hai. | User domain | P0 | Completed |
-| 3 | Implement repository | DB queries ko repository layer me rakho. Business logic DB details se independent rahegi. | MySQL schema | P0 | Completed |
-| 4 | Implement gRPC service | `GetUser`, `CreateUser`, `UpdateUser`, `GetSellerProfile` methods banao. Internal services direct profile data le sakenge. | Proto strategy | P0 | Completed |
-| 5 | Add REST profile APIs | Gateway ke through profile view/update, address CRUD expose karo. Frontend simple REST use karega. | gRPC service | P1 | Completed |
-| 6 | Add validation | Email, phone, address, GST, seller details validate karo. Bad data DB me enter nahi hoga. | REST APIs | P1 | Completed |
-| 7 | Add audit fields | Created by, updated by, status, timestamps maintain karo. Compliance aur debugging easy hogi. | Schema | P1 | Completed |
-| 8 | Add user events | `UserCreated`, `SellerApproved`, `AddressUpdated` publish karo. Notification, analytics, recommendation consume karenge. | Message queue | P2 | Completed |
+| 1 | Define user domain | Buyer, seller, admin profile fields final karo. User Service sirf profile ownership rakhega, password Auth Service me rahega. | Platform foundation | P0 | Pending |
+| 2 | Create MySQL schema | `users`, `addresses`, `seller_profiles`, `kyc_documents` tables banao. Structured relationships ke liye MySQL best hai. | User domain | P0 | Pending |
+| 3 | Implement repository | DB queries ko repository layer me rakho. Business logic DB details se independent rahegi. | MySQL schema | P0 | Pending |
+| 4 | Implement gRPC service | `GetUser`, `CreateUser`, `UpdateUser`, `GetSellerProfile` methods banao. Internal services direct profile data le sakenge. | Proto strategy | P0 | Pending |
+| 5 | Add REST profile APIs | Gateway ke through profile view/update, address CRUD expose karo. Frontend simple REST use karega. | gRPC service | P1 | Pending |
+| 6 | Add validation | Email, phone, address, GST, seller details validate karo. Bad data DB me enter nahi hoga. | REST APIs | P1 | Pending |
+| 7 | Add audit fields | Created by, updated by, status, timestamps maintain karo. Compliance aur debugging easy hogi. | Schema | P1 | Pending |
+| 8 | Add user events | `UserCreated`, `SellerApproved`, `AddressUpdated` publish karo. Notification, analytics, recommendation consume karenge. | Message queue | P2 | Pending |
 
 ## Auth Service
 
@@ -253,3 +253,4 @@ Priority values:
 | 6 | Session oversight | High-risk sessions, live traffic, suspicious activity view banao. | Session APIs | P2 | Pending |
 | 7 | Platform settings | Commission, search synonyms, feature flags, maintenance mode UI banao. | Superadmin APIs | P2 | Pending |
 | 8 | Audit log viewer | Admin actions filterable table with export banao. Security review ke liye important hai. | Audit APIs | P0 | Pending |
+
