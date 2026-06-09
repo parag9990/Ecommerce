@@ -1,0 +1,250 @@
+package repository
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"log/slog"
+	"strings"
+	"time"
+
+	"github.com/parag/ecommerce/backend/services/user-service/internal/events"
+)
+
+var _ events.OutboxRepository = (*MySQLOutboxRepository)(nil)
+
+type MySQLOutboxRepository struct {
+	db       *sql.DB
+	executor sqlExecutor
+	logger   *slog.Logger
+}
+
+func NewMySQLOutboxRepository(db *sql.DB, options ...Option) (*MySQLOutboxRepository, error) {
+	if db == nil {
+		return nil, errors.New("db is required")
+	}
+	configured := newRepositoryOptions(options)
+	return &MySQLOutboxRepository{db: db, executor: db, logger: configured.logger}, nil
+}
+
+func newMySQLOutboxRepository(executor sqlExecutor, options ...Option) *MySQLOutboxRepository {
+	configured := newRepositoryOptions(options)
+	return &MySQLOutboxRepository{executor: executor, logger: configured.logger}
+}
+
+func (r *MySQLOutboxRepository) Insert(ctx context.Context, event events.OutboxEvent) error {
+	_, err := r.executor.ExecContext(ctx, `
+		INSERT INTO user_outbox_events (
+			event_id,
+			event_type,
+			event_version,
+			topic,
+			aggregate_type,
+			aggregate_id,
+			payload,
+			request_id,
+			trace_id,
+			status,
+			attempts,
+			next_attempt_at,
+			occurred_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, UTC_TIMESTAMP(6), ?)
+	`,
+		event.EventID,
+		event.EventType,
+		event.EventVersion,
+		event.Topic,
+		event.AggregateType,
+		event.AggregateID,
+		string(event.Payload),
+		nullableTrimmedString(event.RequestID),
+		nullableTrimmedString(event.TraceID),
+		event.OccurredAt.UTC(),
+	)
+	if err != nil {
+		if isDuplicateKey(err) {
+			return fmt.Errorf("duplicate outbox event %q: %w", event.EventID, err)
+		}
+		logRepositoryError(ctx, r.logger, "insert_outbox_event", err)
+		return fmt.Errorf("insert outbox event: %w", err)
+	}
+	return nil
+}
+
+func (r *MySQLOutboxRepository) LockPending(ctx context.Context, batchSize int, lockTTL time.Duration) ([]events.OutboxEvent, error) {
+	if r.db == nil {
+		return nil, errors.New("outbox lock pending requires a root database handle")
+	}
+	if batchSize <= 0 {
+		return []events.OutboxEvent{}, nil
+	}
+	if lockTTL <= 0 {
+		lockTTL = 30 * time.Second
+	}
+
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		logRepositoryError(ctx, r.logger, "begin_lock_outbox_events", err)
+		return nil, fmt.Errorf("begin lock outbox events: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	rows, err := tx.QueryContext(ctx, `
+		SELECT
+			id,
+			event_id,
+			event_type,
+			event_version,
+			topic,
+			aggregate_type,
+			aggregate_id,
+			payload,
+			request_id,
+			trace_id,
+			status,
+			attempts,
+			occurred_at
+		FROM user_outbox_events
+		WHERE status IN ('pending', 'failed')
+		  AND (next_attempt_at IS NULL OR next_attempt_at <= UTC_TIMESTAMP(6))
+		  AND (locked_until IS NULL OR locked_until < UTC_TIMESTAMP(6))
+		ORDER BY created_at ASC, id ASC
+		LIMIT ?
+		FOR UPDATE SKIP LOCKED
+	`, batchSize)
+	if err != nil {
+		logRepositoryError(ctx, r.logger, "lock_pending_outbox_events", err)
+		return nil, fmt.Errorf("lock pending outbox events: %w", err)
+	}
+	defer rows.Close()
+
+	locked := make([]events.OutboxEvent, 0, batchSize)
+	ids := make([]any, 0, batchSize)
+	for rows.Next() {
+		row, err := scanOutboxEvent(rows)
+		if err != nil {
+			logRepositoryError(ctx, r.logger, "scan_outbox_event", err)
+			return nil, fmt.Errorf("scan outbox event: %w", err)
+		}
+		locked = append(locked, row)
+		ids = append(ids, row.ID)
+	}
+	if err := rows.Err(); err != nil {
+		logRepositoryError(ctx, r.logger, "iterate_outbox_events", err)
+		return nil, fmt.Errorf("iterate outbox events: %w", err)
+	}
+	if len(ids) == 0 {
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("commit empty outbox lock: %w", err)
+		}
+		return locked, nil
+	}
+
+	args := make([]any, 0, len(ids)+1)
+	args = append(args, time.Now().UTC().Add(lockTTL))
+	args = append(args, ids...)
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE user_outbox_events
+		SET locked_until = ?
+		WHERE id IN (`+placeholders(len(ids))+`)
+	`, args...); err != nil {
+		logRepositoryError(ctx, r.logger, "update_outbox_locks", err)
+		return nil, fmt.Errorf("update outbox locks: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		logRepositoryError(ctx, r.logger, "commit_lock_outbox_events", err)
+		return nil, fmt.Errorf("commit lock outbox events: %w", err)
+	}
+	return locked, nil
+}
+
+func (r *MySQLOutboxRepository) MarkPublished(ctx context.Context, eventID string, publishedAt time.Time) error {
+	result, err := r.executor.ExecContext(ctx, `
+		UPDATE user_outbox_events
+		SET
+			status = 'published',
+			published_at = ?,
+			locked_until = NULL,
+			last_error = NULL
+		WHERE event_id = ?
+		  AND status IN ('pending', 'failed')
+	`, publishedAt.UTC(), eventID)
+	if err != nil {
+		logRepositoryError(ctx, r.logger, "mark_outbox_published", err)
+		return fmt.Errorf("mark outbox published: %w", err)
+	}
+	return ensureAffected(result, sql.ErrNoRows)
+}
+
+func (r *MySQLOutboxRepository) MarkFailed(ctx context.Context, eventID string, failure events.OutboxFailure) error {
+	status := events.StatusFailed
+	if failure.Dead {
+		status = events.StatusDead
+	}
+
+	result, err := r.executor.ExecContext(ctx, `
+		UPDATE user_outbox_events
+		SET
+			status = ?,
+			attempts = attempts + 1,
+			next_attempt_at = ?,
+			locked_until = NULL,
+			last_error = ?
+		WHERE event_id = ?
+		  AND status IN ('pending', 'failed')
+	`, status, nullableTimeValue(failure.NextAttemptAt), nullableTrimmedString(failure.LastError), eventID)
+	if err != nil {
+		logRepositoryError(ctx, r.logger, "mark_outbox_failed", err)
+		return fmt.Errorf("mark outbox failed: %w", err)
+	}
+	return ensureAffected(result, sql.ErrNoRows)
+}
+
+func scanOutboxEvent(row sqlScanner) (events.OutboxEvent, error) {
+	var event events.OutboxEvent
+	var requestID sql.NullString
+	var traceID sql.NullString
+	var status string
+	err := row.Scan(
+		&event.ID,
+		&event.EventID,
+		&event.EventType,
+		&event.EventVersion,
+		&event.Topic,
+		&event.AggregateType,
+		&event.AggregateID,
+		&event.Payload,
+		&requestID,
+		&traceID,
+		&status,
+		&event.Attempts,
+		&event.OccurredAt,
+	)
+	if err != nil {
+		return events.OutboxEvent{}, err
+	}
+	event.RequestID = strings.TrimSpace(requestID.String)
+	event.TraceID = strings.TrimSpace(traceID.String)
+	event.Status = status
+	event.OccurredAt = event.OccurredAt.UTC()
+	return event, nil
+}
+
+func nullableTrimmedString(value string) any {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	return value
+}
+
+func nullableTimeValue(value time.Time) any {
+	if value.IsZero() {
+		return nil
+	}
+	return value.UTC()
+}

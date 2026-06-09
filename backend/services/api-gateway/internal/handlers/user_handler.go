@@ -1,0 +1,405 @@
+package handlers
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/parag/ecommerce/backend/services/api-gateway/internal/authctx"
+	"github.com/parag/ecommerce/backend/services/api-gateway/internal/clients"
+	"github.com/parag/ecommerce/backend/services/api-gateway/internal/middleware"
+	userv1 "github.com/parag/ecommerce/backend/shared/gen/go/ecommerce/user/v1"
+	sharedvalidation "github.com/parag/ecommerce/backend/shared/validation"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
+)
+
+const (
+	defaultGatewayPageSize = 20
+	maxGatewayPageSize     = 50
+	defaultGRPCTimeout     = 2 * time.Second
+	gatewayServiceName     = "api-gateway"
+)
+
+var (
+	errMissingUserID   = errors.New("missing user id in auth context")
+	errMissingSellerID = errors.New("missing seller id in auth context")
+)
+
+type UserHandler struct {
+	userClient            clients.UserClient
+	logger                *slog.Logger
+	timeout               time.Duration
+	validationPhoneRegion string
+}
+
+type Option func(*UserHandler)
+
+func WithTimeout(timeout time.Duration) Option {
+	return func(handler *UserHandler) {
+		if timeout > 0 {
+			handler.timeout = timeout
+		}
+	}
+}
+
+func WithValidationPhoneRegion(region string) Option {
+	return func(handler *UserHandler) {
+		region = strings.TrimSpace(region)
+		if region != "" {
+			handler.validationPhoneRegion = region
+		}
+	}
+}
+
+func NewUserHandler(userClient clients.UserClient, logger *slog.Logger, options ...Option) *UserHandler {
+	if userClient == nil {
+		panic("user client is required")
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	handler := &UserHandler{
+		userClient:            userClient,
+		logger:                logger,
+		timeout:               defaultGRPCTimeout,
+		validationPhoneRegion: sharedvalidation.DefaultPhoneRegion,
+	}
+	for _, option := range options {
+		option(handler)
+	}
+	return handler
+}
+
+func (h *UserHandler) GetMe(w http.ResponseWriter, r *http.Request) {
+	userID, err := userIDFromRequest(r)
+	if err != nil {
+		writeAPIError(w, r, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "Authentication required")
+		return
+	}
+
+	ctx, cancel := h.grpcContext(r)
+	defer cancel()
+
+	profile, err := h.userClient.GetUser(ctx, &userv1.GetUserRequest{UserId: userID})
+	if err != nil {
+		h.writeGRPCError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusOK, mapUserProfile(profile))
+}
+
+func (h *UserHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
+	userID, err := userIDFromRequest(r)
+	if err != nil {
+		writeAPIError(w, r, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "Authentication required")
+		return
+	}
+
+	var req updateUserProfileRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+		return
+	}
+	if validationErr := h.normalizeAndValidateUpdateProfile(&req); validationErr.HasErrors() {
+		writeValidationError(w, r, validationErr)
+		return
+	}
+
+	grpcReq := &userv1.UpdateUserProfileRequest{UserId: userID}
+	var paths []string
+	if req.FullName != nil {
+		grpcReq.FullName = *req.FullName
+		paths = append(paths, "full_name")
+	}
+	if req.Phone != nil {
+		grpcReq.Phone = *req.Phone
+		paths = append(paths, "phone")
+	}
+	if req.AvatarURL != nil {
+		grpcReq.AvatarUrl = *req.AvatarURL
+		paths = append(paths, "avatar_url")
+	}
+	grpcReq.UpdateMask = &fieldmaskpb.FieldMask{Paths: paths}
+
+	ctx, cancel := h.grpcContext(r)
+	defer cancel()
+
+	profile, err := h.userClient.UpdateUserProfile(ctx, grpcReq)
+	if err != nil {
+		h.writeGRPCError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusOK, mapUserProfile(profile))
+}
+
+func (h *UserHandler) ListAddresses(w http.ResponseWriter, r *http.Request) {
+	userID, err := userIDFromRequest(r)
+	if err != nil {
+		writeAPIError(w, r, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "Authentication required")
+		return
+	}
+
+	page := parsePositiveInt(r.URL.Query().Get("page"), 1)
+	pageSize := parseBoundedInt(r.URL.Query().Get("page_size"), defaultGatewayPageSize, 1, maxGatewayPageSize)
+
+	ctx, cancel := h.grpcContext(r)
+	defer cancel()
+
+	addresses, err := h.userClient.ListUserAddresses(ctx, &userv1.ListUserAddressesRequest{
+		UserId:   userID,
+		Page:     int32(page),
+		PageSize: int32(pageSize),
+	})
+	if err != nil {
+		h.writeGRPCError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusOK, mapAddressList(addresses))
+}
+
+func (h *UserHandler) CreateAddress(w http.ResponseWriter, r *http.Request) {
+	userID, err := userIDFromRequest(r)
+	if err != nil {
+		writeAPIError(w, r, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "Authentication required")
+		return
+	}
+
+	var req addressInputRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+		return
+	}
+	if validationErr := h.normalizeAndValidateAddress(&req); validationErr.HasErrors() {
+		writeValidationError(w, r, validationErr)
+		return
+	}
+
+	ctx, cancel := h.grpcContext(r)
+	defer cancel()
+
+	address, err := h.userClient.CreateAddress(ctx, &userv1.CreateAddressRequest{
+		UserId:  userID,
+		Address: mapAddressInput(req),
+	})
+	if err != nil {
+		h.writeGRPCError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusCreated, mapAddress(address))
+}
+
+func (h *UserHandler) UpdateAddress(w http.ResponseWriter, r *http.Request) {
+	userID, err := userIDFromRequest(r)
+	if err != nil {
+		writeAPIError(w, r, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "Authentication required")
+		return
+	}
+
+	addressID, validationErr := normalizeAndValidatePathID("address_id", r.PathValue("address_id"))
+	if validationErr.HasErrors() {
+		writeValidationError(w, r, validationErr)
+		return
+	}
+
+	var req addressInputRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+		return
+	}
+	if validationErr := h.normalizeAndValidateAddress(&req); validationErr.HasErrors() {
+		writeValidationError(w, r, validationErr)
+		return
+	}
+
+	ctx, cancel := h.grpcContext(r)
+	defer cancel()
+
+	address, err := h.userClient.UpdateAddress(ctx, &userv1.UpdateAddressRequest{
+		UserId:    userID,
+		AddressId: addressID,
+		Address:   mapAddressInput(req),
+	})
+	if err != nil {
+		h.writeGRPCError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusOK, mapAddress(address))
+}
+
+func (h *UserHandler) DeleteAddress(w http.ResponseWriter, r *http.Request) {
+	userID, err := userIDFromRequest(r)
+	if err != nil {
+		writeAPIError(w, r, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "Authentication required")
+		return
+	}
+
+	addressID, validationErr := normalizeAndValidatePathID("address_id", r.PathValue("address_id"))
+	if validationErr.HasErrors() {
+		writeValidationError(w, r, validationErr)
+		return
+	}
+
+	ctx, cancel := h.grpcContext(r)
+	defer cancel()
+
+	if _, err := h.userClient.DeleteAddress(ctx, &userv1.DeleteAddressRequest{
+		UserId:    userID,
+		AddressId: addressID,
+	}); err != nil {
+		h.writeGRPCError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusOK, successResponse{Success: true})
+}
+
+func (h *UserHandler) GetSellerMe(w http.ResponseWriter, r *http.Request) {
+	claims, err := sellerClaimsFromRequest(r)
+	if err != nil {
+		writeAPIError(w, r, http.StatusForbidden, "PERMISSION_DENIED", "Seller profile is required")
+		return
+	}
+
+	ctx, cancel := h.grpcContext(r)
+	defer cancel()
+
+	seller, err := h.userClient.GetSellerProfile(ctx, &userv1.GetSellerProfileRequest{
+		SellerId: claims.SellerID,
+		UserId:   claims.UserID,
+	})
+	if err != nil {
+		h.writeGRPCError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusOK, mapSellerProfile(seller))
+}
+
+func (h *UserHandler) UpdateSellerMe(w http.ResponseWriter, r *http.Request) {
+	claims, err := sellerClaimsFromRequest(r)
+	if err != nil {
+		writeAPIError(w, r, http.StatusForbidden, "PERMISSION_DENIED", "Seller profile is required")
+		return
+	}
+
+	var req updateSellerProfileRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+		return
+	}
+	if validationErr := h.normalizeAndValidateSellerProfile(&req); validationErr.HasErrors() {
+		writeValidationError(w, r, validationErr)
+		return
+	}
+
+	grpcReq := &userv1.UpdateSellerProfileRequest{
+		SellerId: claims.SellerID,
+		UserId:   claims.UserID,
+	}
+	var paths []string
+	if req.StoreName != nil {
+		grpcReq.StoreName = *req.StoreName
+		paths = append(paths, "store_name")
+	}
+	if req.DisplayName != nil {
+		grpcReq.DisplayName = *req.DisplayName
+		paths = append(paths, "display_name")
+	}
+	if req.GSTNumber != nil {
+		grpcReq.GstNumber = *req.GSTNumber
+		paths = append(paths, "gst_number")
+	}
+	if req.SupportEmail != nil {
+		grpcReq.SupportEmail = *req.SupportEmail
+		paths = append(paths, "support_email")
+	}
+	grpcReq.UpdateMask = &fieldmaskpb.FieldMask{Paths: paths}
+
+	ctx, cancel := h.grpcContext(r)
+	defer cancel()
+
+	seller, err := h.userClient.UpdateSellerProfile(ctx, grpcReq)
+	if err != nil {
+		h.writeGRPCError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusOK, mapSellerProfile(seller))
+}
+
+func (h *UserHandler) grpcContext(r *http.Request) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(r.Context(), h.timeout)
+	claims, _ := authctx.ClaimsFromContext(r.Context())
+	md := metadata.Pairs(
+		"x-service-name", gatewayServiceName,
+		"x-request-id", middleware.RequestIDFromRequest(r),
+	)
+	if claims.UserID != "" {
+		md.Set("x-user-id", claims.UserID)
+		md.Set("x-actor-id", claims.UserID)
+		md.Set("x-actor-type", "user")
+	}
+	if len(claims.Roles) > 0 {
+		md.Set("x-roles", strings.Join(claims.Roles, ","))
+	}
+	return metadata.NewOutgoingContext(ctx, md), cancel
+}
+
+func userIDFromRequest(r *http.Request) (string, error) {
+	claims, ok := authctx.ClaimsFromContext(r.Context())
+	if !ok || strings.TrimSpace(claims.UserID) == "" {
+		return "", errMissingUserID
+	}
+	return strings.TrimSpace(claims.UserID), nil
+}
+
+func sellerClaimsFromRequest(r *http.Request) (authctx.Claims, error) {
+	claims, ok := authctx.ClaimsFromContext(r.Context())
+	if !ok || strings.TrimSpace(claims.SellerID) == "" {
+		return authctx.Claims{}, errMissingSellerID
+	}
+	return claims, nil
+}
+
+func mapAddressInput(req addressInputRequest) *userv1.AddressInput {
+	return &userv1.AddressInput{
+		Name:       req.Name,
+		Phone:      stringValue(req.Phone),
+		Line1:      req.Line1,
+		Line2:      stringValue(req.Line2),
+		City:       req.City,
+		State:      req.State,
+		PostalCode: req.PostalCode,
+		Country:    req.Country,
+		IsDefault:  req.IsDefault,
+	}
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func parsePositiveInt(value string, fallback int) int {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || parsed < 1 {
+		return fallback
+	}
+	return parsed
+}
+
+func parseBoundedInt(value string, fallback int, min int, max int) int {
+	parsed := parsePositiveInt(value, fallback)
+	if parsed < min {
+		return min
+	}
+	if parsed > max {
+		return max
+	}
+	return parsed
+}
