@@ -24,14 +24,14 @@ Priority values:
 
 | S.No | Task Name | Task Detail (simple Hinglish + deep explanation) | Dependencies | Priority | Status |
 |---:|---|---|---|---|---|
-| 1 | Define user domain | Buyer, seller, admin profile fields final karo. User Service sirf profile ownership rakhega, password Auth Service me rahega. | Platform foundation | P0 | Pending |
-| 2 | Create MySQL schema | `users`, `addresses`, `seller_profiles`, `kyc_documents` tables banao. Structured relationships ke liye MySQL best hai. | User domain | P0 | Pending |
-| 3 | Implement repository | DB queries ko repository layer me rakho. Business logic DB details se independent rahegi. | MySQL schema | P0 | Pending |
-| 4 | Implement gRPC service | `GetUser`, `CreateUser`, `UpdateUser`, `GetSellerProfile` methods banao. Internal services direct profile data le sakenge. | Proto strategy | P0 | Pending |
-| 5 | Add REST profile APIs | Gateway ke through profile view/update, address CRUD expose karo. Frontend simple REST use karega. | gRPC service | P1 | Pending |
-| 6 | Add validation | Email, phone, address, GST, seller details validate karo. Bad data DB me enter nahi hoga. | REST APIs | P1 | Pending |
-| 7 | Add audit fields | Created by, updated by, status, timestamps maintain karo. Compliance aur debugging easy hogi. | Schema | P1 | Pending |
-| 8 | Add user events | `UserCreated`, `SellerApproved`, `AddressUpdated` publish karo. Notification, analytics, recommendation consume karenge. | Message queue | P2 | Pending |
+| 1 | Define user domain | Buyer, seller, admin profile fields final karo. User Service sirf profile ownership rakhega, password Auth Service me rahega. | Platform foundation | P0 | Completed |
+| 2 | Create MySQL schema | `users`, `addresses`, `seller_profiles`, `kyc_documents` tables banao. Structured relationships ke liye MySQL best hai. | User domain | P0 | Completed |
+| 3 | Implement repository | DB queries ko repository layer me rakho. Business logic DB details se independent rahegi. | MySQL schema | P0 | Completed |
+| 4 | Implement gRPC service | `GetUser`, `CreateUser`, `UpdateUser`, `GetSellerProfile` methods banao. Internal services direct profile data le sakenge. | Proto strategy | P0 | Completed |
+| 5 | Add REST profile APIs | Gateway ke through profile view/update, address CRUD expose karo. Frontend simple REST use karega. | gRPC service | P1 | Completed |
+| 6 | Add validation | Email, phone, address, GST, seller details validate karo. Bad data DB me enter nahi hoga. | REST APIs | P1 | Completed |
+| 7 | Add audit fields | Created by, updated by, status, timestamps maintain karo. Compliance aur debugging easy hogi. | Schema | P1 | Completed |
+| 8 | Add user events | `UserCreated`, `SellerApproved`, `AddressUpdated` publish karo. Notification, analytics, recommendation consume karenge. | Message queue | P2 | Completed |
 
 ## Auth Service
 
@@ -50,14 +50,14 @@ Priority values:
 
 | S.No | Task Name | Task Detail (simple Hinglish + deep explanation) | Dependencies | Priority | Status |
 |---:|---|---|---|---|---|
-| 1 | Define catalog model | Product, variant, category, attribute, image, inventory rules finalize karo. E-commerce catalog flexible hona chahiye. | Platform foundation | P0 | Pending |
-| 2 | Choose MongoDB | Product attributes category-wise dynamic hote hain, isliye MongoDB flexible schema ke liye better hai. | Catalog model | P0 | Pending |
-| 3 | Create collections | `products`, `categories`, `brands`, `inventory_snapshots`, `price_books` collections design karo. | MongoDB choice | P0 | Pending |
-| 4 | Implement seller CRUD | Seller apne products create/update/publish kar sake. Draft and published workflow banao. | CMS Service | P1 | Pending |
-| 5 | Implement read APIs | Product listing, detail, category browse, seller catalog APIs banao. Fast read path ke liye indexes zaruri hain. | Collections | P1 | Pending |
-| 6 | Inventory operations | Reserve, release, decrement stock methods implement karo. Checkout race condition avoid hogi. | Order Service | P0 | Pending |
-| 7 | Publish search events | Product changes ko Search Service me index karne ke liye events publish karo. Search data async sync hoga. | Message queue | P1 | Pending |
-| 8 | Add media metadata | Images CDN URLs, alt text, order, status maintain karo. Frontend clean gallery render karega. | Collections | P2 | Pending |
+| 1 | Define catalog model | Product, variant, category, attribute, image, inventory rules finalize karo. E-commerce catalog flexible hona chahiye. | Platform foundation | P0 | Completed |
+| 2 | Choose MongoDB | Product attributes category-wise dynamic hote hain, isliye MongoDB flexible schema ke liye better hai. | Catalog model | P0 | Completed |
+| 3 | Create collections | `products`, `categories`, `brands`, `inventory_snapshots`, `price_books` collections design karo. | MongoDB choice | P0 | Completed |
+| 4 | Implement seller CRUD | Seller apne products create/update/publish kar sake. Draft and published workflow banao. | CMS Service | P1 | Completed |
+| 5 | Implement read APIs | Product listing, detail, category browse, seller catalog APIs banao. Fast read path ke liye indexes zaruri hain. | Collections | P1 | Completed |
+| 6 | Inventory operations | Reserve, release, decrement stock methods implement karo. Checkout race condition avoid hogi. | Order Service | P0 | Completed |
+| 7 | Publish search events | Product changes ko Search Service me index karne ke liye events publish karo. Search data async sync hoga. | Message queue | P1 | Completed |
+| 8 | Add media metadata | Images CDN URLs, alt text, order, status maintain karo. Frontend clean gallery render karega. | Collections | P2 | Completed |
 
 ## Order Service
 
