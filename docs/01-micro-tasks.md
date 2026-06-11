@@ -63,14 +63,14 @@ Priority values:
 
 | S.No | Task Name | Task Detail (simple Hinglish + deep explanation) | Dependencies | Priority | Status |
 |---:|---|---|---|---|---|
-| 1 | Define order lifecycle | Created, pending payment, paid, packed, shipped, delivered, cancelled, refunded states define karo. | Platform foundation | P0 | Pending |
-| 2 | Create MySQL schema | Orders transactional hote hain, isliye MySQL with relational tables best hai. | Lifecycle | P0 | Pending |
-| 3 | Cart to order flow | Cart validate karo, price snapshot lo, inventory reserve karo, order create karo. | Cart and Product | P0 | Pending |
-| 4 | Payment coordination | Payment Service ko payment intent request bhejo, result ke basis pe order status update karo. | Payment Service | P0 | Pending |
-| 5 | Implement order gRPC | `CreateOrder`, `GetOrder`, `ListOrders`, `UpdateFulfillment` methods banao. | Proto strategy | P1 | Pending |
-| 6 | Seller order view | Seller apne items ke orders dekh sake. Multi-seller order splitting handle karo. | User and Product | P1 | Pending |
-| 7 | Idempotency | Checkout retry pe duplicate order na bane. Idempotency key store and enforce karo. | Schema | P0 | Pending |
-| 8 | Emit order events | `OrderCreated`, `OrderPaid`, `OrderCancelled`, `OrderDelivered` events publish karo. | Message queue | P1 | Pending |
+| 1 | Define order lifecycle | Created, pending payment, paid, packed, shipped, delivered, cancelled, refunded states define karo. | Platform foundation | P0 | Completed |
+| 2 | Create MySQL schema | Orders transactional hote hain, isliye MySQL with relational tables best hai. | Lifecycle | P0 | Completed |
+| 3 | Cart to order flow | Cart validate karo, price snapshot lo, inventory reserve karo, order create karo. | Cart and Product | P0 | Completed |
+| 4 | Payment coordination | Payment Service ko payment intent request bhejo, result ke basis pe order status update karo. | Payment Service | P0 | Completed |
+| 5 | Implement order gRPC | `CreateOrder`, `GetOrder`, `ListOrders`, `UpdateFulfillment` methods banao. | Proto strategy | P1 | Completed |
+| 6 | Seller order view | Seller apne items ke orders dekh sake. Multi-seller order splitting handle karo. | User and Product | P1 | Completed |
+| 7 | Idempotency | Checkout retry pe duplicate order na bane. Idempotency key store and enforce karo. | Schema | P0 | Completed |
+| 8 | Emit order events | `OrderCreated`, `OrderPaid`, `OrderCancelled`, `OrderDelivered` events publish karo. | Message queue | P1 | Completed |
 
 ## Payment Service
 
