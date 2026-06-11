@@ -37,14 +37,14 @@ Priority values:
 
 | S.No | Task Name | Task Detail (simple Hinglish + deep explanation) | Dependencies | Priority | Status |
 |---:|---|---|---|---|---|
-| 1 | Define auth flows | Signup, login, OTP, refresh token, logout, password reset, MFA flows document karo. Ye security ka core hai. | Platform foundation | P0 | Pending |
-| 2 | Create MySQL schema | `auth_accounts`, `credentials`, `refresh_tokens`, `otp_challenges`, `role_assignments` tables banao. Strong consistency chahiye. | Auth flows | P0 | Pending |
-| 3 | Password hashing | Argon2id or bcrypt with strong cost use karo. Plain password kabhi store nahi hoga. | Schema | P0 | Pending |
-| 4 | JWT issuing | Access token short lived, refresh token rotating banao. Claims me user id, tenant/seller id, roles, session id rakho. | Credentials | P0 | Pending |
-| 5 | OTP verification | Email and phone OTP generate, hash, expire, retry limit implement karo. Brute force se bachna zaruri hai. | Notification Service | P1 | Pending |
-| 6 | RBAC middleware | Buyer, Seller, Admin, Superadmin role checks centralize karo. Gateway aur services dono enforce karenge. | JWT | P0 | Pending |
-| 7 | Session link | Login ke time Session Management Service ko session start event bhejo. Analytics and fraud detection possible hoga. | Session Service | P1 | Pending |
-| 8 | Security tests | Token expiry, refresh reuse, OTP replay, role bypass test cases likho. Auth bugs high risk hote hain. | Implementation | P1 | Pending |
+| 1 | Define auth flows | Signup, login, OTP, refresh token, logout, password reset, MFA flows document karo. Ye security ka core hai. | Platform foundation | P0 | Completed |
+| 2 | Create MySQL schema | `auth_accounts`, `credentials`, `refresh_tokens`, `otp_challenges`, `role_assignments` tables banao. Strong consistency chahiye. | Auth flows | P0 | Completed |
+| 3 | Password hashing | Argon2id or bcrypt with strong cost use karo. Plain password kabhi store nahi hoga. | Schema | P0 | Completed |
+| 4 | JWT issuing | Access token short lived, refresh token rotating banao. Claims me user id, tenant/seller id, roles, session id rakho. | Credentials | P0 | Completed |
+| 5 | OTP verification | Email and phone OTP generate, hash, expire, retry limit implement karo. Brute force se bachna zaruri hai. | Notification Service | P1 | Completed |
+| 6 | RBAC middleware | Buyer, Seller, Admin, Superadmin role checks centralize karo. Gateway aur services dono enforce karenge. | JWT | P0 | Completed |
+| 7 | Session link | Login ke time Session Management Service ko session start event bhejo. Analytics and fraud detection possible hoga. | Session Service | P1 | Completed |
+| 8 | Security tests | Token expiry, refresh reuse, OTP replay, role bypass test cases likho. Auth bugs high risk hote hain. | Implementation | P1 | Completed |
 
 ## Product Service
 
