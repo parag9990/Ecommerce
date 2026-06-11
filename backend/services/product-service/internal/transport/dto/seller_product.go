@@ -1,0 +1,128 @@
+package dto
+
+import (
+	"strings"
+
+	"product-service/internal/domain"
+	"product-service/internal/usecase"
+)
+
+type ActorContextDTO struct {
+	UserID      string   `json:"user_id"`
+	SellerID    string   `json:"seller_id,omitempty"`
+	Roles       []string `json:"roles,omitempty"`
+	Permissions []string `json:"permissions,omitempty"`
+}
+
+type ProductInputDTO struct {
+	Title        string                   `json:"title"`
+	Description  string                   `json:"description,omitempty"`
+	Brand        string                   `json:"brand,omitempty"`
+	CategoryID   string                   `json:"category_id"`
+	Attributes   map[string]any           `json:"attributes,omitempty"`
+	Images       []string                 `json:"images,omitempty"`
+	ImageDetails []ProductImageDTO        `json:"image_details,omitempty"`
+	Variants     []ProductVariantInputDTO `json:"variants"`
+}
+
+type ProductVariantInputDTO struct {
+	SKU           string         `json:"sku"`
+	Attributes    map[string]any `json:"attributes,omitempty"`
+	Price         MoneyDTO       `json:"price"`
+	MRP           *MoneyDTO      `json:"mrp,omitempty"`
+	StockQuantity int64          `json:"stock_quantity"`
+}
+
+type CreateSellerProductRequestDTO struct {
+	Actor   ActorContextDTO `json:"actor"`
+	Product ProductInputDTO `json:"product"`
+}
+
+type UpdateSellerProductRequestDTO struct {
+	Actor     ActorContextDTO `json:"actor"`
+	ProductID string          `json:"product_id"`
+	Product   ProductInputDTO `json:"product"`
+}
+
+type ProductLifecycleRequestDTO struct {
+	Actor     ActorContextDTO `json:"actor"`
+	ProductID string          `json:"product_id"`
+}
+
+func (d ActorContextDTO) ToDomain() domain.ActorContext {
+	return domain.ActorContext{
+		UserID:      strings.TrimSpace(d.UserID),
+		SellerID:    strings.TrimSpace(d.SellerID),
+		Roles:       d.Roles,
+		Permissions: d.Permissions,
+	}
+}
+
+func (d ProductInputDTO) ToUseCase() usecase.ProductInput {
+	images := make([]domain.ProductImage, 0, len(d.Images)+len(d.ImageDetails))
+	for index, url := range d.Images {
+		images = append(images, domain.ProductImage{
+			URL:       strings.TrimSpace(url),
+			Position:  index + 1,
+			IsPrimary: index == 0,
+			Status:    domain.ImageStatusActive,
+		})
+	}
+	for _, image := range d.ImageDetails {
+		images = append(images, image.ToDomain())
+	}
+
+	variants := make([]domain.Variant, 0, len(d.Variants))
+	for _, variant := range d.Variants {
+		variants = append(variants, variant.ToDomain())
+	}
+
+	return usecase.ProductInput{
+		Title:       d.Title,
+		Description: d.Description,
+		Brand:       d.Brand,
+		CategoryID:  d.CategoryID,
+		Attributes:  domain.Attributes(d.Attributes),
+		Images:      images,
+		Variants:    variants,
+	}
+}
+
+func (d ProductVariantInputDTO) ToDomain() domain.Variant {
+	var mrp *domain.Money
+	if d.MRP != nil {
+		value := d.MRP.ToDomain()
+		mrp = &value
+	}
+	return domain.Variant{
+		SKU:              d.SKU,
+		Attributes:       domain.Attributes(d.Attributes),
+		Price:            d.Price.ToDomain(),
+		MRP:              mrp,
+		StockQuantity:    d.StockQuantity,
+		ReservedQuantity: 0,
+		Status:           domain.VariantStatusActive,
+	}
+}
+
+func (d CreateSellerProductRequestDTO) ToUseCase() usecase.CreateProductRequest {
+	return usecase.CreateProductRequest{
+		Actor:   d.Actor.ToDomain(),
+		Product: d.Product.ToUseCase(),
+	}
+}
+
+func (d UpdateSellerProductRequestDTO) ToUseCase() usecase.UpdateProductRequest {
+	return usecase.UpdateProductRequest{
+		Actor:     d.Actor.ToDomain(),
+		ProductID: strings.TrimSpace(d.ProductID),
+		Product:   d.Product.ToUseCase(),
+	}
+}
+
+func (d ProductLifecycleRequestDTO) ToUseCase() usecase.ProductLifecycleRequest {
+	return usecase.ProductLifecycleRequest{
+		Actor:     d.Actor.ToDomain(),
+		ProductID: strings.TrimSpace(d.ProductID),
+	}
+}

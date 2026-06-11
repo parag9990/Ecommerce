@@ -1,0 +1,604 @@
+package usecase
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"strings"
+	"time"
+
+	"product-service/internal/client"
+	"product-service/internal/domain"
+	"product-service/internal/repository"
+)
+
+type SellerProductUseCase interface {
+	CreateProduct(ctx context.Context, request CreateProductRequest) (*domain.Product, error)
+	UpdateProduct(ctx context.Context, request UpdateProductRequest) (*domain.Product, error)
+	PublishProduct(ctx context.Context, request ProductLifecycleRequest) (*domain.Product, error)
+	UnpublishProduct(ctx context.Context, request ProductLifecycleRequest) (*domain.Product, error)
+}
+
+type ProductInput struct {
+	Title       string
+	Description string
+	Brand       string
+	CategoryID  string
+	Attributes  domain.Attributes
+	Images      []domain.ProductImage
+	Variants    []domain.Variant
+}
+
+type CreateProductRequest struct {
+	Actor   domain.ActorContext
+	Product ProductInput
+}
+
+type UpdateProductRequest struct {
+	Actor     domain.ActorContext
+	ProductID string
+	Product   ProductInput
+}
+
+type ProductLifecycleRequest struct {
+	Actor     domain.ActorContext
+	ProductID string
+}
+
+type SellerProductServiceOptions struct {
+	AllowDraftWritesWhenCMSUnavailable bool
+}
+
+type SellerProductService struct {
+	repo      repository.ProductRepository
+	validator CatalogModelUseCase
+	cms       client.CMSClient
+	ids       IDGenerator
+	clock     Clock
+	logger    *slog.Logger
+	options   SellerProductServiceOptions
+	events    ProductEventRecorder
+}
+
+func NewSellerProductService(
+	repo repository.ProductRepository,
+	validator CatalogModelUseCase,
+	cms client.CMSClient,
+	ids IDGenerator,
+	clock Clock,
+	logger *slog.Logger,
+	options SellerProductServiceOptions,
+) (*SellerProductService, error) {
+	if repo == nil {
+		return nil, fmt.Errorf("product repository is required")
+	}
+	if validator == nil {
+		return nil, fmt.Errorf("catalog model validator is required")
+	}
+	if cms == nil {
+		return nil, fmt.Errorf("cms client is required")
+	}
+	if ids == nil {
+		ids = NewRandomIDGenerator()
+	}
+	if clock == nil {
+		clock = SystemClock{}
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &SellerProductService{
+		repo:      repo,
+		validator: validator,
+		cms:       cms,
+		ids:       ids,
+		clock:     clock,
+		logger:    logger,
+		options:   options,
+	}, nil
+}
+
+func (s *SellerProductService) EnableProductEventRecording(events ProductEventRecorder) {
+	s.events = events
+}
+
+func (s *SellerProductService) CreateProduct(ctx context.Context, request CreateProductRequest) (*domain.Product, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := s.authorizeSellerWrite(request.Actor, true); err != nil {
+		return nil, err
+	}
+	if err := s.ensureCatalogManagementAllowed(ctx, request.Actor.SellerID, true); err != nil {
+		return nil, err
+	}
+
+	now := s.clock.Now().UTC()
+	product := s.productFromInput(request.Product)
+	product.ID = s.ids.NewProductID()
+	product.SellerID = strings.TrimSpace(request.Actor.SellerID)
+	product.Status = domain.ProductStatusDraft
+	product.CreatedBy = request.Actor.ActorID()
+	product.UpdatedBy = request.Actor.ActorID()
+	product.CreatedAt = now
+	product.UpdatedAt = now
+	product.PublishedAt = nil
+	product.RatingSummary = domain.RatingSummary{}
+	product.Variants = s.prepareVariants(product.Variants, nil)
+	product.Images = s.prepareImages(product.Images)
+
+	report, err := s.validator.ValidateProduct(ctx, ValidateProductRequest{
+		Product:            product,
+		ExcludeProductID:   product.ID,
+		CheckSKUUniqueness: true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("validate product draft: %w", err)
+	}
+	if report.HasErrors() {
+		return nil, validationFailed(report)
+	}
+
+	event, err := s.buildProductEvent(ctx, domain.ProductEventCreated, product, now)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.insertProductWithOptionalEvent(ctx, &product, event); err != nil {
+		if errors.Is(err, repository.ErrDuplicateKey) {
+			return nil, serviceError(ErrorKindAlreadyExists, ErrorCodeDuplicateSKU, "variant SKU already exists", err)
+		}
+		return nil, fmt.Errorf("insert seller product: %w", err)
+	}
+
+	s.logger.Info(
+		"seller product draft created",
+		"product_id", product.ID,
+		"seller_id", product.SellerID,
+		"actor_id", request.Actor.ActorID(),
+	)
+	return &product, nil
+}
+
+func (s *SellerProductService) UpdateProduct(ctx context.Context, request UpdateProductRequest) (*domain.Product, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := s.authorizeSellerWrite(request.Actor, false); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(request.ProductID) == "" {
+		return nil, serviceError(ErrorKindInvalidArgument, ErrorCodeValidation, "product id is required", nil)
+	}
+
+	product, err := s.repo.FindProductByID(ctx, strings.TrimSpace(request.ProductID))
+	if errors.Is(err, repository.ErrNotFound) {
+		return nil, serviceError(ErrorKindNotFound, ErrorCodeProductNotFound, "product not found", err)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find product for update: %w", err)
+	}
+	if err := s.ensureProductOwnership(product, request.Actor); err != nil {
+		return nil, err
+	}
+	if err := s.ensureCatalogManagementAllowed(ctx, product.SellerID, true); err != nil {
+		return nil, err
+	}
+	if !domain.CanSellerEdit(product.Status) {
+		return nil, serviceError(ErrorKindFailedPrecondition, ErrorCodeProductNotEditable, "product cannot be edited in current status", nil)
+	}
+
+	currentStatus := product.Status
+	updated := s.productFromInput(request.Product)
+	updated.ID = product.ID
+	updated.SellerID = product.SellerID
+	updated.Status = nextStatusAfterSellerEdit(product.Status)
+	updated.CreatedBy = product.CreatedBy
+	updated.UpdatedBy = request.Actor.ActorID()
+	updated.CreatedAt = product.CreatedAt
+	updated.UpdatedAt = s.clock.Now().UTC()
+	updated.PublishedAt = product.PublishedAt
+	if updated.Status == domain.ProductStatusDraft {
+		updated.PublishedAt = nil
+	}
+	updated.RatingSummary = product.RatingSummary
+	updated.Variants = s.prepareVariants(updated.Variants, product.Variants)
+	updated.Images = s.prepareImages(updated.Images)
+
+	report, err := s.validator.ValidateProduct(ctx, ValidateProductRequest{
+		Product:            updated,
+		ExcludeProductID:   updated.ID,
+		CheckSKUUniqueness: true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("validate product update: %w", err)
+	}
+	if report.HasErrors() {
+		return nil, validationFailed(report)
+	}
+
+	event, err := s.buildProductEvent(ctx, domain.ProductEventUpdated, updated, updated.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.updateProductWithOptionalEvent(ctx, &updated, event, currentStatus); err != nil {
+		return nil, s.mapProductWriteError(err, "update seller product")
+	}
+
+	s.logger.Info(
+		"seller product updated",
+		"product_id", updated.ID,
+		"seller_id", updated.SellerID,
+		"actor_id", request.Actor.ActorID(),
+		"status", updated.Status,
+	)
+	return &updated, nil
+}
+
+func (s *SellerProductService) PublishProduct(ctx context.Context, request ProductLifecycleRequest) (*domain.Product, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := s.authorizeSellerWrite(request.Actor, false); err != nil {
+		return nil, err
+	}
+	product, err := s.loadOwnedProduct(ctx, strings.TrimSpace(request.ProductID), request.Actor)
+	if err != nil {
+		return nil, err
+	}
+	if !domain.CanSellerPublish(product.Status) {
+		return nil, serviceError(ErrorKindFailedPrecondition, ErrorCodeInvalidStatusTransition, "product cannot be published from current status", nil)
+	}
+	if err := s.ensureCatalogManagementAllowed(ctx, product.SellerID, false); err != nil {
+		return nil, err
+	}
+
+	report, err := s.validator.CheckPublishReadiness(ctx, ValidateProductRequest{
+		Product:          *product,
+		ExcludeProductID: product.ID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("check product publish readiness: %w", err)
+	}
+	if report.HasErrors() {
+		return nil, validationFailed(report)
+	}
+
+	decision, err := s.cms.GetProductModerationDecision(ctx, product.SellerID, product.CategoryID)
+	if err != nil {
+		return nil, serviceError(ErrorKindUnavailable, ErrorCodeCMSUnavailable, "cms moderation decision unavailable", err)
+	}
+	decision = client.NormalizeModerationDecision(decision)
+	if !decision.Valid() {
+		return nil, serviceError(ErrorKindUnavailable, ErrorCodeCMSUnavailable, "cms moderation decision is invalid", nil)
+	}
+
+	currentStatus := product.Status
+	now := s.clock.Now().UTC()
+	product.UpdatedBy = request.Actor.ActorID()
+	product.UpdatedAt = now
+	if decision == client.ModerationReviewRequired {
+		product.Status = domain.ProductStatusSubmitted
+		product.PublishedAt = nil
+	} else {
+		product.Status = domain.ProductStatusPublished
+		product.PublishedAt = &now
+	}
+
+	eventType := domain.ProductEventUpdated
+	if product.Status == domain.ProductStatusPublished {
+		eventType = domain.ProductEventPublished
+	}
+	event, err := s.buildProductEvent(ctx, eventType, *product, product.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.updateProductWithOptionalEvent(ctx, product, event, currentStatus); err != nil {
+		return nil, s.mapProductWriteError(err, "publish seller product")
+	}
+
+	s.logger.Info(
+		"seller product publish processed",
+		"product_id", product.ID,
+		"seller_id", product.SellerID,
+		"actor_id", request.Actor.ActorID(),
+		"status", product.Status,
+		"moderation_decision", decision,
+	)
+	return product, nil
+}
+
+func (s *SellerProductService) UnpublishProduct(ctx context.Context, request ProductLifecycleRequest) (*domain.Product, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := s.authorizeSellerWrite(request.Actor, false); err != nil {
+		return nil, err
+	}
+	product, err := s.loadOwnedProduct(ctx, strings.TrimSpace(request.ProductID), request.Actor)
+	if err != nil {
+		return nil, err
+	}
+	if product.Status != domain.ProductStatusPublished {
+		return nil, serviceError(ErrorKindFailedPrecondition, ErrorCodeInvalidStatusTransition, "only published products can be unpublished", nil)
+	}
+
+	currentStatus := product.Status
+	product.Status = domain.ProductStatusUnpublished
+	product.UpdatedBy = request.Actor.ActorID()
+	product.UpdatedAt = s.clock.Now().UTC()
+	event, err := s.buildProductEvent(ctx, domain.ProductEventUnpublished, *product, product.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.updateProductWithOptionalEvent(ctx, product, event, currentStatus); err != nil {
+		return nil, s.mapProductWriteError(err, "unpublish seller product")
+	}
+
+	s.logger.Info(
+		"seller product unpublished",
+		"product_id", product.ID,
+		"seller_id", product.SellerID,
+		"actor_id", request.Actor.ActorID(),
+	)
+	return product, nil
+}
+
+func (s *SellerProductService) buildProductEvent(
+	ctx context.Context,
+	eventType domain.ProductEventType,
+	product domain.Product,
+	occurredAt time.Time,
+) (*domain.ProductOutboxEvent, error) {
+	if s.events == nil {
+		return nil, nil
+	}
+	return s.events.BuildProductEvent(ctx, eventType, product, occurredAt)
+}
+
+func (s *SellerProductService) insertProductWithOptionalEvent(
+	ctx context.Context,
+	product *domain.Product,
+	event *domain.ProductOutboxEvent,
+) error {
+	if event != nil {
+		if writer, ok := s.repo.(repository.ProductWriteRepositoryWithOutbox); ok {
+			return writer.InsertProductWithOutbox(ctx, product, event)
+		}
+	}
+	if err := s.repo.InsertProduct(ctx, product); err != nil {
+		return err
+	}
+	if event != nil {
+		return s.events.QueueProductEvent(ctx, *event)
+	}
+	return nil
+}
+
+func (s *SellerProductService) updateProductWithOptionalEvent(
+	ctx context.Context,
+	product *domain.Product,
+	event *domain.ProductOutboxEvent,
+	expectedStatuses ...domain.ProductStatus,
+) error {
+	if event != nil {
+		if writer, ok := s.repo.(repository.ProductWriteRepositoryWithOutbox); ok {
+			return writer.UpdateProductWithOutbox(ctx, product, event, expectedStatuses...)
+		}
+	}
+	if err := s.repo.UpdateProduct(ctx, product, expectedStatuses...); err != nil {
+		return err
+	}
+	if event != nil {
+		return s.events.QueueProductEvent(ctx, *event)
+	}
+	return nil
+}
+
+func (s *SellerProductService) loadOwnedProduct(ctx context.Context, productID string, actor domain.ActorContext) (*domain.Product, error) {
+	if strings.TrimSpace(productID) == "" {
+		return nil, serviceError(ErrorKindInvalidArgument, ErrorCodeValidation, "product id is required", nil)
+	}
+	product, err := s.repo.FindProductByID(ctx, productID)
+	if errors.Is(err, repository.ErrNotFound) {
+		return nil, serviceError(ErrorKindNotFound, ErrorCodeProductNotFound, "product not found", err)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find product: %w", err)
+	}
+	if err := s.ensureProductOwnership(product, actor); err != nil {
+		return nil, err
+	}
+	return product, nil
+}
+
+func (s *SellerProductService) authorizeSellerWrite(actor domain.ActorContext, requireSellerID bool) error {
+	if actor.ActorID() == "" {
+		return serviceError(ErrorKindUnauthenticated, ErrorCodeUnauthenticated, "authenticated actor is required", nil)
+	}
+	if requireSellerID && strings.TrimSpace(actor.SellerID) == "" {
+		return serviceError(ErrorKindPermissionDenied, ErrorCodePermissionDenied, "seller id is required for seller product writes", nil)
+	}
+	if !actor.CanWriteSellerProducts() {
+		return serviceError(ErrorKindPermissionDenied, ErrorCodePermissionDenied, "actor cannot write seller products", nil)
+	}
+	return nil
+}
+
+func (s *SellerProductService) ensureProductOwnership(product *domain.Product, actor domain.ActorContext) error {
+	if actor.IsSuperadmin() {
+		return nil
+	}
+	if strings.TrimSpace(product.SellerID) != strings.TrimSpace(actor.SellerID) {
+		return serviceError(ErrorKindPermissionDenied, ErrorCodeProductOwnership, "product does not belong to seller", nil)
+	}
+	return nil
+}
+
+func (s *SellerProductService) ensureCatalogManagementAllowed(ctx context.Context, sellerID string, draftWrite bool) error {
+	allowed, err := s.cms.CanSellerManageCatalog(ctx, sellerID)
+	if err != nil {
+		if draftWrite && s.options.AllowDraftWritesWhenCMSUnavailable {
+			s.logger.Warn("cms catalog permission check unavailable; draft write allowed by configuration", "seller_id", sellerID, "error", err)
+			return nil
+		}
+		return serviceError(ErrorKindUnavailable, ErrorCodeCMSUnavailable, "cms catalog permission unavailable", err)
+	}
+	if !allowed {
+		return serviceError(ErrorKindFailedPrecondition, ErrorCodeSellerCatalogDisabled, "seller catalog management is disabled", nil)
+	}
+	return nil
+}
+
+func (s *SellerProductService) productFromInput(input ProductInput) domain.Product {
+	return domain.Product{
+		Title:       strings.TrimSpace(input.Title),
+		Description: strings.TrimSpace(input.Description),
+		Brand:       strings.TrimSpace(input.Brand),
+		CategoryID:  strings.TrimSpace(input.CategoryID),
+		Attributes:  cloneAttributes(input.Attributes),
+		Images:      cloneImages(input.Images),
+		Variants:    cloneVariants(input.Variants),
+	}
+}
+
+func (s *SellerProductService) prepareVariants(input []domain.Variant, existing []domain.Variant) []domain.Variant {
+	byID := make(map[string]domain.Variant, len(existing))
+	bySKU := make(map[string]domain.Variant, len(existing))
+	for _, variant := range existing {
+		if strings.TrimSpace(variant.ID) != "" {
+			byID[variant.ID] = variant
+		}
+		if strings.TrimSpace(variant.SKU) != "" {
+			bySKU[normalizeSKU(variant.SKU)] = variant
+		}
+	}
+
+	variants := make([]domain.Variant, 0, len(input))
+	for _, variant := range input {
+		variant.SKU = normalizeSKU(variant.SKU)
+		variant.Price = domain.NewMoney(variant.Price.Amount, variant.Price.Currency)
+		if variant.MRP != nil {
+			mrp := domain.NewMoney(variant.MRP.Amount, variant.MRP.Currency)
+			variant.MRP = &mrp
+		}
+
+		match, matched := byID[variant.ID]
+		if !matched {
+			match, matched = bySKU[variant.SKU]
+		}
+		if strings.TrimSpace(variant.ID) == "" {
+			if matched {
+				variant.ID = match.ID
+			} else {
+				variant.ID = s.ids.NewVariantID()
+			}
+		}
+		if matched {
+			variant.ReservedQuantity = match.ReservedQuantity
+			if variant.SafetyStock == 0 {
+				variant.SafetyStock = match.SafetyStock
+			}
+			if variant.Status == "" {
+				variant.Status = match.Status
+			}
+			if variant.MRP == nil {
+				variant.MRP = match.MRP
+			}
+			if variant.Title == "" {
+				variant.Title = match.Title
+			}
+			if variant.Barcode == "" {
+				variant.Barcode = match.Barcode
+			}
+		}
+		if variant.Status == "" {
+			variant.Status = domain.VariantStatusActive
+		}
+		variant.Attributes = cloneAttributes(variant.Attributes)
+		variants = append(variants, variant)
+	}
+	return variants
+}
+
+func (s *SellerProductService) prepareImages(input []domain.ProductImage) []domain.ProductImage {
+	images := make([]domain.ProductImage, 0, len(input))
+	for index, image := range input {
+		image.URL = strings.TrimSpace(image.URL)
+		image.AltText = strings.TrimSpace(image.AltText)
+		if strings.TrimSpace(image.ID) == "" {
+			image.ID = s.ids.NewImageID()
+		}
+		if image.Position <= 0 {
+			image.Position = index + 1
+		}
+		if image.Status == "" {
+			image.Status = domain.ImageStatusActive
+		}
+		if index == 0 && !hasPrimaryImage(input) {
+			image.IsPrimary = true
+		}
+		images = append(images, image)
+	}
+	return images
+}
+
+func (s *SellerProductService) mapProductWriteError(err error, operation string) error {
+	if errors.Is(err, repository.ErrDuplicateKey) {
+		return serviceError(ErrorKindAlreadyExists, ErrorCodeDuplicateSKU, "variant SKU already exists", err)
+	}
+	if errors.Is(err, repository.ErrWriteConflict) {
+		return serviceError(ErrorKindConflict, ErrorCodeInvalidStatusTransition, "product changed while processing lifecycle command", err)
+	}
+	return fmt.Errorf("%s: %w", operation, err)
+}
+
+func nextStatusAfterSellerEdit(current domain.ProductStatus) domain.ProductStatus {
+	if current == domain.ProductStatusRejected || current == domain.ProductStatusUnpublished {
+		return domain.ProductStatusDraft
+	}
+	return current
+}
+
+func normalizeSKU(sku string) string {
+	return strings.ToUpper(strings.TrimSpace(sku))
+}
+
+func cloneAttributes(attrs domain.Attributes) domain.Attributes {
+	if attrs == nil {
+		return nil
+	}
+	clone := make(domain.Attributes, len(attrs))
+	for key, value := range attrs {
+		clone[strings.TrimSpace(key)] = value
+	}
+	return clone
+}
+
+func cloneVariants(variants []domain.Variant) []domain.Variant {
+	clone := make([]domain.Variant, 0, len(variants))
+	for _, variant := range variants {
+		variant.Attributes = cloneAttributes(variant.Attributes)
+		clone = append(clone, variant)
+	}
+	return clone
+}
+
+func cloneImages(images []domain.ProductImage) []domain.ProductImage {
+	clone := make([]domain.ProductImage, len(images))
+	copy(clone, images)
+	return clone
+}
+
+func hasPrimaryImage(images []domain.ProductImage) bool {
+	for _, image := range images {
+		if image.IsPrimary {
+			return true
+		}
+	}
+	return false
+}
