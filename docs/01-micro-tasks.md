@@ -102,14 +102,14 @@ Priority values:
 
 | S.No | Task Name | Task Detail (simple Hinglish + deep explanation) | Dependencies | Priority | Status |
 |---:|---|---|---|---|---|
-| 1 | Define wishlist model | User multiple wishlists rakhe ya single list, sharing allowed hai ya nahi decide karo. | Platform foundation | P1 | Pending |
-| 2 | Choose MongoDB | Wishlist item list flexible aur read-heavy hai, MongoDB simple document model fit hai. | Model | P1 | Pending |
-| 3 | Collections design | `wishlists` collection with user id, items, visibility, timestamps banao. | DB choice | P1 | Pending |
-| 4 | Add/remove item APIs | Product id validate karke wishlist item add/remove karo. Duplicate item block karo. | Product Service | P1 | Pending |
-| 5 | Move to cart | Wishlist item ko Cart Service me add karne ka flow banao. UX friction kam hoga. | Cart Service | P1 | Pending |
-| 6 | Availability sync | Product deleted/out-of-stock hone pe wishlist status update karo. | Product events | P2 | Pending |
-| 7 | Price drop events | Price change pe interested users ko notification trigger karo. | Notification Service | P2 | Pending |
-| 8 | Analytics events | Wishlist add/remove events Recommendation Service ko bhejo. Personalization improve hoga. | Message queue | P2 | Pending |
+| 1 | Define wishlist model | User multiple wishlists rakhe ya single list, sharing allowed hai ya nahi decide karo. | Platform foundation | P1 | Completed |
+| 2 | Choose MongoDB | Wishlist item list flexible aur read-heavy hai, MongoDB simple document model fit hai. | Model | P1 | Completed |
+| 3 | Collections design | `wishlists` collection with user id, items, visibility, timestamps banao. | DB choice | P1 | Completed |
+| 4 | Add/remove item APIs | Product id validate karke wishlist item add/remove karo. Duplicate item block karo. | Product Service | P1 | Completed |
+| 5 | Move to cart | Wishlist item ko Cart Service me add karne ka flow banao. UX friction kam hoga. | Cart Service | P1 | Completed |
+| 6 | Availability sync | Product deleted/out-of-stock hone pe wishlist status update karo. | Product events | P2 | Completed |
+| 7 | Price drop events | Price change pe interested users ko notification trigger karo. | Notification Service | P2 | Completed |
+| 8 | Analytics events | Wishlist add/remove events Recommendation Service ko bhejo. Personalization improve hoga. | Message queue | P2 | Completed |
 
 ## Recommendation Service
 
