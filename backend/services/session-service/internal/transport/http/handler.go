@@ -1,0 +1,1076 @@
+package httptransport
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"mime"
+	"net"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/example/ecommerce-platform/backend/services/session-service/internal/domain"
+	"github.com/example/ecommerce-platform/backend/services/session-service/internal/usecase"
+)
+
+const readinessTimeout = 2 * time.Second
+const defaultMaxEventBodyBytes int64 = 64 << 10
+
+type ProbeFunc func(ctx context.Context) error
+
+type EventIngestUsecase interface {
+	IngestEvent(ctx context.Context, input usecase.IngestEventInput) (usecase.IngestEventOutput, error)
+}
+
+type SessionJourneyUsecase interface {
+	GetJourney(ctx context.Context, input usecase.GetJourneyInput) (usecase.JourneyOutput, error)
+}
+
+type SessionHeatmapUsecase interface {
+	GetHeatmap(ctx context.Context, input usecase.GetHeatmapInput) (usecase.HeatmapOutput, error)
+}
+
+type AnalyticsUsecase interface {
+	GetLiveMetrics(ctx context.Context, input usecase.GetLiveMetricsInput) (domain.LiveMetrics, error)
+	ListSessions(ctx context.Context, input usecase.ListSessionsInput) (usecase.SessionListOutput, error)
+	GetFunnelReport(ctx context.Context, input usecase.GetFunnelReportInput) (usecase.FunnelReportOutput, error)
+}
+
+type RetentionUsecase interface {
+	DeleteUserSessionData(ctx context.Context, input usecase.DeleteUserSessionDataInput) (domain.DeleteUserSessionDataResult, error)
+	RunRetentionCleanup(ctx context.Context, input usecase.RunRetentionCleanupInput) (domain.RetentionCleanupResult, error)
+	SetLegalHold(ctx context.Context, input usecase.SetLegalHoldInput) (domain.SetLegalHoldResult, error)
+}
+
+type Handler struct {
+	probes            map[string]ProbeFunc
+	ingest            EventIngestUsecase
+	journey           SessionJourneyUsecase
+	heatmap           SessionHeatmapUsecase
+	analytics         AnalyticsUsecase
+	retention         RetentionUsecase
+	maxEventBodyBytes int64
+	requestContext    RequestContextConfig
+	logger            *slog.Logger
+}
+
+type RequestContextConfig struct {
+	TrustedProxyCIDRs []*net.IPNet
+}
+
+type RequestContext struct {
+	UserAgent             string
+	ClientIP              string
+	IPHash                string
+	DeviceFingerprint     string
+	DeviceFingerprintHash string
+	Channel               domain.Channel
+	DeviceType            domain.DeviceType
+	Locale                string
+	Timezone              string
+	IPVersion             domain.IPVersion
+	ClientHints           usecase.ClientHints
+	GeoHint               domain.Geo
+}
+
+func NewRequestContextConfig(cidrs []string) (RequestContextConfig, error) {
+	cfg := RequestContextConfig{TrustedProxyCIDRs: make([]*net.IPNet, 0, len(cidrs))}
+	for _, cidr := range cidrs {
+		cidr = strings.TrimSpace(cidr)
+		if cidr == "" {
+			continue
+		}
+		_, network, err := net.ParseCIDR(cidr)
+		if err != nil {
+			return RequestContextConfig{}, fmt.Errorf("parse trusted proxy cidr %q: %w", cidr, err)
+		}
+		cfg.TrustedProxyCIDRs = append(cfg.TrustedProxyCIDRs, network)
+	}
+	return cfg, nil
+}
+
+func NewHandler(probes map[string]ProbeFunc, ingest EventIngestUsecase, journey SessionJourneyUsecase, heatmap SessionHeatmapUsecase, analytics AnalyticsUsecase, maxEventBodyBytes int64, logger *slog.Logger, requestConfigs ...RequestContextConfig) (*Handler, error) {
+	if len(probes) == 0 {
+		return nil, errors.New("at least one readiness probe is required")
+	}
+	if ingest == nil {
+		return nil, errors.New("event ingest usecase is required")
+	}
+	if journey == nil {
+		return nil, errors.New("session journey usecase is required")
+	}
+	if heatmap == nil {
+		return nil, errors.New("session heatmap usecase is required")
+	}
+	if analytics == nil {
+		return nil, errors.New("analytics usecase is required")
+	}
+	if maxEventBodyBytes <= 0 {
+		maxEventBodyBytes = defaultMaxEventBodyBytes
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	copied := make(map[string]ProbeFunc, len(probes))
+	for name, probe := range probes {
+		if name == "" {
+			return nil, errors.New("readiness probe name is required")
+		}
+		if probe == nil {
+			return nil, errors.New("readiness probe function is required")
+		}
+		copied[name] = probe
+	}
+	requestContext := RequestContextConfig{}
+	if len(requestConfigs) > 0 {
+		requestContext = requestConfigs[0]
+	}
+	return &Handler{
+		probes:            copied,
+		ingest:            ingest,
+		journey:           journey,
+		heatmap:           heatmap,
+		analytics:         analytics,
+		maxEventBodyBytes: maxEventBodyBytes,
+		requestContext:    requestContext,
+		logger:            logger,
+	}, nil
+}
+
+func (h *Handler) SetRetentionUsecase(retention RetentionUsecase) {
+	h.retention = retention
+}
+
+func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/api/v1/sessions/events", h.handleIngestEvent)
+	mux.HandleFunc("/api/v1/analytics/live", h.handleGetLiveMetrics)
+	mux.HandleFunc("/api/v1/analytics/sessions", h.handleListSessions)
+	mux.HandleFunc("/api/v1/analytics/sessions/", h.handleGetJourney)
+	mux.HandleFunc("/api/v1/analytics/funnels", h.handleGetFunnelReport)
+	mux.HandleFunc("/api/v1/analytics/heatmaps", h.handleGetHeatmap)
+	mux.HandleFunc("/api/v1/admin/sessions/delete-user-data", h.handleDeleteUserSessionData)
+	mux.HandleFunc("/api/v1/admin/sessions/retention/run", h.handleRunRetentionCleanup)
+	mux.HandleFunc("/api/v1/admin/sessions/", h.handleAdminSessionPath)
+	mux.HandleFunc("/healthz", h.handleHealth)
+	mux.HandleFunc("/readyz", h.handleReady)
+}
+
+func (h *Handler) handleIngestEvent(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	if !isJSONContentType(r.Header.Get("Content-Type")) {
+		writeAPIError(w, http.StatusUnsupportedMediaType, "UNSUPPORTED_MEDIA_TYPE", "Content-Type must be application/json")
+		return
+	}
+
+	var req ingestEventRequest
+	if err := h.decodeEventJSON(w, r, &req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			writeAPIError(w, http.StatusRequestEntityTooLarge, "PAYLOAD_TOO_LARGE", "Request body is too large")
+			return
+		}
+		writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+		return
+	}
+
+	occurredAt, err := parseOccurredAt(req.OccurredAt)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+		return
+	}
+
+	requestContext := h.buildRequestContext(r)
+	out, err := h.ingest.IngestEvent(r.Context(), usecase.IngestEventInput{
+		EventType:             req.EventType,
+		AnonymousID:           req.AnonymousID,
+		SessionID:             req.SessionID,
+		UserID:                trustedUserIDFromRequest(r),
+		OccurredAt:            occurredAt,
+		Path:                  req.Path,
+		Properties:            req.Properties,
+		RequestID:             requestID(r),
+		UserAgent:             requestContext.UserAgent,
+		IPAddress:             requestContext.ClientIP,
+		IPHash:                requestContext.IPHash,
+		IPVersion:             requestContext.IPVersion,
+		Channel:               requestContext.Channel,
+		DeviceType:            requestContext.DeviceType,
+		DeviceFingerprint:     requestContext.DeviceFingerprint,
+		DeviceFingerprintHash: requestContext.DeviceFingerprintHash,
+		Locale:                requestContext.Locale,
+		Timezone:              requestContext.Timezone,
+		ClientHints:           requestContext.ClientHints,
+		GeoHint:               requestContext.GeoHint,
+	})
+	if err != nil {
+		h.writeUsecaseError(w, r, err)
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, acceptedResponse{
+		Accepted:  out.Accepted,
+		RequestID: out.RequestID,
+		EventID:   out.EventID,
+	})
+}
+
+func (h *Handler) handleGetJourney(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	sessionID, ok := sessionIDFromJourneyPath(r.URL.Path)
+	if !ok {
+		writeAPIError(w, http.StatusNotFound, "NOT_FOUND", "Journey endpoint not found")
+		return
+	}
+	if !requireAdminAccess(w, r) {
+		return
+	}
+
+	limit, err := parseJourneyLimit(r)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+		return
+	}
+	cursor, err := parseJourneyCursor(r)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+		return
+	}
+
+	out, err := h.journey.GetJourney(r.Context(), usecase.GetJourneyInput{
+		SessionID:        sessionID,
+		Limit:            limit,
+		CursorOccurredAt: cursor,
+	})
+	if err != nil {
+		h.writeJourneyError(w, r, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, JourneyResponseFromDomain(out.Session, out.Events, out.Summary))
+}
+
+func (h *Handler) handleGetLiveMetrics(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	if !requireAdminAccess(w, r) {
+		return
+	}
+	input, err := parseLiveMetricsInput(r)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+		return
+	}
+	out, err := h.analytics.GetLiveMetrics(r.Context(), input)
+	if err != nil {
+		h.writeAnalyticsError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, LiveMetricsResponseFromDomain(out))
+}
+
+func (h *Handler) handleListSessions(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	if !requireAdminAccess(w, r) {
+		return
+	}
+	input, err := parseSessionListInput(r)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+		return
+	}
+	out, err := h.analytics.ListSessions(r.Context(), input)
+	if err != nil {
+		h.writeAnalyticsError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, SessionListResponseFromOutput(out))
+}
+
+func (h *Handler) handleGetFunnelReport(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	if !requireAdminAccess(w, r) {
+		return
+	}
+	input, err := parseFunnelReportInput(r)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+		return
+	}
+	out, err := h.analytics.GetFunnelReport(r.Context(), input)
+	if err != nil {
+		h.writeAnalyticsError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, FunnelReportResponseFromOutput(out))
+}
+
+func (h *Handler) handleGetHeatmap(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	if !requireAdminAccess(w, r) {
+		return
+	}
+
+	input, err := parseHeatmapInput(r)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+		return
+	}
+	out, err := h.heatmap.GetHeatmap(r.Context(), input)
+	if err != nil {
+		h.writeHeatmapError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, HeatmapResponseFromOutput(out))
+}
+
+func (h *Handler) handleDeleteUserSessionData(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	if !requireAdminAccess(w, r) {
+		return
+	}
+	if h.retention == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "RETENTION_UNAVAILABLE", "Retention service is not configured")
+		return
+	}
+	if !isJSONContentType(r.Header.Get("Content-Type")) {
+		writeAPIError(w, http.StatusUnsupportedMediaType, "UNSUPPORTED_MEDIA_TYPE", "Content-Type must be application/json")
+		return
+	}
+	var req deleteUserSessionDataRequest
+	if err := h.decodeJSON(w, r, &req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+		return
+	}
+	requestedBy := strings.TrimSpace(req.RequestedBy)
+	if requestedBy == "" {
+		requestedBy = authenticatedActorID(r)
+	}
+	out, err := h.retention.DeleteUserSessionData(r.Context(), usecase.DeleteUserSessionDataInput{
+		RequestID:    firstNonEmpty(req.RequestID, requestID(r)),
+		UserID:       req.UserID,
+		AnonymousIDs: req.AnonymousIDs,
+		Reason:       req.Reason,
+		HardDelete:   req.HardDelete,
+		RequestedBy:  requestedBy,
+	})
+	if err != nil {
+		h.writeRetentionError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, DeleteUserSessionDataResponseFromDomain(out))
+}
+
+func (h *Handler) handleRunRetentionCleanup(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	if !requireAdminAccess(w, r) {
+		return
+	}
+	if h.retention == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "RETENTION_UNAVAILABLE", "Retention service is not configured")
+		return
+	}
+	if !isJSONContentType(r.Header.Get("Content-Type")) {
+		writeAPIError(w, http.StatusUnsupportedMediaType, "UNSUPPORTED_MEDIA_TYPE", "Content-Type must be application/json")
+		return
+	}
+	var req runRetentionCleanupRequest
+	if err := h.decodeJSON(w, r, &req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+		return
+	}
+	out, err := h.retention.RunRetentionCleanup(r.Context(), usecase.RunRetentionCleanupInput{
+		RequestID: firstNonEmpty(req.RequestID, requestID(r)),
+		DryRun:    req.DryRun,
+	})
+	if err != nil {
+		h.writeRetentionError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, RetentionCleanupResponseFromDomain(out))
+}
+
+func (h *Handler) handleAdminSessionPath(w http.ResponseWriter, r *http.Request) {
+	sessionID, ok := sessionIDFromLegalHoldPath(r.URL.Path)
+	if !ok {
+		writeAPIError(w, http.StatusNotFound, "NOT_FOUND", "Admin session endpoint not found")
+		return
+	}
+	h.handleSetLegalHold(w, r, sessionID)
+}
+
+func (h *Handler) handleSetLegalHold(w http.ResponseWriter, r *http.Request, sessionID string) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	if !requireAdminAccess(w, r) {
+		return
+	}
+	if h.retention == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "RETENTION_UNAVAILABLE", "Retention service is not configured")
+		return
+	}
+	if !isJSONContentType(r.Header.Get("Content-Type")) {
+		writeAPIError(w, http.StatusUnsupportedMediaType, "UNSUPPORTED_MEDIA_TYPE", "Content-Type must be application/json")
+		return
+	}
+	var req setLegalHoldRequest
+	if err := h.decodeJSON(w, r, &req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+		return
+	}
+	actorID := strings.TrimSpace(req.ActorID)
+	if actorID == "" {
+		actorID = authenticatedActorID(r)
+	}
+	out, err := h.retention.SetLegalHold(r.Context(), usecase.SetLegalHoldInput{
+		SessionID: sessionID,
+		Hold:      req.Hold,
+		Reason:    req.Reason,
+		ActorID:   actorID,
+	})
+	if err != nil {
+		h.writeRetentionError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, SetLegalHoldResponseFromDomain(out))
+}
+
+func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) handleReady(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), readinessTimeout)
+	defer cancel()
+
+	status := make(map[string]string, len(h.probes))
+	ready := true
+	for name, probe := range h.probes {
+		if err := probe(ctx); err != nil {
+			ready = false
+			status[name] = "error"
+			h.logger.WarnContext(ctx, "session.http.readiness_probe_failed",
+				slog.String("probe", name),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+		status[name] = "ok"
+	}
+
+	if !ready {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"status": "degraded",
+			"checks": status,
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status": "ok",
+		"checks": status,
+	})
+}
+
+func requireMethod(w http.ResponseWriter, r *http.Request, method string) bool {
+	if r.Method == method {
+		return true
+	}
+	w.Header().Set("Allow", method)
+	writeAPIError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "Method not allowed")
+	return false
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func writeAPIError(w http.ResponseWriter, status int, code string, message string) {
+	writeJSON(w, status, errorResponse{
+		Error: apiError{
+			Code:    code,
+			Message: message,
+		},
+	})
+}
+
+func (h *Handler) writeUsecaseError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, usecase.ErrInvalidSessionInput), errors.Is(err, domain.ErrInvalidSessionEvent), errors.Is(err, domain.ErrInvalidSession):
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+	case errors.Is(err, usecase.ErrIngestStorageUnavailable):
+		writeAPIError(w, http.StatusServiceUnavailable, "INGEST_STORAGE_UNAVAILABLE", "Session event storage is temporarily unavailable")
+	default:
+		h.logger.ErrorContext(r.Context(), "session.http.ingest_failed",
+			slog.String("request_id", requestID(r)),
+			slog.String("error", err.Error()),
+		)
+		writeAPIError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+	}
+}
+
+func (h *Handler) writeJourneyError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, usecase.ErrInvalidSessionInput), errors.Is(err, domain.ErrInvalidJourney):
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+	case errors.Is(err, domain.ErrSessionNotFound):
+		writeAPIError(w, http.StatusNotFound, "SESSION_NOT_FOUND", "Session not found")
+	case errors.Is(err, usecase.ErrJourneyStorageUnavailable):
+		writeAPIError(w, http.StatusServiceUnavailable, "JOURNEY_STORAGE_UNAVAILABLE", "Session journey storage is temporarily unavailable")
+	default:
+		h.logger.ErrorContext(r.Context(), "session.http.journey_failed",
+			slog.String("request_id", requestID(r)),
+			slog.String("error", err.Error()),
+		)
+		writeAPIError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+	}
+}
+
+func (h *Handler) writeHeatmapError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, usecase.ErrInvalidSessionInput), errors.Is(err, domain.ErrInvalidHeatmap):
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+	case errors.Is(err, usecase.ErrHeatmapStorageUnavailable):
+		h.logger.ErrorContext(r.Context(), "session.http.heatmap_storage_failed",
+			slog.String("request_id", requestID(r)),
+			slog.String("error", err.Error()),
+		)
+		writeAPIError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+	default:
+		h.logger.ErrorContext(r.Context(), "session.http.heatmap_failed",
+			slog.String("request_id", requestID(r)),
+			slog.String("error", err.Error()),
+		)
+		writeAPIError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+	}
+}
+
+func (h *Handler) writeAnalyticsError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, usecase.ErrInvalidSessionInput), errors.Is(err, domain.ErrInvalidAnalytics):
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+	case errors.Is(err, usecase.ErrAnalyticsAggregateNotReady):
+		writeAPIError(w, http.StatusConflict, "AGGREGATE_NOT_READY", "Analytics aggregate is not ready for the requested date range")
+	case errors.Is(err, usecase.ErrAnalyticsStorageUnavailable):
+		h.logger.ErrorContext(r.Context(), "session.http.analytics_storage_failed",
+			slog.String("request_id", requestID(r)),
+			slog.String("error", err.Error()),
+		)
+		writeAPIError(w, http.StatusServiceUnavailable, "ANALYTICS_STORAGE_UNAVAILABLE", "Analytics storage is temporarily unavailable")
+	default:
+		h.logger.ErrorContext(r.Context(), "session.http.analytics_failed",
+			slog.String("request_id", requestID(r)),
+			slog.String("error", err.Error()),
+		)
+		writeAPIError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+	}
+}
+
+func (h *Handler) writeRetentionError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, usecase.ErrRetentionPolicyInvalid), errors.Is(err, domain.ErrInvalidRetentionPolicy):
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+	case errors.Is(err, domain.ErrSessionNotFound):
+		writeAPIError(w, http.StatusNotFound, "SESSION_NOT_FOUND", "Session not found")
+	case errors.Is(err, usecase.ErrRetentionAggregatePII):
+		writeAPIError(w, http.StatusConflict, "RETENTION_AGGREGATE_PII", "Analytics aggregates contain identity fields")
+	case errors.Is(err, usecase.ErrRetentionStorageUnavailable):
+		h.logger.ErrorContext(r.Context(), "session.http.retention_storage_failed",
+			slog.String("request_id", requestID(r)),
+			slog.String("error", err.Error()),
+		)
+		writeAPIError(w, http.StatusServiceUnavailable, "RETENTION_STORAGE_UNAVAILABLE", "Retention storage is temporarily unavailable")
+	default:
+		h.logger.ErrorContext(r.Context(), "session.http.retention_failed",
+			slog.String("request_id", requestID(r)),
+			slog.String("error", err.Error()),
+		)
+		writeAPIError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+	}
+}
+
+func (h *Handler) decodeEventJSON(w http.ResponseWriter, r *http.Request, dst any) error {
+	r.Body = http.MaxBytesReader(w, r.Body, h.maxEventBodyBytes)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(dst); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("request body must contain a single JSON object")
+	}
+	return nil
+}
+
+func (h *Handler) decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
+	r.Body = http.MaxBytesReader(w, r.Body, h.maxEventBodyBytes)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(dst); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("request body must contain a single JSON object")
+	}
+	return nil
+}
+
+func parseOccurredAt(value string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, fmt.Errorf("occurred_at is required")
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("occurred_at must be RFC3339")
+	}
+	return parsed.UTC(), nil
+}
+
+func isJSONContentType(value string) bool {
+	mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(value))
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(mediaType, "application/json")
+}
+
+func trustedUserIDFromRequest(r *http.Request) *string {
+	for _, header := range []string{"X-User-ID", "X-Authenticated-User-ID", "X-Auth-User-ID"} {
+		userID := strings.TrimSpace(r.Header.Get(header))
+		if userID != "" {
+			return &userID
+		}
+	}
+	return nil
+}
+
+func requestID(r *http.Request) string {
+	if requestID := strings.TrimSpace(r.Header.Get("X-Request-ID")); requestID != "" {
+		return requestID
+	}
+	if traceID := strings.TrimSpace(r.Header.Get("X-Trace-ID")); traceID != "" {
+		return traceID
+	}
+	return strings.TrimSpace(r.Header.Get("Traceparent"))
+}
+
+func authenticatedActorID(r *http.Request) string {
+	if userID := trustedUserIDFromRequest(r); userID != nil {
+		return *userID
+	}
+	return firstHeaderValue(r, "X-Admin-ID", "X-Actor-ID", "X-Service-ID")
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func sessionIDFromJourneyPath(path string) (string, bool) {
+	const prefix = "/api/v1/analytics/sessions/"
+	const suffix = "/journey"
+	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
+		return "", false
+	}
+	sessionID := strings.TrimSuffix(strings.TrimPrefix(path, prefix), suffix)
+	sessionID = strings.Trim(sessionID, "/")
+	if sessionID == "" || strings.Contains(sessionID, "/") {
+		return "", false
+	}
+	return sessionID, true
+}
+
+func sessionIDFromLegalHoldPath(path string) (string, bool) {
+	const prefix = "/api/v1/admin/sessions/"
+	const suffix = "/legal-hold"
+	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
+		return "", false
+	}
+	sessionID := strings.TrimSuffix(strings.TrimPrefix(path, prefix), suffix)
+	sessionID = strings.Trim(sessionID, "/")
+	if sessionID == "" || strings.Contains(sessionID, "/") {
+		return "", false
+	}
+	return sessionID, true
+}
+
+func parseJourneyLimit(r *http.Request) (int, error) {
+	raw := strings.TrimSpace(r.URL.Query().Get("limit"))
+	if raw == "" {
+		return 0, nil
+	}
+	limit, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("limit must be an integer")
+	}
+	if limit <= 0 {
+		return 0, fmt.Errorf("limit must be greater than zero")
+	}
+	return limit, nil
+}
+
+func parseJourneyCursor(r *http.Request) (*time.Time, error) {
+	raw := strings.TrimSpace(r.URL.Query().Get("cursor"))
+	if raw == "" {
+		return nil, nil
+	}
+	cursor, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil {
+		return nil, fmt.Errorf("cursor must be RFC3339")
+	}
+	cursor = cursor.UTC()
+	return &cursor, nil
+}
+
+func parseHeatmapInput(r *http.Request) (usecase.GetHeatmapInput, error) {
+	query := r.URL.Query()
+	from, err := parseDayQuery(query.Get("from"), "from")
+	if err != nil {
+		return usecase.GetHeatmapInput{}, err
+	}
+	to, err := parseDayQuery(query.Get("to"), "to")
+	if err != nil {
+		return usecase.GetHeatmapInput{}, err
+	}
+	limit := 0
+	if rawLimit := strings.TrimSpace(query.Get("limit")); rawLimit != "" {
+		parsed, err := strconv.Atoi(rawLimit)
+		if err != nil {
+			return usecase.GetHeatmapInput{}, fmt.Errorf("limit must be an integer")
+		}
+		if parsed <= 0 {
+			return usecase.GetHeatmapInput{}, fmt.Errorf("limit must be greater than zero")
+		}
+		limit = parsed
+	}
+	return usecase.GetHeatmapInput{
+		HeatmapType:    query.Get("heatmap_type"),
+		Path:           query.Get("path"),
+		DeviceType:     query.Get("device_type"),
+		From:           from,
+		To:             to,
+		ViewportBucket: query.Get("viewport_bucket"),
+		Limit:          limit,
+	}, nil
+}
+
+func parseLiveMetricsInput(r *http.Request) (usecase.GetLiveMetricsInput, error) {
+	query := r.URL.Query()
+	from, err := parseOptionalTimeQuery(query.Get("from"), "from")
+	if err != nil {
+		return usecase.GetLiveMetricsInput{}, err
+	}
+	to, err := parseOptionalTimeQuery(query.Get("to"), "to")
+	if err != nil {
+		return usecase.GetLiveMetricsInput{}, err
+	}
+	return usecase.GetLiveMetricsInput{From: from, To: to}, nil
+}
+
+func parseSessionListInput(r *http.Request) (usecase.ListSessionsInput, error) {
+	query := r.URL.Query()
+	from, err := parseOptionalTimeQuery(query.Get("from"), "from")
+	if err != nil {
+		return usecase.ListSessionsInput{}, err
+	}
+	to, err := parseOptionalTimeQuery(query.Get("to"), "to")
+	if err != nil {
+		return usecase.ListSessionsInput{}, err
+	}
+	page, err := parseOptionalPositiveInt(query.Get("page"), "page")
+	if err != nil {
+		return usecase.ListSessionsInput{}, err
+	}
+	pageSize, err := parseOptionalPositiveInt(query.Get("page_size"), "page_size")
+	if err != nil {
+		return usecase.ListSessionsInput{}, err
+	}
+	return usecase.ListSessionsInput{
+		UserID:      query.Get("user_id"),
+		AnonymousID: query.Get("anonymous_id"),
+		From:        from,
+		To:          to,
+		Page:        page,
+		PageSize:    pageSize,
+		DeviceType:  query.Get("device_type"),
+		Channel:     query.Get("channel"),
+		Status:      query.Get("status"),
+	}, nil
+}
+
+func parseFunnelReportInput(r *http.Request) (usecase.GetFunnelReportInput, error) {
+	query := r.URL.Query()
+	from, err := parseRequiredTimeQuery(query.Get("from"), "from")
+	if err != nil {
+		return usecase.GetFunnelReportInput{}, err
+	}
+	to, err := parseRequiredTimeQuery(query.Get("to"), "to")
+	if err != nil {
+		return usecase.GetFunnelReportInput{}, err
+	}
+	steps := parseStepsQuery(query["steps"])
+	return usecase.GetFunnelReportInput{
+		Metric:     query.Get("metric"),
+		From:       from,
+		To:         to,
+		Steps:      steps,
+		DeviceType: query.Get("device_type"),
+		Channel:    query.Get("channel"),
+		Country:    query.Get("country"),
+		Campaign:   query.Get("campaign"),
+	}, nil
+}
+
+func parseRequiredTimeQuery(value string, field string) (time.Time, error) {
+	parsed, err := parseOptionalTimeQuery(value, field)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if parsed.IsZero() {
+		return time.Time{}, fmt.Errorf("%s is required", field)
+	}
+	return parsed, nil
+}
+
+func parseOptionalTimeQuery(value string, field string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, nil
+	}
+	if parsed, err := time.Parse(time.RFC3339Nano, value); err == nil {
+		return parsed.UTC(), nil
+	}
+	if parsed, err := time.Parse("2006-01-02", value); err == nil {
+		return parsed.UTC(), nil
+	}
+	return time.Time{}, fmt.Errorf("%s must be RFC3339 or YYYY-MM-DD", field)
+}
+
+func parseOptionalPositiveInt(value string, field string) (int, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be an integer", field)
+	}
+	if parsed <= 0 {
+		return 0, fmt.Errorf("%s must be greater than zero", field)
+	}
+	return parsed, nil
+}
+
+func parseStepsQuery(values []string) []string {
+	steps := make([]string, 0)
+	for _, value := range values {
+		for _, part := range strings.Split(value, ",") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				steps = append(steps, part)
+			}
+		}
+	}
+	return steps
+}
+
+func parseDayQuery(value string, field string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, fmt.Errorf("%s is required", field)
+	}
+	parsed, err := parseOptionalTimeQuery(value, field)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return parsed, nil
+}
+
+func requireAdminAccess(w http.ResponseWriter, r *http.Request) bool {
+	roles := rolesFromRequest(r)
+	for _, role := range roles {
+		if adminRoleAllowed(role) {
+			return true
+		}
+	}
+	if len(roles) > 0 || hasAuthContext(r) {
+		writeAPIError(w, http.StatusForbidden, "PERMISSION_DENIED", "Permission denied")
+		return false
+	}
+	writeAPIError(w, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "Authentication required")
+	return false
+}
+
+func rolesFromRequest(r *http.Request) []string {
+	headers := []string{"X-User-Roles", "X-User-Role", "X-Authenticated-Roles", "X-Auth-Roles"}
+	roles := make([]string, 0)
+	for _, header := range headers {
+		value := strings.TrimSpace(r.Header.Get(header))
+		if value == "" {
+			continue
+		}
+		parts := strings.FieldsFunc(value, func(r rune) bool {
+			return r == ',' || r == ';' || r == ' ' || r == '\t' || r == '\n'
+		})
+		for _, part := range parts {
+			role := strings.ToLower(strings.TrimSpace(part))
+			if role != "" {
+				roles = append(roles, role)
+			}
+		}
+	}
+	return roles
+}
+
+func adminRoleAllowed(role string) bool {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case "admin", "superadmin", "operations_admin":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasAuthContext(r *http.Request) bool {
+	return trustedUserIDFromRequest(r) != nil
+}
+
+func (h *Handler) buildRequestContext(r *http.Request) RequestContext {
+	trustedProxy := h.requestFromTrustedProxy(r)
+	clientIP := remoteAddrIP(r.RemoteAddr)
+	if trustedProxy {
+		clientIP = trustedClientIP(r, clientIP)
+	}
+	return RequestContext{
+		UserAgent:             r.UserAgent(),
+		ClientIP:              clientIP,
+		IPHash:                strings.TrimSpace(r.Header.Get("X-IP-Hash")),
+		DeviceFingerprint:     strings.TrimSpace(r.Header.Get("X-Device-Fingerprint")),
+		DeviceFingerprintHash: strings.TrimSpace(r.Header.Get("X-Device-Fingerprint-Hash")),
+		Channel:               domain.Channel(strings.TrimSpace(r.Header.Get("X-Client-Channel"))),
+		DeviceType:            domain.DeviceType(strings.TrimSpace(r.Header.Get("X-Device-Type"))),
+		Locale:                firstLanguageHeader(r.Header.Get("Accept-Language")),
+		Timezone:              firstHeaderValue(r, "X-Client-Timezone", "X-Timezone", "X-Time-Zone"),
+		IPVersion:             domain.IPVersion(strings.TrimSpace(r.Header.Get("X-IP-Version"))),
+		ClientHints: usecase.ClientHints{
+			UA:       strings.TrimSpace(r.Header.Get("Sec-CH-UA")),
+			Platform: strings.TrimSpace(r.Header.Get("Sec-CH-UA-Platform")),
+			Mobile:   strings.TrimSpace(r.Header.Get("Sec-CH-UA-Mobile")),
+			Model:    strings.TrimSpace(r.Header.Get("Sec-CH-UA-Model")),
+		},
+		GeoHint: geoHintFromHeaders(r, trustedProxy),
+	}
+}
+
+func (h *Handler) requestFromTrustedProxy(r *http.Request) bool {
+	if len(h.requestContext.TrustedProxyCIDRs) == 0 {
+		return false
+	}
+	ip := net.ParseIP(remoteAddrIP(r.RemoteAddr))
+	if ip == nil {
+		return false
+	}
+	for _, network := range h.requestContext.TrustedProxyCIDRs {
+		if network != nil && network.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+func trustedClientIP(r *http.Request, fallback string) string {
+	if forwardedFor := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); forwardedFor != "" {
+		first, _, _ := strings.Cut(forwardedFor, ",")
+		if ip := strings.TrimSpace(first); ip != "" {
+			return ip
+		}
+	}
+	if realIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); realIP != "" {
+		return realIP
+	}
+	if trusted := strings.TrimSpace(r.Header.Get("X-Trusted-Client-IP")); trusted != "" {
+		return trusted
+	}
+	return fallback
+}
+
+func remoteAddrIP(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err == nil && host != "" {
+		return host
+	}
+	return strings.TrimSpace(remoteAddr)
+}
+
+func firstHeaderValue(r *http.Request, names ...string) string {
+	for _, name := range names {
+		if value := strings.TrimSpace(r.Header.Get(name)); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func firstLanguageHeader(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	first, _, _ := strings.Cut(value, ",")
+	first, _, _ = strings.Cut(strings.TrimSpace(first), ";")
+	return strings.ReplaceAll(strings.TrimSpace(first), "_", "-")
+}
+
+func geoHintFromHeaders(r *http.Request, trustedProxy bool) domain.Geo {
+	if !trustedProxy {
+		return domain.Geo{}
+	}
+	return domain.Geo{
+		Country:  headerStringPtr(firstHeaderValue(r, "X-Geo-Country", "CF-IPCountry", "X-Country-Code")),
+		Region:   headerStringPtr(firstHeaderValue(r, "X-Geo-Region", "X-Region-Code")),
+		City:     headerStringPtr(firstHeaderValue(r, "X-Geo-City", "X-City")),
+		Timezone: headerStringPtr(firstHeaderValue(r, "X-Geo-Timezone", "X-Timezone")),
+		Source:   domain.GeoSourceHeader,
+	}.Normalize()
+}
+
+func headerStringPtr(value string) *string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	return &value
+}
