@@ -8,6 +8,7 @@ use (
 	./services/payment-service
 	./services/product-service
 	./services/recommendation-service
+	./services/search-service
 	./services/user-service
 	./services/wishlist-service
 	./shared/gen/go

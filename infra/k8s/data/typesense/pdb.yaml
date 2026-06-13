@@ -1,0 +1,14 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: typesense-pdb
+  namespace: data
+  labels:
+    app.kubernetes.io/name: typesense
+    app.kubernetes.io/part-of: ecommerce-platform
+    app.kubernetes.io/component: search-engine
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: typesense

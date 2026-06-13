@@ -1,0 +1,31 @@
+package domain
+
+import "errors"
+
+var (
+	ErrInvalidProductDocument          = errors.New("invalid product search document")
+	ErrInvalidProductEvent             = errors.New("invalid product event")
+	ErrUnsupportedProductEvent         = errors.New("unsupported product event")
+	ErrProductIndexUnavailable         = errors.New("product search index unavailable")
+	ErrProcessedEventUnavailable       = errors.New("processed event store unavailable")
+	ErrInvalidSearchSchema             = errors.New("invalid search schema")
+	ErrInvalidSearchPolicy             = errors.New("invalid search policy")
+	ErrInvalidSynonym                  = errors.New("invalid search synonym")
+	ErrSchemaUnavailable               = errors.New("search schema unavailable")
+	ErrInvalidSearchRequest            = errors.New("invalid search request")
+	ErrUnsupportedSearchSort           = errors.New("unsupported search sort")
+	ErrInvalidSearchFilter             = errors.New("invalid search filter")
+	ErrSearchBackendUnavailable        = errors.New("search backend unavailable")
+	ErrSearchCollectionUnavailable     = errors.New("search collection unavailable")
+	ErrProductHydrationUnavailable     = errors.New("product hydration unavailable")
+	ErrInvalidAutocompleteRequest      = errors.New("invalid autocomplete request")
+	ErrInvalidPopularQueryDocument     = errors.New("invalid popular query document")
+	ErrInvalidZeroResultEvent          = errors.New("invalid zero-result search event")
+	ErrSessionEventUnavailable         = errors.New("session event unavailable")
+	ErrInvalidReindexRequest           = errors.New("invalid search reindex request")
+	ErrReindexAlreadyRunning           = errors.New("search reindex already running")
+	ErrReindexValidationFailed         = errors.New("search reindex validation failed")
+	ErrProductCatalogExportUnavailable = errors.New("product catalog export unavailable")
+	ErrUnauthenticated                 = errors.New("unauthenticated")
+	ErrPermissionDenied                = errors.New("permission denied")
+)
