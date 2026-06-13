@@ -115,14 +115,14 @@ Priority values:
 
 | S.No | Task Name | Task Detail (simple Hinglish + deep explanation) | Dependencies | Priority | Status |
 |---:|---|---|---|---|---|
-| 1 | Define recommendation types | Similar products, trending, personalized, frequently bought together define karo. | Product and Session | P2 | Pending |
-| 2 | Choose MongoDB plus Redis | Recommendation documents flexible hain; Redis top lists and low-latency cache ke liye use hoga. | Types | P2 | Pending |
-| 3 | Event ingestion | Product views, add-to-cart, wishlist, purchase events consume karo. | Kafka/RabbitMQ | P1 | Pending |
-| 4 | Feature store schema | User-product interaction counters and embeddings/reference ids store karo. | Event ingestion | P2 | Pending |
-| 5 | Rule-based MVP | Trending, category popular, seller popular recommendations pehle banao. ML later add karna easier hoga. | Product data | P1 | Pending |
-| 6 | Personalized ranking | User behavior based scoring implement karo. Cold-start fallback mandatory hai. | Feature store | P2 | Pending |
-| 7 | gRPC endpoint | `GetRecommendations(user_id, context)` method banao. Frontend and Product Service use karenge. | Proto strategy | P1 | Pending |
-| 8 | A/B testing hooks | Strategy id return karo so analytics conversion compare kar sake. | Session analytics | P2 | Pending |
+| 1 | Define recommendation types | Similar products, trending, personalized, frequently bought together define karo. | Product and Session | P2 | Completed |
+| 2 | Choose MongoDB plus Redis | Recommendation documents flexible hain; Redis top lists and low-latency cache ke liye use hoga. | Types | P2 | Completed |
+| 3 | Event ingestion | Product views, add-to-cart, wishlist, purchase events consume karo. | Kafka/RabbitMQ | P1 | Completed |
+| 4 | Feature store schema | User-product interaction counters and embeddings/reference ids store karo. | Event ingestion | P2 | Completed |
+| 5 | Rule-based MVP | Trending, category popular, seller popular recommendations pehle banao. ML later add karna easier hoga. | Product data | P1 | Completed |
+| 6 | Personalized ranking | User behavior based scoring implement karo. Cold-start fallback mandatory hai. | Feature store | P2 | Completed |
+| 7 | gRPC endpoint | `GetRecommendations(user_id, context)` method banao. Frontend and Product Service use karenge. | Proto strategy | P1 | Completed |
+| 8 | A/B testing hooks | Strategy id return karo so analytics conversion compare kar sake. | Session analytics | P2 | Completed |
 
 ## Search Service (Typesense)
 
