@@ -1,0 +1,157 @@
+syntax = "proto3";
+
+package ecommerce.cms.v1;
+
+option go_package = "github.com/example/ecommerce-platform/backend/services/cms-service/internal/gen/ecommerce/cms/v1;cmsv1";
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+service CMSService {
+  rpc ValidateCoupon(ValidateCouponRequest) returns (ValidateCouponResponse);
+  rpc GetSellerSettings(GetSellerSettingsRequest) returns (GetSellerSettingsResponse);
+  rpc GetCampaign(GetCampaignRequest) returns (GetCampaignResponse);
+  rpc ListCampaigns(ListCampaignsRequest) returns (ListCampaignsResponse);
+  rpc ListAuditLogs(ListAuditLogsRequest) returns (ListAuditLogsResponse);
+}
+
+message Money {
+  int64 amount = 1;
+  string currency = 2;
+}
+
+message ValidateCouponRequest {
+  string coupon_code = 1;
+  string user_id = 2;
+  string cart_id = 3;
+  string order_id = 4;
+  Money cart_subtotal = 5;
+  repeated CartLineSnapshot items = 6;
+  string currency = 7;
+  google.protobuf.Timestamp requested_at = 8;
+  string campaign_id = 9;
+}
+
+message CartLineSnapshot {
+  string product_id = 1;
+  string variant_id = 2;
+  string seller_id = 3;
+  string category_id = 4;
+  int32 quantity = 5;
+  Money line_total = 6;
+  Money unit_price = 7;
+}
+
+message ValidateCouponResponse {
+  bool valid = 1;
+  string coupon_id = 2;
+  Money discount = 3;
+  string reason = 4;
+  string campaign_id = 5;
+  repeated string applied_rule_codes = 6;
+}
+
+message GetSellerSettingsRequest {
+  string seller_id = 1;
+}
+
+message GetSellerSettingsResponse {
+  SellerSettings settings = 1;
+}
+
+message SellerSettings {
+  string seller_id = 1;
+  string return_policy = 2;
+  string shipping_policy = 3;
+  google.protobuf.Timestamp updated_at = 4;
+  string support_email = 5;
+  google.protobuf.Struct settings = 6;
+}
+
+message GetCampaignRequest {
+  string campaign_id = 1;
+  string seller_id = 2;
+}
+
+message GetCampaignResponse {
+  Campaign campaign = 1;
+}
+
+message Campaign {
+  string campaign_id = 1;
+  string seller_id = 2;
+  string name = 3;
+  CampaignStatus status = 4;
+  google.protobuf.Timestamp starts_at = 5;
+  google.protobuf.Timestamp ends_at = 6;
+  Money budget = 7;
+  Money spent = 8;
+  repeated string coupon_ids = 9;
+  google.protobuf.Struct metadata = 10;
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp updated_at = 12;
+}
+
+enum CampaignStatus {
+  CAMPAIGN_STATUS_UNSPECIFIED = 0;
+  CAMPAIGN_STATUS_DRAFT = 1;
+  CAMPAIGN_STATUS_ACTIVE = 2;
+  CAMPAIGN_STATUS_PAUSED = 3;
+  CAMPAIGN_STATUS_COMPLETED = 4;
+}
+
+message ListCampaignsRequest {
+  string seller_id = 1;
+  CampaignStatus status = 2;
+  PageRequest page = 3;
+}
+
+message ListCampaignsResponse {
+  repeated Campaign campaigns = 1;
+  PageResponse page = 2;
+}
+
+message ListAuditLogsRequest {
+  string seller_id = 1;
+  string actor_user_id = 2;
+  string action = 3;
+  string resource_type = 4;
+  string resource_id = 5;
+  google.protobuf.Timestamp from = 6;
+  google.protobuf.Timestamp to = 7;
+  int32 page_size = 8;
+  string cursor = 9;
+}
+
+message AuditLog {
+  string audit_id = 1;
+  string seller_id = 2;
+  string actor_user_id = 3;
+  repeated string actor_roles = 4;
+  string action = 5;
+  string resource_type = 6;
+  string resource_id = 7;
+  string request_id = 8;
+  string trace_id = 9;
+  string decision = 10;
+  string reason = 11;
+  google.protobuf.Struct before = 12;
+  google.protobuf.Struct after = 13;
+  google.protobuf.Timestamp created_at = 14;
+}
+
+message ListAuditLogsResponse {
+  repeated AuditLog audit_logs = 1;
+  string next_cursor = 2;
+}
+
+message PageRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+}
+
+message PageResponse {
+  int32 limit = 1;
+  int32 offset = 2;
+  int32 count = 3;
+}

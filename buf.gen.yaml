@@ -1,0 +1,11 @@
+version: v1
+
+plugins:
+  - plugin: go
+    out: backend/services/cms-service
+    opt:
+      - module=github.com/example/ecommerce-platform/backend/services/cms-service
+  - plugin: go-grpc
+    out: backend/services/cms-service
+    opt:
+      - module=github.com/example/ecommerce-platform/backend/services/cms-service

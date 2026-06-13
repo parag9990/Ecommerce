@@ -1,0 +1,10 @@
+ALTER TABLE cms_audit_logs
+  DROP KEY idx_cms_audit_action_created,
+  DROP KEY idx_cms_audit_request,
+  DROP COLUMN user_agent_hash,
+  DROP COLUMN ip_hash,
+  DROP COLUMN reason,
+  DROP COLUMN decision,
+  DROP COLUMN trace_id,
+  DROP COLUMN request_id,
+  DROP COLUMN actor_roles_json;
