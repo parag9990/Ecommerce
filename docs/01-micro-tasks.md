@@ -128,14 +128,14 @@ Priority values:
 
 | S.No | Task Name | Task Detail (simple Hinglish + deep explanation) | Dependencies | Priority | Status |
 |---:|---|---|---|---|---|
-| 1 | Define search schema | Product searchable fields, facets, sorting, typo tolerance, synonyms define karo. | Product catalog | P0 | Pending |
-| 2 | Setup Typesense | Local and Kubernetes Typesense cluster configure karo. Search data yahi index hoga. | External services | P0 | Pending |
-| 3 | Product indexer | Product events consume karke Typesense document upsert/delete karo. | Product events | P0 | Pending |
-| 4 | Search API | Query, filter, facet, sort, pagination endpoint banao. | Typesense setup | P1 | Pending |
-| 5 | Autocomplete API | Prefix search and popular queries return karo. Header search fast feel karega. | Search schema | P1 | Pending |
-| 6 | Synonym management | CMS/Superadmin synonyms add/update kar sake. Merchandising improve hogi. | CMS/Superadmin | P2 | Pending |
-| 7 | Zero-result tracking | No result queries analytics me bhejo. Catalog and synonyms improve karne me help hoga. | Session Service | P2 | Pending |
-| 8 | Reindex job | Full catalog reindex command and job banao. Schema change safe hoga. | Product Service | P1 | Pending |
+| 1 | Define search schema | Product searchable fields, facets, sorting, typo tolerance, synonyms define karo. | Product catalog | P0 | Completed |
+| 2 | Setup Typesense | Local and Kubernetes Typesense cluster configure karo. Search data yahi index hoga. | External services | P0 | Completed |
+| 3 | Product indexer | Product events consume karke Typesense document upsert/delete karo. | Product events | P0 | Completed |
+| 4 | Search API | Query, filter, facet, sort, pagination endpoint banao. | Typesense setup | P1 | Completed |
+| 5 | Autocomplete API | Prefix search and popular queries return karo. Header search fast feel karega. | Search schema | P1 | Completed |
+| 6 | Synonym management | CMS/Superadmin synonyms add/update kar sake. Merchandising improve hogi. | CMS/Superadmin | P2 | Completed |
+| 7 | Zero-result tracking | No result queries analytics me bhejo. Catalog and synonyms improve karne me help hoga. | Session Service | P2 | Completed |
+| 8 | Reindex job | Full catalog reindex command and job banao. Schema change safe hoga. | Product Service | P1 | Completed |
 
 ## CMS Service
 
