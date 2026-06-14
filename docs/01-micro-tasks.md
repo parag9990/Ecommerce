@@ -167,14 +167,14 @@ Priority values:
 
 | S.No | Task Name | Task Detail (simple Hinglish + deep explanation) | Dependencies | Priority | Status |
 |---:|---|---|---|---|---|
-| 1 | Define channels | Email, SMS, push, WhatsApp-like provider abstraction define karo. | Platform foundation | P1 | Pending |
-| 2 | Choose MongoDB | Notification templates and delivery logs flexible hain, MongoDB suitable hai. | Channels | P1 | Pending |
-| 3 | Template engine | OTP, order updates, payment, promotional templates with variables banao. | DB choice | P1 | Pending |
-| 4 | Send OTP | Auth Service ke OTP request ke liye email/SMS send method implement karo. | Auth Service | P0 | Pending |
-| 5 | Event consumers | Order/payment/user events consume karke notifications trigger karo. | Message queue | P1 | Pending |
-| 6 | Retry and DLQ | Provider failure pe retry, final failure pe dead-letter queue. Reliability improve hogi. | Queue | P1 | Pending |
-| 7 | User preferences | User opt-in/opt-out and channel preference respect karo. Compliance ke liye important hai. | User Service | P2 | Pending |
-| 8 | Delivery analytics | Sent, delivered, failed, opened metrics collect karo. Campaign quality measure hogi. | Monitoring | P2 | Pending |
+| 1 | Define channels | Email, SMS, push, WhatsApp-like provider abstraction define karo. | Platform foundation | P1 | Completed |
+| 2 | Choose MongoDB | Notification templates and delivery logs flexible hain, MongoDB suitable hai. | Channels | P1 | Completed |
+| 3 | Template engine | OTP, order updates, payment, promotional templates with variables banao. | DB choice | P1 | Completed |
+| 4 | Send OTP | Auth Service ke OTP request ke liye email/SMS send method implement karo. | Auth Service | P0 | Completed |
+| 5 | Event consumers | Order/payment/user events consume karke notifications trigger karo. | Message queue | P1 | Completed |
+| 6 | Retry and DLQ | Provider failure pe retry, final failure pe dead-letter queue. Reliability improve hogi. | Queue | P1 | Completed |
+| 7 | User preferences | User opt-in/opt-out and channel preference respect karo. Compliance ke liye important hai. | User Service | P2 | Completed |
+| 8 | Delivery analytics | Sent, delivered, failed, opened metrics collect karo. Campaign quality measure hogi. | Monitoring | P2 | Completed |
 
 ## API Gateway
 
