@@ -1,0 +1,105 @@
+package usecase
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/example/ecommerce-platform/backend/services/notification-service/internal/domain"
+)
+
+type PreferenceStore interface {
+	FindPreferenceByUserID(ctx context.Context, userID string) (domain.Preference, error)
+	UpsertPreference(ctx context.Context, preference domain.Preference) (domain.Preference, error)
+}
+
+type PreferencePatch struct {
+	EmailEnabled     *bool
+	SMSEnabled       *bool
+	PushEnabled      *bool
+	MarketingEnabled *bool
+}
+
+func (p PreferencePatch) Validate() error {
+	if p.EmailEnabled == nil && p.SMSEnabled == nil && p.PushEnabled == nil && p.MarketingEnabled == nil {
+		return fmt.Errorf("%w: at least one preference field is required", domain.ErrInvalidPreference)
+	}
+	return nil
+}
+
+type ManagePreferenceService struct {
+	store PreferenceStore
+	now   func() time.Time
+}
+
+func NewManagePreferenceService(store PreferenceStore) (*ManagePreferenceService, error) {
+	if nilServiceDependency(store) {
+		return nil, errors.New("notification preference store is required")
+	}
+	return &ManagePreferenceService{store: store, now: time.Now}, nil
+}
+
+func (s *ManagePreferenceService) WithClock(now func() time.Time) {
+	if now != nil {
+		s.now = now
+	}
+}
+
+func (s *ManagePreferenceService) Get(ctx context.Context, userID string) (domain.Preference, error) {
+	if ctx == nil {
+		return domain.Preference{}, fmt.Errorf("%w: context is required", domain.ErrInvalidPreference)
+	}
+	if err := ctx.Err(); err != nil {
+		return domain.Preference{}, err
+	}
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return domain.Preference{}, fmt.Errorf("%w: user_id is required", domain.ErrInvalidPreference)
+	}
+	preference, err := s.store.FindPreferenceByUserID(ctx, userID)
+	if errors.Is(err, domain.ErrPreferenceNotFound) {
+		return domain.DefaultPreference(userID, s.now()), nil
+	}
+	if err != nil {
+		return domain.Preference{}, fmt.Errorf("get notification preference: %w", err)
+	}
+	return preference, nil
+}
+
+func (s *ManagePreferenceService) Update(
+	ctx context.Context,
+	userID string,
+	patch PreferencePatch,
+) (domain.Preference, error) {
+	if err := patch.Validate(); err != nil {
+		return domain.Preference{}, err
+	}
+	preference, err := s.Get(ctx, userID)
+	if err != nil {
+		return domain.Preference{}, err
+	}
+	if patch.EmailEnabled != nil {
+		preference.EmailEnabled = *patch.EmailEnabled
+	}
+	if patch.SMSEnabled != nil {
+		preference.SMSEnabled = *patch.SMSEnabled
+	}
+	if patch.PushEnabled != nil {
+		preference.PushEnabled = *patch.PushEnabled
+	}
+	if patch.MarketingEnabled != nil {
+		preference.MarketingEnabled = *patch.MarketingEnabled
+	}
+	preference.ConsentSource = domain.ConsentSourceProfileSettings
+	preference.UpdatedAt = s.now().UTC()
+	if err := preference.Validate(); err != nil {
+		return domain.Preference{}, err
+	}
+	saved, err := s.store.UpsertPreference(ctx, preference)
+	if err != nil {
+		return domain.Preference{}, fmt.Errorf("update notification preference: %w", err)
+	}
+	return saved, nil
+}

@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package ecommerce.notification.v1;
+
+option go_package = "github.com/example/ecommerce-platform/backend/services/notification-service/api/notification/v1;notificationv1";
+
+service NotificationService {
+  rpc SendOTP(SendOTPRequest) returns (SendOTPResponse);
+  rpc GetNotificationPreference(GetNotificationPreferenceRequest) returns (NotificationPreference);
+  rpc UpdateNotificationPreference(UpdateNotificationPreferenceRequest) returns (NotificationPreference);
+}
+
+enum OTPChannel {
+  OTP_CHANNEL_UNSPECIFIED = 0;
+  OTP_CHANNEL_EMAIL = 1;
+  OTP_CHANNEL_SMS = 2;
+}
+
+message SendOTPRequest {
+  string challenge_id = 1;
+  string user_id = 2;
+  OTPChannel channel = 3;
+  string target = 4;
+  string otp = 5;
+  int32 expires_in_minutes = 6;
+  string purpose = 7;
+  string correlation_id = 8;
+}
+
+message SendOTPResponse {
+  string delivery_id = 1;
+  string status = 2;
+}
+
+message GetNotificationPreferenceRequest {}
+
+message UpdateNotificationPreferenceRequest {
+  optional bool email_enabled = 1;
+  optional bool sms_enabled = 2;
+  optional bool push_enabled = 3;
+  optional bool marketing_enabled = 4;
+}
+
+message NotificationPreference {
+  bool email_enabled = 1;
+  bool sms_enabled = 2;
+  bool push_enabled = 3;
+  bool marketing_enabled = 4;
+}
