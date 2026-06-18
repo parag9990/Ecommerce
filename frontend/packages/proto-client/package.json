@@ -1,0 +1,24 @@
+{
+  "name": "@ecommerce/proto-client",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./gen/*": {
+      "types": "./src/gen/*.ts",
+      "default": "./src/gen/*.ts"
+    }
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.10.1",
+    "@connectrpc/connect": "^2.1.1"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}
