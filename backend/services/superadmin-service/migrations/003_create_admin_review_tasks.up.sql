@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS admin_review_tasks (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  task_id VARCHAR(64) NOT NULL,
+  task_type VARCHAR(64) NOT NULL,
+  resource_type VARCHAR(64) NOT NULL,
+  resource_id VARCHAR(64) NOT NULL,
+  status ENUM('open', 'approved', 'rejected', 'cancelled') NOT NULL DEFAULT 'open',
+  assigned_to VARCHAR(64) NULL,
+  created_by VARCHAR(64) NULL,
+  reviewed_by VARCHAR(64) NULL,
+  reviewed_at TIMESTAMP NULL,
+  reason VARCHAR(512) NULL,
+  metadata JSON NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_admin_review_tasks_task_id (task_id),
+  KEY idx_review_tasks_status_type (status, task_type),
+  KEY idx_review_tasks_resource (resource_type, resource_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

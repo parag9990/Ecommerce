@@ -12,6 +12,7 @@ use (
 	./services/recommendation-service
 	./services/search-service
 	./services/session-service
+	./services/superadmin-service
 	./services/user-service
 	./services/wishlist-service
 	./shared/gen/go
