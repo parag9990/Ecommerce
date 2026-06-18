@@ -1,0 +1,50 @@
+{
+  "policies": [
+    {
+      "full_method": "/ecommerce.session.v1.SessionService/IngestEvent",
+      "downstream": "session",
+      "auth_mode": "optional",
+      "timeout": "800ms"
+    },
+    {
+      "full_method": "/ecommerce.session.v1.SessionService/GetLiveSessions",
+      "downstream": "session",
+      "auth_mode": "required",
+      "roles": [
+        "admin",
+        "superadmin"
+      ],
+      "timeout": "1500ms"
+    },
+    {
+      "full_method": "/ecommerce.superadmin.v1.SuperadminService/ListUsers",
+      "downstream": "superadmin",
+      "auth_mode": "required",
+      "roles": [
+        "operations_admin",
+        "superadmin"
+      ],
+      "timeout": "1500ms"
+    },
+    {
+      "full_method": "/ecommerce.superadmin.v1.SuperadminService/UpdatePlatformSetting",
+      "downstream": "superadmin",
+      "auth_mode": "required",
+      "roles": [
+        "superadmin"
+      ],
+      "timeout": "3s"
+    },
+    {
+      "full_method": "/ecommerce.cms.v1.CMSService/GetSellerAnalytics",
+      "downstream": "cms",
+      "auth_mode": "required",
+      "roles": [
+        "seller",
+        "seller_manager",
+        "superadmin"
+      ],
+      "timeout": "1500ms"
+    }
+  ]
+}
