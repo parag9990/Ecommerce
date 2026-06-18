@@ -15,6 +15,9 @@
     "lint:user": "pnpm --filter user-app lint",
     "typecheck": "pnpm typecheck:user",
     "typecheck:user": "pnpm --filter user-app typecheck",
-    "preview:user": "pnpm --filter user-app preview"
+    "preview:user": "pnpm --filter user-app preview",
+    "build:seller": "pnpm --filter seller-dashboard build",
+    "test:seller": "pnpm --filter seller-dashboard test",
+    "typecheck:seller": "pnpm --filter seller-dashboard typecheck"
   }
 }
