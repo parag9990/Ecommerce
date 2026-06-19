@@ -232,14 +232,14 @@ Priority values:
 
 | S.No | Task Name | Task Detail (simple Hinglish + deep explanation) | Dependencies | Priority | Status |
 |---:|---|---|---|---|---|
-| 1 | Analytics shell | Date range, segment filters, metric cards layout banao. Data-heavy UI clean and scannable rakho. | Session APIs | P1 | Pending |
-| 2 | Active sessions | Live active users, devices, locations, entry pages view banao. | Session Service | P1 | Pending |
-| 3 | Journey explorer | Session timeline, page views, clicks, cart events sequence display karo. | Journey APIs | P1 | Pending |
-| 4 | Funnel analysis | Product view to cart to checkout to paid funnel chart banao. | Aggregation APIs | P2 | Pending |
-| 5 | Heatmap view | Conceptual click/scroll heatmap overlay render karo. Exact replay later phase me add hoga. | Heatmap APIs | P2 | Pending |
-| 6 | Retention reports | New vs returning, cohort retention charts banao. | Aggregates | P2 | Pending |
-| 7 | Export reports | CSV download and scheduled report option banao. | Analytics APIs | P2 | Pending |
-| 8 | Privacy controls | PII masking, user deletion, retention settings UI banao. | Security policy | P1 | Pending |
+| 1 | Analytics shell | Date range, segment filters, metric cards layout banao. Data-heavy UI clean and scannable rakho. | Session APIs | P1 | Completed |
+| 2 | Active sessions | Live active users, devices, locations, entry pages view banao. | Session Service | P1 | Completed |
+| 3 | Journey explorer | Session timeline, page views, clicks, cart events sequence display karo. | Journey APIs | P1 | Completed |
+| 4 | Funnel analysis | Product view to cart to checkout to paid funnel chart banao. | Aggregation APIs | P2 | Completed |
+| 5 | Heatmap view | Conceptual click/scroll heatmap overlay render karo. Exact replay later phase me add hoga. | Heatmap APIs | P2 | Completed |
+| 6 | Retention reports | New vs returning, cohort retention charts banao. | Aggregates | P2 | Completed |
+| 7 | Export reports | CSV download and scheduled report option banao. | Analytics APIs | P2 | Completed |
+| 8 | Privacy controls | PII masking, user deletion, retention settings UI banao. | Security policy | P1 | Completed |
 
 ## Superadmin Panel
 
