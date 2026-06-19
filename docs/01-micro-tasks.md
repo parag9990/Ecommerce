@@ -219,14 +219,14 @@ Priority values:
 
 | S.No | Task Name | Task Detail (simple Hinglish + deep explanation) | Dependencies | Priority | Status |
 |---:|---|---|---|---|---|
-| 1 | Dashboard shell | Sidebar, topbar, seller switcher, protected layout banao. Operational UI compact rakho. | React setup | P1 | Pending |
-| 2 | Product manager | Product list, create/edit form, variants, images, publish status banao. | CMS/Product APIs | P1 | Pending |
-| 3 | Order manager | Seller order list, status updates, shipment info, refunds view banao. | Order APIs | P1 | Pending |
-| 4 | Offers and coupons | Coupon create/edit, campaign calendar, usage stats UI banao. | CMS APIs | P1 | Pending |
-| 5 | Revenue analytics | Revenue, GMV, orders, conversion, top products charts banao. | CMS analytics | P2 | Pending |
-| 6 | Team permissions | Seller staff invite, roles, access control UI banao. | Auth/CMS | P2 | Pending |
-| 7 | Audit activity | Recent seller actions timeline banao. Debug and trust improve hota hai. | CMS audit APIs | P2 | Pending |
-| 8 | Error states | Empty, loading, failed, permission denied states polish karo. Production UX reliable lagega. | All modules | P1 | Pending |
+| 1 | Dashboard shell | Sidebar, topbar, seller switcher, protected layout banao. Operational UI compact rakho. | React setup | P1 | Completed |
+| 2 | Product manager | Product list, create/edit form, variants, images, publish status banao. | CMS/Product APIs | P1 | Completed |
+| 3 | Order manager | Seller order list, status updates, shipment info, refunds view banao. | Order APIs | P1 | Completed |
+| 4 | Offers and coupons | Coupon create/edit, campaign calendar, usage stats UI banao. | CMS APIs | P1 | Completed |
+| 5 | Revenue analytics | Revenue, GMV, orders, conversion, top products charts banao. | CMS analytics | P2 | Completed |
+| 6 | Team permissions | Seller staff invite, roles, access control UI banao. | Auth/CMS | P2 | Completed |
+| 7 | Audit activity | Recent seller actions timeline banao. Debug and trust improve hota hai. | CMS audit APIs | P2 | Completed |
+| 8 | Error states | Empty, loading, failed, permission denied states polish karo. Production UX reliable lagega. | All modules | P1 | Completed |
 
 ## Session Analytics Dashboard
 
