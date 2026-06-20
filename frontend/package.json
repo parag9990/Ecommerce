@@ -18,6 +18,10 @@
     "preview:user": "pnpm --filter user-app preview",
     "build:seller": "pnpm --filter seller-dashboard build",
     "test:seller": "pnpm --filter seller-dashboard test",
-    "typecheck:seller": "pnpm --filter seller-dashboard typecheck"
+    "typecheck:seller": "pnpm --filter seller-dashboard typecheck",
+    "superadmin:dev": "pnpm --filter superadmin-panel dev",
+    "superadmin:test": "pnpm --filter superadmin-panel test",
+    "superadmin:typecheck": "pnpm --filter superadmin-panel typecheck",
+    "superadmin:build": "pnpm --filter superadmin-panel build"
   }
 }
