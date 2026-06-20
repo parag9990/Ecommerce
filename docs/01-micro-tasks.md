@@ -245,12 +245,12 @@ Priority values:
 
 | S.No | Task Name | Task Detail (simple Hinglish + deep explanation) | Dependencies | Priority | Status |
 |---:|---|---|---|---|---|
-| 1 | Admin shell | Secure admin layout, navigation, role-based menu banao. Sirf allowed modules visible honge. | Auth RBAC | P0 | Pending |
-| 2 | User management | User search, block/unblock, profile view, session view banao. | User/Superadmin APIs | P1 | Pending |
-| 3 | Seller management | Seller KYC approval, suspension, catalog review UI banao. | User/CMS/Product | P1 | Pending |
-| 4 | Order operations | Order search, detail, dispute, manual review UI banao. | Order APIs | P1 | Pending |
-| 5 | Payment operations | Payment status, refunds, reconciliation alerts UI banao. | Payment APIs | P1 | Pending |
-| 6 | Session oversight | High-risk sessions, live traffic, suspicious activity view banao. | Session APIs | P2 | Pending |
-| 7 | Platform settings | Commission, search synonyms, feature flags, maintenance mode UI banao. | Superadmin APIs | P2 | Pending |
-| 8 | Audit log viewer | Admin actions filterable table with export banao. Security review ke liye important hai. | Audit APIs | P0 | Pending |
+| 1 | Admin shell | Secure admin layout, navigation, role-based menu banao. Sirf allowed modules visible honge. | Auth RBAC | P0 | Completed |
+| 2 | User management | User search, block/unblock, profile view, session view banao. | User/Superadmin APIs | P1 | Completed |
+| 3 | Seller management | Seller KYC approval, suspension, catalog review UI banao. | User/CMS/Product | P1 | Completed |
+| 4 | Order operations | Order search, detail, dispute, manual review UI banao. | Order APIs | P1 | Completed |
+| 5 | Payment operations | Payment status, refunds, reconciliation alerts UI banao. | Payment APIs | P1 | Completed |
+| 6 | Session oversight | High-risk sessions, live traffic, suspicious activity view banao. | Session APIs | P2 | Completed |
+| 7 | Platform settings | Commission, search synonyms, feature flags, maintenance mode UI banao. | Superadmin APIs | P2 | Completed |
+| 8 | Audit log viewer | Admin actions filterable table with export banao. Security review ke liye important hai. | Audit APIs | P0 | Completed |
 
