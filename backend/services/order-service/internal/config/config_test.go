@@ -13,6 +13,8 @@ func TestLoadCheckoutConfig(t *testing.T) {
 	t.Setenv("ORDER_PAYMENT_RETURN_URL", "https://shop.example.test/checkout/result")
 	t.Setenv("ORDER_PAYMENT_ALLOWED_CURRENCIES", "inr, usd, INR")
 	t.Setenv("ORDER_PAYMENT_INVENTORY_ACTION_TIMEOUT", "900ms")
+	t.Setenv("ORDER_PAYMENT_INTERNAL_TOKEN", "payment-internal-token-at-least-32-chars")
+	t.Setenv("ORDER_PAYMENT_EVENTS_TOKEN", "payment-events-token-at-least-32-chars")
 	t.Setenv("ORDER_GRPC_TRUSTED_CALLER_TOKEN", "trusted-caller-token-at-least-32-chars")
 	t.Setenv("ORDER_PAGE_TOKEN_SIGNING_KEY", "page-token-signing-key-at-least-32-chars")
 	t.Setenv("ORDER_KAFKA_BROKERS", "localhost:9092, kafka-b:9092")

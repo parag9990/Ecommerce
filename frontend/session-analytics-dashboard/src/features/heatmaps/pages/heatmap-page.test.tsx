@@ -1,12 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { HttpResponse, http } from "msw";
-import { setupServer } from "msw/node";
 import {
-  afterAll,
-  afterEach,
-  beforeAll,
+  beforeEach,
   describe,
   expect,
   it,
@@ -22,20 +18,21 @@ vi.mock("../components/heatmap-canvas", () => ({
 }));
 
 let requestUrls: URL[] = [];
+let responseBody: unknown;
+let responseStatus: number;
 
-const server = setupServer(
-  http.get("/api/v1/analytics/heatmaps", ({ request }) => {
-    requestUrls.push(new URL(request.url));
-    return HttpResponse.json(heatmapResponse());
-  })
-);
-
-beforeAll(() => server.listen());
-afterEach(() => {
+beforeEach(() => {
   requestUrls = [];
-  server.resetHandlers();
+  responseBody = heatmapResponse();
+  responseStatus = 200;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string | URL | Request) => {
+      requestUrls.push(new URL(String(input)));
+      return jsonResponse(responseBody, responseStatus);
+    })
+  );
 });
-afterAll(() => server.close());
 
 describe("HeatmapPage", () => {
   it("renders summary, privacy state, preview, legend, and top click buckets", async () => {
@@ -78,11 +75,7 @@ describe("HeatmapPage", () => {
   });
 
   it("renders an empty state when no aggregate points are returned", async () => {
-    server.use(
-      http.get("/api/v1/analytics/heatmaps", () =>
-        HttpResponse.json({ points: [] })
-      )
-    );
+    responseBody = { points: [] };
 
     renderPage();
 
@@ -92,19 +85,13 @@ describe("HeatmapPage", () => {
   });
 
   it("renders an error state when the heatmap endpoint fails", async () => {
-    server.use(
-      http.get("/api/v1/analytics/heatmaps", () =>
-        HttpResponse.json(
-          {
+    responseStatus = 500;
+    responseBody = {
             error: {
               code: "SESSION_ANALYTICS_UNAVAILABLE",
               message: "Session analytics unavailable."
             }
-          },
-          { status: 500 }
-        )
-      )
-    );
+          };
 
     renderPage();
 
@@ -141,4 +128,11 @@ function heatmapResponse() {
     ],
     total_events: 48
   };
+}
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    headers: { "Content-Type": "application/json" },
+    status
+  });
 }

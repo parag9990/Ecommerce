@@ -22,8 +22,9 @@ type Dialer interface {
 }
 
 type DialOptions struct {
-	TLSEnabled  bool
-	DialTimeout time.Duration
+	TLSEnabled       bool
+	DialTimeout      time.Duration
+	AllowUnavailable bool
 }
 
 type DialOptionProvider func(ServiceDescriptor) grpc.DialOption
@@ -109,6 +110,15 @@ func (d *grpcDialer) Dial(ctx context.Context, descriptor ServiceDescriptor) (*g
 		return nil, err
 	}
 	conn.Connect()
+	if d.options.AllowUnavailable {
+		if d.logger != nil {
+			d.logger.WarnContext(ctx, "grpc_client_started_without_readiness_wait",
+				"service", descriptor.Name,
+				"target", descriptor.Target,
+			)
+		}
+		return conn, nil
+	}
 
 	for {
 		state := conn.GetState()

@@ -12,13 +12,15 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func ServerOptions(logger *slog.Logger) []grpcgo.ServerOption {
+func ServerOptions(logger *slog.Logger, additional ...grpcgo.UnaryServerInterceptor) []grpcgo.ServerOption {
+	interceptors := []grpcgo.UnaryServerInterceptor{
+		UnaryRecoveryInterceptor(logger),
+		UnaryAuditActorInterceptor(),
+		UnaryLoggingInterceptor(logger),
+	}
+	interceptors = append(interceptors, additional...)
 	return []grpcgo.ServerOption{
-		grpcgo.ChainUnaryInterceptor(
-			UnaryRecoveryInterceptor(logger),
-			UnaryAuditActorInterceptor(),
-			UnaryLoggingInterceptor(logger),
-		),
+		grpcgo.ChainUnaryInterceptor(interceptors...),
 	}
 }
 

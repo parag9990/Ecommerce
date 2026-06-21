@@ -1,0 +1,352 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+
+	"product-service/internal/app"
+	"product-service/internal/config"
+	eventing "product-service/internal/events"
+	"product-service/internal/repository"
+	"product-service/internal/transport/dto"
+	"product-service/internal/usecase"
+)
+
+const maxBodyBytes = 2 << 20
+
+func main() {
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "product-service failed: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel})).With("service", cfg.ServiceName)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	mongoClient, database, err := repository.NewMongoDatabase(ctx, cfg.Mongo.URI, cfg.Mongo.DatabaseName)
+	if err != nil {
+		return err
+	}
+	defer mongoClient.Disconnect(context.Background())
+
+	products, err := repository.NewMongoProductRepository(database, logger)
+	if err != nil {
+		return err
+	}
+	collections, err := repository.NewMongoCollectionManager(database, logger)
+	if err != nil {
+		return err
+	}
+	var eventPublisher eventing.ProductEventPublisher
+	var kafkaPublisher *eventing.KafkaPublisher
+	if cfg.Events.Enabled && cfg.Events.OutboxWorkerEnabled && strings.EqualFold(cfg.Events.Broker, "kafka") {
+		kafkaPublisher, err = eventing.NewKafkaPublisher(cfg.Events.KafkaBrokers, time.Duration(cfg.Events.PublishTimeoutMS)*time.Millisecond)
+		if err != nil {
+			return err
+		}
+		defer kafkaPublisher.Close()
+		eventPublisher = kafkaPublisher
+	}
+	application, err := app.New(ctx, cfg, app.Dependencies{
+		ProductRepository:              products,
+		CollectionSchemaManager:        collections,
+		InventoryStockRepository:       products,
+		InventoryReservationRepository: products,
+		InventorySnapshotRepository:    products,
+		ProductEventOutboxRepository:   products,
+		ProductEventPublisher:          eventPublisher,
+		Logger:                         logger,
+	})
+	if err != nil {
+		return err
+	}
+	application.StartBackgroundWorkers(ctx)
+
+	mux := routes(application, func(probeCtx context.Context) error { return mongoClient.Ping(probeCtx, nil) })
+	server := &http.Server{
+		Addr:              env("PRODUCT_HTTP_ADDR", ":8082"),
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	errCh := make(chan error, 1)
+	go func() {
+		logger.Info("product.http.started", "addr", server.Addr)
+		errCh <- server.ListenAndServe()
+	}()
+
+	select {
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		return server.Shutdown(shutdownCtx)
+	case err := <-errCh:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	}
+}
+
+func routes(application *app.App, ping func(context.Context) error) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := ping(ctx); err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "not_ready"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+	})
+
+	mux.HandleFunc("GET /api/v1/products", func(w http.ResponseWriter, r *http.Request) {
+		if application.ProductReadHandler == nil {
+			writeServiceError(w, errors.New("product read service is unavailable"))
+			return
+		}
+		result, err := application.ProductReadHandler.ListProducts(r.Context(), dto.ListProductsRequestDTO{
+			CategoryID: r.URL.Query().Get("category_id"), SellerID: r.URL.Query().Get("seller_id"),
+			Status: r.URL.Query().Get("status"), Page: intQuery(r, "page", 1),
+			PageSize: intQuery(r, "page_size", 20), Sort: r.URL.Query().Get("sort"),
+		})
+		respond(w, result, err)
+	})
+	mux.HandleFunc("GET /api/v1/products/{product_id}", func(w http.ResponseWriter, r *http.Request) {
+		result, err := application.ProductReadHandler.GetProduct(r.Context(), dto.GetProductRequestDTO{ProductID: r.PathValue("product_id")})
+		respond(w, result, err)
+	})
+	mux.HandleFunc("GET /internal/v1/products/{product_id}", func(w http.ResponseWriter, r *http.Request) {
+		result, err := application.ProductReadHandler.GetSellerProduct(r.Context(), dto.GetSellerProductRequestDTO{
+			Actor: internalActor(r, "", ""), ProductID: r.PathValue("product_id"),
+		})
+		respond(w, result, err)
+	})
+	mux.HandleFunc("GET /api/v1/categories", func(w http.ResponseWriter, r *http.Request) {
+		result, err := application.ProductReadHandler.ListCategories(r.Context(), dto.ListCategoriesRequestDTO{ParentID: r.URL.Query().Get("parent_id")})
+		respond(w, result, err)
+	})
+	mux.HandleFunc("POST /internal/v1/products/batch", func(w http.ResponseWriter, r *http.Request) {
+		var input dto.BatchGetProductsRequestDTO
+		if !decode(w, r, &input) {
+			return
+		}
+		result, err := application.ProductReadHandler.BatchGetProducts(r.Context(), input)
+		respond(w, result, err)
+	})
+	mux.HandleFunc("GET /api/v1/seller/products", func(w http.ResponseWriter, r *http.Request) {
+		result, err := application.ProductReadHandler.ListSellerProducts(r.Context(), dto.ListSellerProductsRequestDTO{
+			Actor: actor(r), CategoryID: r.URL.Query().Get("category_id"), Status: r.URL.Query().Get("status"),
+			Page: intQuery(r, "page", 1), PageSize: intQuery(r, "page_size", 20), Sort: r.URL.Query().Get("sort"),
+		})
+		respond(w, result, err)
+	})
+	mux.HandleFunc("GET /api/v1/seller/products/{product_id}", func(w http.ResponseWriter, r *http.Request) {
+		result, err := application.ProductReadHandler.GetSellerProduct(r.Context(), dto.GetSellerProductRequestDTO{
+			Actor: actor(r), ProductID: r.PathValue("product_id"),
+		})
+		respond(w, result, err)
+	})
+	mux.HandleFunc("POST /api/v1/seller/products", func(w http.ResponseWriter, r *http.Request) {
+		var input dto.ProductInputDTO
+		if !decode(w, r, &input) {
+			return
+		}
+		result, err := application.SellerProductHandler.CreateProduct(r.Context(), dto.CreateSellerProductRequestDTO{Actor: actor(r), Product: input})
+		respondStatus(w, http.StatusCreated, result, err)
+	})
+	mux.HandleFunc("PATCH /api/v1/seller/products/{product_id}", func(w http.ResponseWriter, r *http.Request) {
+		var input dto.ProductInputDTO
+		if !decode(w, r, &input) {
+			return
+		}
+		result, err := application.SellerProductHandler.UpdateProduct(r.Context(), dto.UpdateSellerProductRequestDTO{
+			Actor: actor(r), ProductID: r.PathValue("product_id"), Product: input,
+		})
+		respond(w, result, err)
+	})
+	mux.HandleFunc("POST /api/v1/seller/products/{product_id}/publish", func(w http.ResponseWriter, r *http.Request) {
+		result, err := application.SellerProductHandler.PublishProduct(r.Context(), dto.ProductLifecycleRequestDTO{Actor: actor(r), ProductID: r.PathValue("product_id")})
+		respond(w, result, err)
+	})
+	mux.HandleFunc("POST /internal/v1/products/{product_id}/publish", func(w http.ResponseWriter, r *http.Request) {
+		var input internalStatusRequest
+		if !decode(w, r, &input) {
+			return
+		}
+		result, err := application.SellerProductHandler.ModerateProduct(r.Context(), dto.ProductModerationRequestDTO{
+			Actor: internalActor(r, input.ActorUserID, input.SellerID), ProductID: r.PathValue("product_id"), ExpectedStatus: input.ExpectedStatus, Status: "published",
+		})
+		respond(w, result, err)
+	})
+	mux.HandleFunc("POST /internal/v1/products/{product_id}/unpublish", func(w http.ResponseWriter, r *http.Request) {
+		var input internalStatusRequest
+		if !decode(w, r, &input) {
+			return
+		}
+		result, err := application.SellerProductHandler.ModerateProduct(r.Context(), dto.ProductModerationRequestDTO{
+			Actor: internalActor(r, input.ActorUserID, input.SellerID), ProductID: r.PathValue("product_id"), ExpectedStatus: input.ExpectedStatus, Status: "unpublished",
+		})
+		respond(w, result, err)
+	})
+	mux.HandleFunc("PATCH /internal/v1/products/{product_id}/status", func(w http.ResponseWriter, r *http.Request) {
+		var input internalStatusRequest
+		if !decode(w, r, &input) {
+			return
+		}
+		result, err := application.SellerProductHandler.ModerateProduct(r.Context(), dto.ProductModerationRequestDTO{
+			Actor: internalActor(r, input.ActorUserID, input.SellerID), ProductID: r.PathValue("product_id"), ExpectedStatus: input.ExpectedStatus, Status: input.Status,
+		})
+		respond(w, result, err)
+	})
+	mux.HandleFunc("POST /internal/v1/inventory/reservations", func(w http.ResponseWriter, r *http.Request) {
+		var input dto.InventoryReservationRequestDTO
+		if !decode(w, r, &input) {
+			return
+		}
+		result, err := application.InventoryHandler.ReserveInventory(r.Context(), input)
+		respondStatus(w, http.StatusCreated, result, err)
+	})
+	mux.HandleFunc("POST /internal/v1/inventory/reservations/{reservation_id}/release", func(w http.ResponseWriter, r *http.Request) {
+		var input dto.InventoryReservationActionRequestDTO
+		if r.ContentLength > 0 && !decode(w, r, &input) {
+			return
+		}
+		input.ReservationID = r.PathValue("reservation_id")
+		result, err := application.InventoryHandler.ReleaseInventory(r.Context(), input)
+		respond(w, result, err)
+	})
+	mux.HandleFunc("POST /internal/v1/inventory/reservations/{reservation_id}/commit", func(w http.ResponseWriter, r *http.Request) {
+		input := dto.InventoryReservationActionRequestDTO{ReservationID: r.PathValue("reservation_id")}
+		result, err := application.InventoryHandler.CommitInventory(r.Context(), input)
+		respond(w, result, err)
+	})
+	return mux
+}
+
+type internalStatusRequest struct {
+	ExpectedStatus string `json:"expected_status,omitempty"`
+	Status         string `json:"status"`
+	ActorUserID    string `json:"actor_user_id,omitempty"`
+	SellerID       string `json:"seller_id,omitempty"`
+	ReviewID       string `json:"review_id,omitempty"`
+	Reason         string `json:"reason,omitempty"`
+	RequestID      string `json:"request_id,omitempty"`
+	Force          bool   `json:"force,omitempty"`
+}
+
+func internalActor(r *http.Request, userID, sellerID string) dto.ActorContextDTO {
+	if strings.TrimSpace(userID) == "" {
+		userID = r.Header.Get("X-User-ID")
+	}
+	if strings.TrimSpace(sellerID) == "" {
+		sellerID = r.Header.Get("X-Seller-ID")
+	}
+	return dto.ActorContextDTO{UserID: strings.TrimSpace(userID), SellerID: strings.TrimSpace(sellerID), Roles: []string{"superadmin"}}
+}
+
+func actor(r *http.Request) dto.ActorContextDTO {
+	return dto.ActorContextDTO{
+		UserID: strings.TrimSpace(r.Header.Get("X-User-ID")), SellerID: strings.TrimSpace(r.Header.Get("X-Seller-ID")),
+		Roles: csvHeader(r, "X-Roles"), Permissions: csvHeader(r, "X-Permissions"),
+	}
+}
+
+func csvHeader(r *http.Request, name string) []string {
+	var values []string
+	for _, value := range strings.Split(r.Header.Get(name), ",") {
+		if value = strings.TrimSpace(value); value != "" {
+			values = append(values, value)
+		}
+	}
+	return values
+}
+
+func decode(w http.ResponseWriter, r *http.Request, target any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]string{"code": "INVALID_REQUEST", "message": err.Error()}})
+		return false
+	}
+	return true
+}
+
+func respond(w http.ResponseWriter, value any, err error) {
+	respondStatus(w, http.StatusOK, value, err)
+}
+
+func respondStatus(w http.ResponseWriter, status int, value any, err error) {
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, status, value)
+}
+
+func writeServiceError(w http.ResponseWriter, err error) {
+	status, code, message := http.StatusInternalServerError, "INTERNAL_ERROR", "internal product service error"
+	var serviceErr *usecase.ServiceError
+	if errors.As(err, &serviceErr) {
+		code, message = serviceErr.Code, serviceErr.Message
+		switch serviceErr.Kind {
+		case usecase.ErrorKindInvalidArgument:
+			status = http.StatusBadRequest
+		case usecase.ErrorKindUnauthenticated:
+			status = http.StatusUnauthorized
+		case usecase.ErrorKindPermissionDenied:
+			status = http.StatusForbidden
+		case usecase.ErrorKindNotFound:
+			status = http.StatusNotFound
+		case usecase.ErrorKindAlreadyExists, usecase.ErrorKindConflict, usecase.ErrorKindFailedPrecondition:
+			status = http.StatusConflict
+		case usecase.ErrorKindUnavailable:
+			status = http.StatusServiceUnavailable
+		}
+	}
+	writeJSON(w, status, map[string]any{"error": map[string]any{"code": code, "message": message}})
+}
+
+func writeJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(value)
+}
+
+func intQuery(r *http.Request, name string, fallback int) int {
+	value, err := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get(name)))
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+func env(name, fallback string) string {
+	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+		return value
+	}
+	return fallback
+}

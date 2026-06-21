@@ -1,0 +1,24 @@
+package metrics
+
+import (
+	"net/http"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+type HTTP struct {
+	Requests *prometheus.CounterVec
+	Duration *prometheus.HistogramVec
+}
+
+func NewHTTP(registry prometheus.Registerer, namespace, service string) *HTTP {
+	metrics := &HTTP{
+		Requests: prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: namespace, Subsystem: "http", Name: "requests_total", ConstLabels: prometheus.Labels{"service": service}}, []string{"method", "route", "status"}),
+		Duration: prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: namespace, Subsystem: "http", Name: "request_duration_seconds", ConstLabels: prometheus.Labels{"service": service}}, []string{"method", "route"}),
+	}
+	registry.MustRegister(metrics.Requests, metrics.Duration)
+	return metrics
+}
+
+func Handler(gatherer prometheus.Gatherer) http.Handler { return promhttp.HandlerFor(gatherer, promhttp.HandlerOpts{}) }

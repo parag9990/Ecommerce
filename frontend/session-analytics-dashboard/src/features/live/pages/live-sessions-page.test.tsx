@@ -16,14 +16,14 @@ describe("LiveSessionsPage", () => {
     renderPage();
 
     expect(await screen.findByText("anon_1...7890")).toBeInTheDocument();
-    expect(screen.getByText("sess_123")).toBeInTheDocument();
+    expect(screen.getByText("sess****")).toBeInTheDocument();
     expect(screen.getByText("Chrome / Android")).toBeInTheDocument();
     expect(screen.getAllByText("/products").length).toBeGreaterThan(0);
     expect(screen.getByText("Device mix")).toBeInTheDocument();
     expect(screen.getByText("Top entry pages")).toBeInTheDocument();
     expect(screen.getAllByText("Delhi, India").length).toBeGreaterThan(0);
     expect(
-      screen.getByRole("link", { name: "Open journey for session sess_123" })
+      screen.getByRole("link", { name: "Open journey for selected session" })
     ).toHaveAttribute("href", "/journey/sess_123");
   });
 
@@ -79,7 +79,7 @@ describe("LiveSessionsPage", () => {
 
     renderPage();
 
-    await screen.findByText("sess_123");
+    await screen.findByText("sess****");
     await userEvent.selectOptions(screen.getByLabelText("Device"), "mobile");
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));

@@ -585,7 +585,7 @@ describe("session analytics api", () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(init.body as string) as Record<string, unknown>;
 
-    expect(url).toBe("/api/v1/analytics/reports/schedules");
+    expect(new URL(url).pathname).toBe("/api/v1/analytics/reports/schedules");
     expect(init.method).toBe("POST");
     expect(body).toMatchObject({
       day_of_week: "monday",
@@ -654,7 +654,9 @@ describe("session analytics api", () => {
     });
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/v1/analytics/reports/schedules/rpt_sch_123");
+    expect(new URL(url).pathname).toBe(
+      "/api/v1/analytics/reports/schedules/rpt_sch_123"
+    );
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(init.body as string)).toEqual({ status: "paused" });
   });
@@ -736,7 +738,7 @@ describe("session analytics api", () => {
     });
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/v1/analytics/privacy/settings");
+    expect(new URL(url).pathname).toBe("/api/v1/analytics/privacy/settings");
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(init.body as string)).toMatchObject({
       masking: {

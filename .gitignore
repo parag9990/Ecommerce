@@ -10,6 +10,10 @@
 **/secrets/*
 !**/secrets/.gitkeep
 !**/secrets/README.md
+**/secret.yaml
+!**/secret.example.yaml
+.local/
+**/.cache/
 *.pem
 *.key
 *.crt
@@ -29,6 +33,7 @@ bin/
 vendor/
 *.test
 *.out
+*.exe
 coverage.out
 coverage.html
 
@@ -64,6 +69,7 @@ docker-compose.override.yml
 *.sql.gz
 *.sqlite
 *.sqlite3
+*.tsbuildinfo~*
 
 # OS and editor noise
 .DS_Store

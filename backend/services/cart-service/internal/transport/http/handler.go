@@ -26,13 +26,24 @@ type CartUsecase interface {
 	MergeGuestCart(ctx context.Context, cmd usecase.MergeGuestCartCommand) (*domain.Cart, error)
 }
 
+type CartReader interface {
+	FindActiveByOwner(ctx context.Context, owner domain.CartOwner) (*domain.Cart, error)
+}
+
+type HandlerOption func(*Handler)
+
+func WithCartReader(reader CartReader) HandlerOption {
+	return func(handler *Handler) { handler.cartReader = reader }
+}
+
 type Handler struct {
 	schemaUsecase SchemaUsecase
 	cartUsecase   CartUsecase
+	cartReader    CartReader
 	logger        *slog.Logger
 }
 
-func NewHandler(schemaUsecase SchemaUsecase, cartUsecase CartUsecase, logger *slog.Logger) (*Handler, error) {
+func NewHandler(schemaUsecase SchemaUsecase, cartUsecase CartUsecase, logger *slog.Logger, options ...HandlerOption) (*Handler, error) {
 	if schemaUsecase == nil {
 		return nil, errors.New("schema usecase is required")
 	}
@@ -42,7 +53,11 @@ func NewHandler(schemaUsecase SchemaUsecase, cartUsecase CartUsecase, logger *sl
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Handler{schemaUsecase: schemaUsecase, cartUsecase: cartUsecase, logger: logger}, nil
+	handler := &Handler{schemaUsecase: schemaUsecase, cartUsecase: cartUsecase, logger: logger}
+	for _, option := range options {
+		option(handler)
+	}
+	return handler, nil
 }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
@@ -52,8 +67,31 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/cart/merge", h.handleMergeGuestCart)
 	mux.HandleFunc("/internal/v1/cart/schema", h.handleSchema)
 	mux.HandleFunc("/internal/v1/cart/schema/bootstrap", h.handleBootstrapSchema)
+	mux.HandleFunc("GET /internal/v1/carts/{cart_id}", h.handleGetCartForCheckout)
 	mux.HandleFunc("/healthz", h.handleHealth)
 	mux.HandleFunc("/readyz", h.handleReady)
+}
+
+func (h *Handler) handleGetCartForCheckout(w http.ResponseWriter, r *http.Request) {
+	if h.cartReader == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "CART_READ_UNAVAILABLE", "cart read service is unavailable")
+		return
+	}
+	owner, err := domain.ResolveCartOwner(ownerHeader(r, "X-User-ID"), "")
+	if err != nil {
+		h.writeCartError(w, err)
+		return
+	}
+	cart, err := h.cartReader.FindActiveByOwner(r.Context(), owner)
+	if err != nil {
+		h.writeCartError(w, err)
+		return
+	}
+	if cart == nil || cart.ID != strings.TrimSpace(r.PathValue("cart_id")) {
+		h.writeCartError(w, domain.ErrCartNotFound)
+		return
+	}
+	writeJSON(w, http.StatusOK, newCartResponse(cart))
 }
 
 func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {

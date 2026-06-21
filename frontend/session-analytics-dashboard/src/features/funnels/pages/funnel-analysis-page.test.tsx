@@ -1,9 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { HttpResponse, http } from "msw";
-import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FunnelAnalysisPage } from "./funnel-analysis-page";
 
@@ -16,20 +14,21 @@ vi.mock("../components/funnel-chart", () => ({
 }));
 
 let requestUrls: URL[] = [];
+let responseBody: unknown;
+let responseStatus: number;
 
-const server = setupServer(
-  http.get("/api/v1/analytics/funnels", ({ request }) => {
-    requestUrls.push(new URL(request.url));
-    return HttpResponse.json(funnelResponse());
-  })
-);
-
-beforeAll(() => server.listen());
-afterEach(() => {
+beforeEach(() => {
   requestUrls = [];
-  server.resetHandlers();
+  responseBody = funnelResponse();
+  responseStatus = 200;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string | URL | Request) => {
+      requestUrls.push(new URL(String(input)));
+      return jsonResponse(responseBody, responseStatus);
+    })
+  );
 });
-afterAll(() => server.close());
 
 describe("FunnelAnalysisPage", () => {
   it("renders the funnel chart, step cards, summary, and drop-off table", async () => {
@@ -64,11 +63,7 @@ describe("FunnelAnalysisPage", () => {
   });
 
   it("renders an empty state when the aggregate has no started sessions", async () => {
-    server.use(
-      http.get("/api/v1/analytics/funnels", () =>
-        HttpResponse.json({ steps: [] })
-      )
-    );
+    responseBody = { steps: [] };
 
     renderPage();
 
@@ -78,19 +73,13 @@ describe("FunnelAnalysisPage", () => {
   });
 
   it("renders an error state when the funnel endpoint fails", async () => {
-    server.use(
-      http.get("/api/v1/analytics/funnels", () =>
-        HttpResponse.json(
-          {
+    responseStatus = 500;
+    responseBody = {
             error: {
               code: "SESSION_ANALYTICS_UNAVAILABLE",
               message: "Session analytics unavailable."
             }
-          },
-          { status: 500 }
-        )
-      )
-    );
+          };
 
     renderPage();
 
@@ -126,4 +115,11 @@ function funnelResponse() {
       { key: "paid", count: 90 }
     ]
   };
+}
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    headers: { "Content-Type": "application/json" },
+    status
+  });
 }

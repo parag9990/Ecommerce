@@ -58,8 +58,9 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger, options ..
 	}
 	observabilityConfig := cfg.Observability.Normalize(cfg.ServiceName, cfg.Environment)
 	dialer := NewGRPCDialerWithProviders(DialOptions{
-		TLSEnabled:  cfg.GRPCTLSEnabled,
-		DialTimeout: cfg.GRPCDialTimeout,
+		TLSEnabled:       cfg.GRPCTLSEnabled,
+		DialTimeout:      cfg.GRPCDialTimeout,
+		AllowUnavailable: cfg.GRPCAllowUnavailableDownstreams,
 	}, logger, []DialOptionProvider{
 		func(descriptor ServiceDescriptor) grpc.DialOption {
 			return grpc.WithChainUnaryInterceptor(UnaryDeadlineInterceptor(descriptor.DefaultTimeout))

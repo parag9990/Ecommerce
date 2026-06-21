@@ -156,6 +156,7 @@ func (u *CreateOrderFromCartUsecase) Execute(ctx context.Context, command Create
 	}
 
 	reservation, err := u.products.ReserveInventory(ctx, ReserveInventoryRequest{
+		OrderID:        order.OrderID,
 		UserID:         command.UserID,
 		CartID:         command.CartID,
 		IdempotencyKey: childOperationKey("order-reservation", command.UserID, command.IdempotencyKey),

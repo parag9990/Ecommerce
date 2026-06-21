@@ -210,8 +210,9 @@ export async function getBlob(
       throw buildHTTPError(response, payload, responseRequestId);
     }
 
+    const contentType = response.headers.get("content-type") || undefined;
     return {
-      blob: await response.blob(),
+      blob: new Blob([await response.arrayBuffer()], { type: contentType }),
       filename: extractDownloadFilename(response.headers)
     };
   } catch (error) {
@@ -242,7 +243,9 @@ export async function getBlob(
 
 function buildRequestURL(path: string, apiBaseUrl: string): string {
   if (!apiBaseUrl) {
-    return path;
+    return typeof globalThis.location?.origin === "string"
+      ? new URL(path, globalThis.location.origin).toString()
+      : path;
   }
 
   return new URL(path, `${apiBaseUrl}/`).toString();

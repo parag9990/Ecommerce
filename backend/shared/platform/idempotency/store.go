@@ -1,0 +1,17 @@
+package idempotency
+
+import (
+	"context"
+	"time"
+)
+
+type Record struct {
+	Scope, Key, RequestHash, ResourceID, Status string
+	ExpiresAt                                   time.Time
+}
+
+type Store interface {
+	Claim(context.Context, Record) (Record, bool, error)
+	Complete(context.Context, string, string, string) error
+	Fail(context.Context, string, string) error
+}

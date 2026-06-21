@@ -1,0 +1,24 @@
+package grpcclient
+
+import (
+	"crypto/tls"
+	"errors"
+	"strings"
+	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/backoff"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
+)
+
+type Config struct { Target, ServerName string; Insecure bool; ConnectTimeout time.Duration }
+
+func Dial(cfg Config, options ...grpc.DialOption) (*grpc.ClientConn, error) {
+	if strings.TrimSpace(cfg.Target) == "" { return nil, errors.New("gRPC target is required") }
+	if cfg.ConnectTimeout <= 0 { cfg.ConnectTimeout = 5 * time.Second }
+	transport := credentials.TransportCredentials(insecure.NewCredentials())
+	if !cfg.Insecure { transport = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12, ServerName: cfg.ServerName}) }
+	options = append([]grpc.DialOption{grpc.WithTransportCredentials(transport), grpc.WithConnectParams(grpc.ConnectParams{Backoff: backoff.DefaultConfig, MinConnectTimeout: cfg.ConnectTimeout})}, options...)
+	return grpc.NewClient(cfg.Target, options...)
+}

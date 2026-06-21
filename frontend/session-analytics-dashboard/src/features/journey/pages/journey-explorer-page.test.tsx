@@ -15,7 +15,7 @@ describe("JourneyExplorerPage", () => {
 
     renderPage("/journey/sess_123");
 
-    expect(await screen.findByText("sess_123")).toBeInTheDocument();
+    expect(await screen.findByText("sess****")).toBeInTheDocument();
     expect(screen.getAllByText("Add to Cart").length).toBeGreaterThan(0);
 
     await userEvent.click(screen.getByText("Added product prod_123 to cart"));

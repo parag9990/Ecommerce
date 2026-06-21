@@ -27,6 +27,11 @@ type Clock interface {
 	Now() time.Time
 }
 
+type Metrics interface {
+	RecordEnqueued(eventType string)
+	ObservePublish(eventType string, result string, duration time.Duration)
+}
+
 type OutboxEvent struct {
 	ID            int64
 	EventID       string
@@ -50,6 +55,15 @@ type OutboxFailure struct {
 	FailedAt      time.Time
 }
 
+type OutboxStats struct {
+	Pending          int64
+	OldestPendingAge time.Duration
+}
+
+type OutboxStatsRepository interface {
+	Stats(ctx context.Context) (OutboxStats, error)
+}
+
 type OutboxRepository interface {
 	Insert(ctx context.Context, event OutboxEvent) error
 	LockPending(ctx context.Context, batchSize int, lockTTL time.Duration) ([]OutboxEvent, error)
@@ -62,6 +76,7 @@ type RecorderConfig struct {
 	Topic   string
 	Clock   Clock
 	Logger  *slog.Logger
+	Metrics Metrics
 }
 
 type OutboxRecorder struct {
@@ -70,6 +85,7 @@ type OutboxRecorder struct {
 	topic   string
 	clock   Clock
 	logger  *slog.Logger
+	metrics Metrics
 }
 
 func NewOutboxRecorder(repo OutboxRepository, cfg RecorderConfig) (*OutboxRecorder, error) {
@@ -88,6 +104,10 @@ func NewOutboxRecorder(repo OutboxRepository, cfg RecorderConfig) (*OutboxRecord
 	if logger == nil {
 		logger = slog.Default()
 	}
+	metrics := cfg.Metrics
+	if metrics == nil {
+		metrics = noopMetrics{}
+	}
 
 	return &OutboxRecorder{
 		repo:    repo,
@@ -95,6 +115,7 @@ func NewOutboxRecorder(repo OutboxRepository, cfg RecorderConfig) (*OutboxRecord
 		topic:   topic,
 		clock:   clock,
 		logger:  logger,
+		metrics: metrics,
 	}, nil
 }
 
@@ -141,6 +162,7 @@ func (r *OutboxRecorder) record(ctx context.Context, eventType string, aggregate
 	if err := r.repo.Insert(ctx, row); err != nil {
 		return fmt.Errorf("insert outbox event: %w", err)
 	}
+	r.metrics.RecordEnqueued(envelope.EventType)
 
 	r.logger.InfoContext(ctx, "user_event_enqueued",
 		slog.String("event_type", envelope.EventType),
@@ -158,3 +180,9 @@ type systemClock struct{}
 func (systemClock) Now() time.Time {
 	return time.Now().UTC()
 }
+
+type noopMetrics struct{}
+
+func (noopMetrics) RecordEnqueued(string) {}
+
+func (noopMetrics) ObservePublish(string, string, time.Duration) {}

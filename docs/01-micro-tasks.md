@@ -11,11 +11,11 @@ Priority values:
 
 | S.No | Task Name | Task Detail (simple Hinglish + deep explanation) | Dependencies | Priority | Status |
 |---:|---|---|---|---|---|
-| 1 | Define repo standards | Naming, folder, branching, commit rules decide karo. Ye future team ko same style me kaam karne me help karega. | None | P0 | Pending |
-| 2 | Create proto strategy | Har service ke gRPC contract ke liye `proto` folder aur versioning rule define karo. Contract pehle stable hoga to services loosely coupled rahengi. | Repo standards | P0 | Pending |
+| 1 | Define repo standards | Naming, folder, branching, commit rules decide karo. Ye future team ko same style me kaam karne me help karega. | None | P0 | Completed |
+| 2 | Create proto strategy | Har service ke gRPC contract ke liye `proto` folder aur versioning rule define karo. Contract pehle stable hoga to services loosely coupled rahengi. | Repo standards | P0 | Completed |
 | 3 | Create shared Go libs | Logger, config, errors, middleware, tracing, validation jaise reusable packages banao. Har service me duplicate code kam hoga. | Repo standards | P0 | Pending |
-| 4 | Docker Compose local stack | MySQL, MongoDB, Redis, Typesense, Kafka/RabbitMQ, Jaeger, Prometheus local run karne ke liye compose banao. | Repo standards | P0 | Pending |
-| 5 | API gateway base | Gateway REST request receive karega, auth check karega, gRPC service call karega. Ye public entry point hoga. | Proto strategy | P0 | Pending |
+| 4 | Docker Compose local stack | MySQL, MongoDB, Redis, Typesense, Kafka/RabbitMQ, Jaeger, Prometheus local run karne ke liye compose banao. | Repo standards | P0 | Completed |
+| 5 | API gateway base | Gateway REST request receive karega, auth check karega, gRPC service call karega. Ye public entry point hoga. | Proto strategy | P0 | Completed |
 | 6 | Observability baseline | Logs, metrics, traces ka format decide karo. Pehle din se monitoring ready rahegi. | Shared Go libs | P1 | Pending |
 | 7 | CI pipeline skeleton | Lint, test, build, Docker image scan automatic banao. Team ke merge se pehle quality check hoga. | Repo standards | P1 | Pending |
 | 8 | Kubernetes base manifests | Namespace, config map, secret, deployment, service, ingress templates banao. Later services fast deploy hongi. | Docker setup | P1 | Pending |
@@ -43,7 +43,7 @@ Priority values:
 | 4 | JWT issuing | Access token short lived, refresh token rotating banao. Claims me user id, tenant/seller id, roles, session id rakho. | Credentials | P0 | Completed |
 | 5 | OTP verification | Email and phone OTP generate, hash, expire, retry limit implement karo. Brute force se bachna zaruri hai. | Notification Service | P1 | Completed |
 | 6 | RBAC middleware | Buyer, Seller, Admin, Superadmin role checks centralize karo. Gateway aur services dono enforce karenge. | JWT | P0 | Completed |
-| 7 | Session link | Login ke time Session Management Service ko session start event bhejo. Analytics and fraud detection possible hoga. | Session Service | P1 | Completed |
+| 7 | Session link | Login ke time Session Management Service ko session start event bhejo. Analytics and fraud detection possible hoga. | Session Service | P1 | Pending |
 | 8 | Security tests | Token expiry, refresh reuse, OTP replay, role bypass test cases likho. Auth bugs high risk hote hain. | Implementation | P1 | Completed |
 
 ## Product Service
@@ -53,10 +53,10 @@ Priority values:
 | 1 | Define catalog model | Product, variant, category, attribute, image, inventory rules finalize karo. E-commerce catalog flexible hona chahiye. | Platform foundation | P0 | Completed |
 | 2 | Choose MongoDB | Product attributes category-wise dynamic hote hain, isliye MongoDB flexible schema ke liye better hai. | Catalog model | P0 | Completed |
 | 3 | Create collections | `products`, `categories`, `brands`, `inventory_snapshots`, `price_books` collections design karo. | MongoDB choice | P0 | Completed |
-| 4 | Implement seller CRUD | Seller apne products create/update/publish kar sake. Draft and published workflow banao. | CMS Service | P1 | Completed |
-| 5 | Implement read APIs | Product listing, detail, category browse, seller catalog APIs banao. Fast read path ke liye indexes zaruri hain. | Collections | P1 | Completed |
-| 6 | Inventory operations | Reserve, release, decrement stock methods implement karo. Checkout race condition avoid hogi. | Order Service | P0 | Completed |
-| 7 | Publish search events | Product changes ko Search Service me index karne ke liye events publish karo. Search data async sync hoga. | Message queue | P1 | Completed |
+| 4 | Implement seller CRUD | Seller apne products create/update/publish kar sake. Draft and published workflow banao. | CMS Service | P1 | Pending |
+| 5 | Implement read APIs | Product listing, detail, category browse, seller catalog APIs banao. Fast read path ke liye indexes zaruri hain. | Collections | P1 | Pending |
+| 6 | Inventory operations | Reserve, release, decrement stock methods implement karo. Checkout race condition avoid hogi. | Order Service | P0 | Pending |
+| 7 | Publish search events | Product changes ko Search Service me index karne ke liye events publish karo. Search data async sync hoga. | Message queue | P1 | Pending |
 | 8 | Add media metadata | Images CDN URLs, alt text, order, status maintain karo. Frontend clean gallery render karega. | Collections | P2 | Completed |
 
 ## Order Service
@@ -65,12 +65,12 @@ Priority values:
 |---:|---|---|---|---|---|
 | 1 | Define order lifecycle | Created, pending payment, paid, packed, shipped, delivered, cancelled, refunded states define karo. | Platform foundation | P0 | Completed |
 | 2 | Create MySQL schema | Orders transactional hote hain, isliye MySQL with relational tables best hai. | Lifecycle | P0 | Completed |
-| 3 | Cart to order flow | Cart validate karo, price snapshot lo, inventory reserve karo, order create karo. | Cart and Product | P0 | Completed |
-| 4 | Payment coordination | Payment Service ko payment intent request bhejo, result ke basis pe order status update karo. | Payment Service | P0 | Completed |
-| 5 | Implement order gRPC | `CreateOrder`, `GetOrder`, `ListOrders`, `UpdateFulfillment` methods banao. | Proto strategy | P1 | Completed |
-| 6 | Seller order view | Seller apne items ke orders dekh sake. Multi-seller order splitting handle karo. | User and Product | P1 | Completed |
+| 3 | Cart to order flow | Cart validate karo, price snapshot lo, inventory reserve karo, order create karo. | Cart and Product | P0 | Pending |
+| 4 | Payment coordination | Payment Service ko payment intent request bhejo, result ke basis pe order status update karo. | Payment Service | P0 | Pending |
+| 5 | Implement order gRPC | `CreateOrder`, `GetOrder`, `ListOrders`, `UpdateFulfillment` methods banao. | Proto strategy | P1 | Pending |
+| 6 | Seller order view | Seller apne items ke orders dekh sake. Multi-seller order splitting handle karo. | User and Product | P1 | Pending |
 | 7 | Idempotency | Checkout retry pe duplicate order na bane. Idempotency key store and enforce karo. | Schema | P0 | Completed |
-| 8 | Emit order events | `OrderCreated`, `OrderPaid`, `OrderCancelled`, `OrderDelivered` events publish karo. | Message queue | P1 | Completed |
+| 8 | Emit order events | `OrderCreated`, `OrderPaid`, `OrderCancelled`, `OrderDelivered` events publish karo. | Message queue | P1 | Pending |
 
 ## Payment Service
 
@@ -92,7 +92,7 @@ Priority values:
 | 1 | Define cart rules | Guest cart, logged-in cart, merge, quantity limit, price refresh rules define karo. | Platform foundation | P0 | Completed |
 | 2 | Choose MongoDB plus Redis | Active cart fast mutable hot data hai. Redis cache, Mongo durable snapshot ke liye use karo. | Cart rules | P0 | Completed |
 | 3 | Cart collections | `carts`, `cart_items`, embedded item snapshots design karo. | DB choice | P0 | Completed |
-| 4 | Add item flow | Product validate karo, stock check karo, item add/update karo. | Product Service | P0 | Completed |
+| 4 | Add item flow | Product validate karo, stock check karo, item add/update karo. | Product Service | P0 | Pending |
 | 5 | Remove item flow | Item remove, quantity zero cleanup, totals recalculate karo. | Add item | P1 | Completed |
 | 6 | Coupon preview | CMS coupon rules validate karke cart discount preview karo. Final apply Order Service karega. | CMS Service | P1 | Completed |
 | 7 | Cart merge | Guest session cart ko login user cart me merge karo. Duplicate variants quantity combine hongi. | Auth and Session | P1 | Completed |
@@ -105,10 +105,10 @@ Priority values:
 | 1 | Define wishlist model | User multiple wishlists rakhe ya single list, sharing allowed hai ya nahi decide karo. | Platform foundation | P1 | Completed |
 | 2 | Choose MongoDB | Wishlist item list flexible aur read-heavy hai, MongoDB simple document model fit hai. | Model | P1 | Completed |
 | 3 | Collections design | `wishlists` collection with user id, items, visibility, timestamps banao. | DB choice | P1 | Completed |
-| 4 | Add/remove item APIs | Product id validate karke wishlist item add/remove karo. Duplicate item block karo. | Product Service | P1 | Completed |
+| 4 | Add/remove item APIs | Product id validate karke wishlist item add/remove karo. Duplicate item block karo. | Product Service | P1 | Pending |
 | 5 | Move to cart | Wishlist item ko Cart Service me add karne ka flow banao. UX friction kam hoga. | Cart Service | P1 | Completed |
-| 6 | Availability sync | Product deleted/out-of-stock hone pe wishlist status update karo. | Product events | P2 | Completed |
-| 7 | Price drop events | Price change pe interested users ko notification trigger karo. | Notification Service | P2 | Completed |
+| 6 | Availability sync | Product deleted/out-of-stock hone pe wishlist status update karo. | Product events | P2 | Pending |
+| 7 | Price drop events | Price change pe interested users ko notification trigger karo. | Notification Service | P2 | Pending |
 | 8 | Analytics events | Wishlist add/remove events Recommendation Service ko bhejo. Personalization improve hoga. | Message queue | P2 | Completed |
 
 ## Recommendation Service
@@ -143,7 +143,7 @@ Priority values:
 |---:|---|---|---|---|---|
 | 1 | Define seller permissions | Seller manager, catalog editor, order manager roles define karo. | Auth RBAC | P1 | Completed |
 | 2 | Choose MySQL | Coupons, offers, seller settings, workflows structured hain, relational model fit hai. | Permissions | P1 | Completed |
-| 3 | Product moderation flow | Seller draft, submit, approve/reject, publish states design karo. | Product Service | P1 | Completed |
+| 3 | Product moderation flow | Seller draft, submit, approve/reject, publish states design karo. | Product Service | P1 | Pending |
 | 4 | Coupon engine MVP | Fixed, percentage, min cart, category/product/seller scope rules banao. | Cart and Order | P1 | Completed |
 | 5 | Offer campaigns | Start/end time, budget, usage limits, seller ownership implement karo. | Coupon engine | P2 | Completed |
 | 6 | Seller analytics APIs | Revenue, orders, conversion, top products metrics expose karo. | Order and Payment | P2 | Completed |
@@ -156,12 +156,12 @@ Priority values:
 |---:|---|---|---|---|---|
 | 1 | Define session model | Anonymous id, user id, device, IP, user agent, channel, started/ended timestamps define karo. | Platform foundation | P0 | Completed |
 | 2 | Choose MongoDB plus Redis | Events high-volume flexible hote hain. Mongo store, Redis active sessions ke liye use karo. | Session model | P0 | Completed |
-| 3 | Event ingestion API | Frontend SDK page view, click, scroll, cart action events bhej sake. | API Gateway | P0 | Completed |
-| 4 | Journey tracking | Session ke andar ordered events store karo. User journey reconstruct ho sakegi. | Event API | P1 | Completed |
-| 5 | Device tracking | Browser, OS, device, location approximation parse karo. Fraud and analytics me useful hai. | Event API | P1 | Completed |
-| 6 | Heatmap concept | Click and scroll coordinates aggregate karo. UI optimization ke liye dashboard me show hoga. | Event ingestion | P2 | Completed |
+| 3 | Event ingestion API | Frontend SDK page view, click, scroll, cart action events bhej sake. | API Gateway | P0 | Pending |
+| 4 | Journey tracking | Session ke andar ordered events store karo. User journey reconstruct ho sakegi. | Event API | P1 | Pending |
+| 5 | Device tracking | Browser, OS, device, location approximation parse karo. Fraud and analytics me useful hai. | Event API | P1 | Pending |
+| 6 | Heatmap concept | Click and scroll coordinates aggregate karo. UI optimization ke liye dashboard me show hoga. | Event ingestion | P2 | Pending |
 | 7 | Analytics APIs | Active users, funnels, conversion, retention, session replay metadata expose karo. | Aggregations | P1 | Pending |
-| 8 | Data retention policy | Raw events TTL, aggregated metrics long-term store rules define karo. Cost control ke liye zaruri hai. | MongoDB | P1 | Completed |
+| 8 | Data retention policy | Raw events TTL, aggregated metrics long-term store rules define karo. Cost control ke liye zaruri hai. | MongoDB | P1 | Pending |
 
 ## Notification Service
 
@@ -196,9 +196,9 @@ Priority values:
 | 1 | Define admin domain | Users, sellers, orders, payments, sessions, platform settings ke control rules define karo. | Auth RBAC | P1 | Completed |
 | 2 | Choose MySQL | Admin actions and permissions highly structured and auditable hain, MySQL suitable hai. | Admin domain | P1 | Completed |
 | 3 | Admin RBAC | Superadmin, operations admin, finance admin, catalog admin permissions define karo. | Auth Service | P0 | Completed |
-| 4 | User/seller controls | Block user, approve seller, suspend seller, verify KYC flows banao. | User Service | P1 | Completed |
-| 5 | Order/payment controls | Refund approve, manual order status review, dispute view APIs banao. | Order and Payment | P1 | Completed |
-| 6 | Session visibility | Session analytics dashboard ko admin level access control do. | Session Service | P2 | Completed |
+| 4 | User/seller controls | Block user, approve seller, suspend seller, verify KYC flows banao. | User Service | P1 | Pending |
+| 5 | Order/payment controls | Refund approve, manual order status review, dispute view APIs banao. | Order and Payment | P1 | Pending |
+| 6 | Session visibility | Session analytics dashboard ko admin level access control do. | Session Service | P2 | Pending |
 | 7 | Platform settings | Search synonyms, commission, feature flags, maintenance mode settings banao. | CMS/Search | P2 | Completed |
 | 8 | Admin audit logs | Har admin action immutable audit log me store karo. Compliance and security ke liye must hai. | Schema | P0 | Completed |
 
@@ -232,14 +232,14 @@ Priority values:
 
 | S.No | Task Name | Task Detail (simple Hinglish + deep explanation) | Dependencies | Priority | Status |
 |---:|---|---|---|---|---|
-| 1 | Analytics shell | Date range, segment filters, metric cards layout banao. Data-heavy UI clean and scannable rakho. | Session APIs | P1 | Completed |
-| 2 | Active sessions | Live active users, devices, locations, entry pages view banao. | Session Service | P1 | Completed |
-| 3 | Journey explorer | Session timeline, page views, clicks, cart events sequence display karo. | Journey APIs | P1 | Completed |
-| 4 | Funnel analysis | Product view to cart to checkout to paid funnel chart banao. | Aggregation APIs | P2 | Completed |
-| 5 | Heatmap view | Conceptual click/scroll heatmap overlay render karo. Exact replay later phase me add hoga. | Heatmap APIs | P2 | Completed |
-| 6 | Retention reports | New vs returning, cohort retention charts banao. | Aggregates | P2 | Completed |
-| 7 | Export reports | CSV download and scheduled report option banao. | Analytics APIs | P2 | Completed |
-| 8 | Privacy controls | PII masking, user deletion, retention settings UI banao. | Security policy | P1 | Completed |
+| 1 | Analytics shell | Date range, segment filters, metric cards layout banao. Data-heavy UI clean and scannable rakho. | Session APIs | P1 | Pending |
+| 2 | Active sessions | Live active users, devices, locations, entry pages view banao. | Session Service | P1 | Pending |
+| 3 | Journey explorer | Session timeline, page views, clicks, cart events sequence display karo. | Journey APIs | P1 | Pending |
+| 4 | Funnel analysis | Product view to cart to checkout to paid funnel chart banao. | Aggregation APIs | P2 | Pending |
+| 5 | Heatmap view | Conceptual click/scroll heatmap overlay render karo. Exact replay later phase me add hoga. | Heatmap APIs | P2 | Pending |
+| 6 | Retention reports | New vs returning, cohort retention charts banao. | Aggregates | P2 | Pending |
+| 7 | Export reports | CSV download and scheduled report option banao. | Analytics APIs | P2 | Pending |
+| 8 | Privacy controls | PII masking, user deletion, retention settings UI banao. | Security policy | P1 | Pending |
 
 ## Superadmin Panel
 

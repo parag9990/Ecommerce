@@ -62,3 +62,23 @@ func TestGRPCDialerReturnsWhenDialTimeoutExpires(t *testing.T) {
 		t.Fatalf("dial returned outside expected timeout bounds: %s", elapsed)
 	}
 }
+
+func TestGRPCDialerCanStartWithUnavailableService(t *testing.T) {
+	dialer := NewGRPCDialer(DialOptions{
+		DialTimeout:      40 * time.Millisecond,
+		AllowUnavailable: true,
+	}, nil, grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}))
+
+	conn, err := dialer.Dial(context.Background(), newServiceDescriptor(
+		DownstreamProduct,
+		"passthrough:///unreachable",
+		"ecommerce.product.v1.ProductService",
+	))
+	if err != nil {
+		t.Fatalf("dial unavailable service in degraded mode: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+}

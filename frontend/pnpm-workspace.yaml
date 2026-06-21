@@ -1,4 +1,13 @@
 packages:
   - "user-app"
   - "packages/*"
+  - "seller-dashboard"
+  - "session-analytics-dashboard"
   - "superadmin-panel"
+
+onlyBuiltDependencies:
+  - esbuild
+  - msw
+allowBuilds:
+  esbuild: true
+  msw: true

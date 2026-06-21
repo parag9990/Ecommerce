@@ -4,7 +4,9 @@ import {
   createReportSchedule,
   deleteReportSchedule,
   getReportSchedules,
-  updateReportScheduleStatus
+  updateReportScheduleStatus,
+  type CreateReportScheduleInput,
+  type UpdateReportScheduleStatusInput
 } from "../../../api/session-api";
 
 export const reportSchedulesQueryKey = ["analytics", "report-schedules"];
@@ -21,7 +23,7 @@ export function useCreateReportSchedule() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: createReportSchedule,
+    mutationFn: (input: CreateReportScheduleInput) => createReportSchedule(input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: reportSchedulesQueryKey });
     }
@@ -32,7 +34,8 @@ export function useUpdateReportScheduleStatus() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: updateReportScheduleStatus,
+    mutationFn: (input: UpdateReportScheduleStatusInput) =>
+      updateReportScheduleStatus(input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: reportSchedulesQueryKey });
     }
@@ -43,7 +46,7 @@ export function useDeleteReportSchedule() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: deleteReportSchedule,
+    mutationFn: (id: string) => deleteReportSchedule(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: reportSchedulesQueryKey });
     }

@@ -60,8 +60,9 @@ type Config struct {
 	ReadHeaderTimeout time.Duration
 	ShutdownTimeout   time.Duration
 
-	GRPCTLSEnabled  bool
-	GRPCDialTimeout time.Duration
+	GRPCTLSEnabled                  bool
+	GRPCDialTimeout                 time.Duration
+	GRPCAllowUnavailableDownstreams bool
 
 	Redis         RedisConfig
 	RateLimit     RateLimitConfig
@@ -115,6 +116,10 @@ func Load(ctx context.Context) (Config, error) {
 		return Config{}, err
 	}
 	grpcTLSEnabled, err := getBool("GRPC_TLS_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
+	grpcAllowUnavailableDownstreams, err := getBool("GRPC_ALLOW_UNAVAILABLE_DOWNSTREAMS", false)
 	if err != nil {
 		return Config{}, err
 	}
@@ -229,16 +234,17 @@ func Load(ctx context.Context) (Config, error) {
 	observabilityConfig.UserHashSalt = getenv("OBSERVABILITY_HASH_SALT", "")
 
 	cfg := Config{
-		ServiceName:       serviceName,
-		Environment:       environment,
-		HTTPAddress:       getenv("HTTP_ADDR", ":8080"),
-		APIBasePath:       getenv("API_BASE_PATH", "/api/v1"),
-		APIContractPath:   contractPath,
-		LogLevel:          getenv("LOG_LEVEL", "info"),
-		ReadHeaderTimeout: readHeaderTimeout,
-		ShutdownTimeout:   shutdownTimeout,
-		GRPCTLSEnabled:    grpcTLSEnabled,
-		GRPCDialTimeout:   grpcDialTimeout,
+		ServiceName:                     serviceName,
+		Environment:                     environment,
+		HTTPAddress:                     getenv("HTTP_ADDR", ":8080"),
+		APIBasePath:                     getenv("API_BASE_PATH", "/api/v1"),
+		APIContractPath:                 contractPath,
+		LogLevel:                        getenv("LOG_LEVEL", "info"),
+		ReadHeaderTimeout:               readHeaderTimeout,
+		ShutdownTimeout:                 shutdownTimeout,
+		GRPCTLSEnabled:                  grpcTLSEnabled,
+		GRPCDialTimeout:                 grpcDialTimeout,
+		GRPCAllowUnavailableDownstreams: grpcAllowUnavailableDownstreams,
 		Redis: RedisConfig{
 			Addr:        getenv("REDIS_ADDR", "localhost:6379"),
 			Password:    getenv("REDIS_PASSWORD", ""),

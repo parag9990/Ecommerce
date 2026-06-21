@@ -32,6 +32,7 @@ type ReserveInventoryItem struct {
 }
 
 type ReserveInventoryRequest struct {
+	OrderID        string
 	UserID         string
 	CartID         string
 	IdempotencyKey string

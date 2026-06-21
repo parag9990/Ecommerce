@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/parag/ecommerce/backend/services/user-service/internal/audit"
 	"github.com/parag/ecommerce/backend/services/user-service/internal/domain"
 )
 
@@ -82,6 +83,7 @@ func TestServiceUpdateUserProfileRequiresMask(t *testing.T) {
 	_, err := service.UpdateUserProfile(context.Background(), UpdateUserProfileInput{
 		UserID:   "user_123",
 		FullName: "Aarav S.",
+		Caller:   Caller{UserID: "user_123"},
 	})
 	if !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("expected validation error, got %v", err)
@@ -99,6 +101,24 @@ func TestServiceCreateUserRequiresAuditActor(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected missing actor error")
+	}
+	if users.created.UserID != "" {
+		t.Fatalf("repository should not be called, created = %#v", users.created)
+	}
+}
+
+func TestServiceCreateUserRejectsEndUserCaller(t *testing.T) {
+	users := &fakeUserRepository{}
+	service := newTestService(t, users, &fakeSellerRepository{})
+
+	_, err := service.CreateUser(context.Background(), CreateUserInput{
+		AuthAccountID: "auth_123",
+		Email:         "buyer@example.com",
+		FullName:      "Aarav Sharma",
+		Caller:        Caller{UserID: "user_123"},
+	})
+	if !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("expected forbidden error, got %v", err)
 	}
 	if users.created.UserID != "" {
 		t.Fatalf("repository should not be called, created = %#v", users.created)
@@ -173,6 +193,15 @@ func TestServiceGetUserRejectsDifferentActor(t *testing.T) {
 	})
 	if !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("expected forbidden error, got %v", err)
+	}
+}
+
+func TestServiceGetUserRequiresCallerIdentity(t *testing.T) {
+	service := newTestService(t, &fakeUserRepository{byID: validUser()}, &fakeSellerRepository{})
+
+	_, err := service.GetUser(context.Background(), GetUserInput{UserID: "user_123"})
+	if !errors.Is(err, audit.ErrMissingActor) {
+		t.Fatalf("expected missing actor error, got %v", err)
 	}
 }
 
@@ -563,6 +592,13 @@ type fakeAddressRepository struct {
 	deleteErr           error
 	setDefaultErr       error
 	setDefaultAddressID string
+	lockCalls           int
+	lockErr             error
+}
+
+func (r *fakeAddressRepository) LockUserForAddressMutation(ctx context.Context, userID string) error {
+	r.lockCalls++
+	return r.lockErr
 }
 
 func (r *fakeAddressRepository) ListAddresses(ctx context.Context, userID string, limit int, offset int) ([]domain.Address, error) {

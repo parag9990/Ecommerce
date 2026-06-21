@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+images:
+  - name: registry.example.com/ecommerce/api-gateway
+    newName: ecommerce/api-gateway
+    newTag: local
+  - name: registry.example.com/ecommerce/product-service
+    newName: ecommerce/product-service
+    newTag: local
+patches:
+  - path: patches/api-gateway-replicas.yaml
+  - path: patches/product-service-replicas.yaml

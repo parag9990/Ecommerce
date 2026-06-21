@@ -1,6 +1,7 @@
 go 1.26.3
 
 use (
+	./proto-gen/go
 	./services/api-gateway
 	./services/auth-service
 	./services/cart-service
@@ -16,5 +17,11 @@ use (
 	./services/user-service
 	./services/wishlist-service
 	./shared/gen/go
+	./shared/platform
 	./shared/validation
 )
+
+// typesense-go/v2 still requests the pre-split genproto module. Pinning the
+// parent module after the split prevents duplicate googleapis packages when
+// the workspace also uses current gRPC dependencies.
+replace google.golang.org/genproto => google.golang.org/genproto v0.0.0-20241113202542-65e8d215514f

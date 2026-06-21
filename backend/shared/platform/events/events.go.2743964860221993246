@@ -1,0 +1,17 @@
+package events
+
+import (
+	"context"
+	"encoding/json"
+	"time"
+)
+
+type Envelope struct {
+	ID, Type, Source, AggregateID, TraceID, RequestID string
+	OccurredAt                                       time.Time
+	Version                                          int
+	Data                                             json.RawMessage
+}
+
+type Publisher interface { Publish(context.Context, string, Envelope) error }
+type Consumer interface { Handle(context.Context, Envelope) error }

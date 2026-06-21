@@ -19,8 +19,11 @@ const (
 	defaultIdempotencyTTL                = 24 * time.Hour
 	defaultReleaseTimeout                = 3 * time.Second
 	defaultPaymentInventoryActionTimeout = 3 * time.Second
+	defaultDownstreamRequestTimeout       = 5 * time.Second
+	defaultPaymentActionTTL               = 10 * time.Minute
 	defaultPaymentAllowedCurrencies      = "INR,USD"
 	defaultGRPCAddress                   = ":9094"
+	defaultHTTPAddress                   = ":8090"
 	defaultOrderEventsEnabled            = true
 	defaultOrderOutboxBatchSize          = 100
 	defaultOrderOutboxInterval           = time.Second
@@ -35,8 +38,24 @@ type Config struct {
 	Database DatabaseConfig
 	Checkout CheckoutConfig
 	Payment  PaymentConfig
+	Downstream DownstreamConfig
+	HTTP     HTTPConfig
 	GRPC     GRPCConfig
 	Events   EventConfig
+}
+
+type HTTPConfig struct {
+	Address string
+}
+
+type DownstreamConfig struct {
+	CartBaseURL          string
+	ProductBaseURL       string
+	PaymentBaseURL       string
+	PaymentInternalToken string
+	PaymentEventsToken   string
+	RequestTimeout       time.Duration
+	PaymentActionTTL     time.Duration
 }
 
 type DatabaseConfig struct {
@@ -95,6 +114,14 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	requestTimeout, err := envDuration("ORDER_DOWNSTREAM_REQUEST_TIMEOUT", defaultDownstreamRequestTimeout)
+	if err != nil {
+		return Config{}, err
+	}
+	paymentActionTTL, err := envDuration("ORDER_PAYMENT_ACTION_TTL", defaultPaymentActionTTL)
+	if err != nil {
+		return Config{}, err
+	}
 	outboxInterval, err := envDuration("ORDER_OUTBOX_INTERVAL", defaultOrderOutboxInterval)
 	if err != nil {
 		return Config{}, err
@@ -131,6 +158,16 @@ func Load() (Config, error) {
 			AllowedCurrencies:      csvValues(os.Getenv("ORDER_PAYMENT_ALLOWED_CURRENCIES"), defaultPaymentAllowedCurrencies),
 			InventoryActionTimeout: actionTimeout,
 		},
+		Downstream: DownstreamConfig{
+			CartBaseURL:           envValue("ORDER_CART_BASE_URL", "http://cart-service:8083"),
+			ProductBaseURL:        envValue("ORDER_PRODUCT_BASE_URL", "http://product-service:8082"),
+			PaymentBaseURL:        envValue("ORDER_PAYMENT_BASE_URL", "http://payment-service:8080"),
+			PaymentInternalToken: strings.TrimSpace(os.Getenv("ORDER_PAYMENT_INTERNAL_TOKEN")),
+			PaymentEventsToken:   strings.TrimSpace(os.Getenv("ORDER_PAYMENT_EVENTS_TOKEN")),
+			RequestTimeout:        requestTimeout,
+			PaymentActionTTL:      paymentActionTTL,
+		},
+		HTTP: HTTPConfig{Address: envValue("ORDER_HTTP_ADDR", defaultHTTPAddress)},
 		GRPC: GRPCConfig{
 			Address:             envValue("ORDER_GRPC_ADDR", defaultGRPCAddress),
 			TrustedCallerToken:  strings.TrimSpace(os.Getenv("ORDER_GRPC_TRUSTED_CALLER_TOKEN")),
@@ -184,6 +221,31 @@ func (c Config) Validate() error {
 	}
 	if c.Payment.InventoryActionTimeout <= 0 {
 		return errors.New("ORDER_PAYMENT_INVENTORY_ACTION_TIMEOUT must be greater than zero")
+	}
+	for name, value := range map[string]string{
+		"ORDER_CART_BASE_URL": c.Downstream.CartBaseURL,
+		"ORDER_PRODUCT_BASE_URL": c.Downstream.ProductBaseURL,
+		"ORDER_PAYMENT_BASE_URL": c.Downstream.PaymentBaseURL,
+	} {
+		parsed, parseErr := url.ParseRequestURI(strings.TrimSpace(value))
+		if parseErr != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+			return fmt.Errorf("%s must be an absolute HTTP(S) URL", name)
+		}
+	}
+	if len(c.Downstream.PaymentInternalToken) < 32 {
+		return errors.New("ORDER_PAYMENT_INTERNAL_TOKEN must be at least 32 characters")
+	}
+	if len(c.Downstream.PaymentEventsToken) < 32 {
+		return errors.New("ORDER_PAYMENT_EVENTS_TOKEN must be at least 32 characters")
+	}
+	if c.Downstream.RequestTimeout <= 0 {
+		return errors.New("ORDER_DOWNSTREAM_REQUEST_TIMEOUT must be greater than zero")
+	}
+	if c.Downstream.PaymentActionTTL <= 0 {
+		return errors.New("ORDER_PAYMENT_ACTION_TTL must be greater than zero")
+	}
+	if strings.TrimSpace(c.HTTP.Address) == "" {
+		return errors.New("ORDER_HTTP_ADDR is required")
 	}
 	if strings.TrimSpace(c.GRPC.Address) == "" {
 		return errors.New("ORDER_GRPC_ADDR is required")

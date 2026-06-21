@@ -1,0 +1,13 @@
+package middleware
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+func TestRequestIDGeneratesAndReturnsHeader(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	RequestID(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
+	if recorder.Header().Get(RequestIDHeader) == "" { t.Fatal("request id header is empty") }
+}

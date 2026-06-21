@@ -642,6 +642,11 @@ export async function getHeatmap(
   } catch (error) {
     logger.warn("analytics.heatmap.request_failed", {
       code: error instanceof ApiError ? error.code : "UNKNOWN_ERROR",
+      cause:
+        error instanceof ApiError && error.cause instanceof Error
+          ? error.cause.message
+          : undefined,
+      message: error instanceof Error ? error.message : "unknown error",
       status: error instanceof ApiError ? error.status : undefined
     });
     throw error;

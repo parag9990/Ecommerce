@@ -1,0 +1,16 @@
+# Tilt currently wraps the working Compose stack. Kubernetes app resources remain blocked; see the runbook.
+docker_compose('docker-compose.yml')
+
+dc_resource('mysql', labels=['infrastructure'])
+dc_resource('mongodb', labels=['infrastructure'])
+dc_resource('redis', labels=['infrastructure'])
+dc_resource('rabbitmq', labels=['infrastructure'])
+dc_resource('kafka', labels=['infrastructure'])
+dc_resource('typesense', labels=['infrastructure'])
+dc_resource('mailpit', labels=['infrastructure'])
+dc_resource('jaeger', labels=['observability'])
+dc_resource('prometheus', labels=['observability'])
+dc_resource('api-gateway', labels=['backend'], resource_deps=['redis', 'auth-service'])
+dc_resource('user-app', labels=['frontend'], resource_deps=['api-gateway'])
+dc_resource('seller-dashboard', labels=['frontend'], resource_deps=['api-gateway'])
+dc_resource('superadmin-panel', labels=['frontend'], resource_deps=['api-gateway'])

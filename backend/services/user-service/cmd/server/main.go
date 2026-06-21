@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -16,11 +17,14 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/parag/ecommerce/backend/services/user-service/internal/config"
 	"github.com/parag/ecommerce/backend/services/user-service/internal/events"
+	"github.com/parag/ecommerce/backend/services/user-service/internal/observability"
 	"github.com/parag/ecommerce/backend/services/user-service/internal/repository"
 	transportgrpc "github.com/parag/ecommerce/backend/services/user-service/internal/transport/grpc"
 	"github.com/parag/ecommerce/backend/services/user-service/internal/usecase"
 	userv1 "github.com/parag/ecommerce/backend/shared/gen/go/ecommerce/user/v1"
 	grpcgo "google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 )
 
@@ -38,6 +42,7 @@ func run(ctx context.Context) error {
 	}
 
 	logger := newLogger(cfg.Log.Level)
+	serviceMetrics := observability.NewMetrics()
 	logger.InfoContext(ctx, "user_service_starting", slog.String("config", cfg.String()))
 
 	db, err := openDatabase(ctx, cfg.Database)
@@ -62,10 +67,12 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	serviceMetrics.RegisterOutboxStats(outboxRepo, logger)
 	recorderConfig := events.RecorderConfig{
 		Enabled: cfg.Events.Enabled,
 		Topic:   cfg.Events.Topic,
 		Logger:  logger,
+		Metrics: serviceMetrics,
 	}
 	eventRecorder, err := events.NewOutboxRecorder(outboxRepo, recorderConfig)
 	if err != nil {
@@ -91,7 +98,7 @@ func run(ctx context.Context) error {
 	runCtx, cancelRun := context.WithCancel(ctx)
 	defer cancelRun()
 
-	workerDone, publisher, err := startOutboxWorker(runCtx, cfg, outboxRepo, logger)
+	workerDone, publisher, err := startOutboxWorker(runCtx, cfg, outboxRepo, logger, serviceMetrics)
 	if err != nil {
 		return err
 	}
@@ -109,17 +116,31 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", cfg.GRPC.Address, err)
 	}
+	adminListener, err := net.Listen("tcp", cfg.HTTP.Address)
+	if err != nil {
+		return fmt.Errorf("listen on admin address %s: %w", cfg.HTTP.Address, err)
+	}
 
-	grpcServer := grpcgo.NewServer(transportgrpc.ServerOptions(logger)...)
+	grpcServer := grpcgo.NewServer(transportgrpc.ServerOptions(logger, serviceMetrics.GRPC.UnaryServerInterceptor(logger))...)
 	userv1.RegisterUserServiceServer(grpcServer, transportgrpc.NewServer(userService, transportgrpc.WithLogger(logger)))
+	healthServer := health.NewServer()
+	healthpb.RegisterHealthServer(grpcServer, healthServer)
+	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+	healthServer.SetServingStatus(userv1.UserService_ServiceDesc.ServiceName, healthpb.HealthCheckResponse_SERVING)
 	if cfg.GRPC.Reflection {
 		reflection.Register(grpcServer)
 	}
+	adminServer := newAdminServer(cfg.HTTP, db, serviceMetrics)
 
 	serveErr := make(chan error, 1)
 	go func() {
 		logger.InfoContext(ctx, "user_service_grpc_listening", slog.String("address", cfg.GRPC.Address))
 		serveErr <- grpcServer.Serve(listener)
+	}()
+	adminErr := make(chan error, 1)
+	go func() {
+		logger.InfoContext(ctx, "user_service_admin_http_listening", slog.String("address", cfg.HTTP.Address))
+		adminErr <- adminServer.Serve(adminListener)
 	}()
 
 	signals := make(chan os.Signal, 1)
@@ -129,20 +150,34 @@ func run(ctx context.Context) error {
 	select {
 	case sig := <-signals:
 		logger.InfoContext(ctx, "user_service_shutdown_requested", slog.String("signal", sig.String()))
+		healthServer.SetServingStatus("", healthpb.HealthCheckResponse_NOT_SERVING)
+		healthServer.SetServingStatus(userv1.UserService_ServiceDesc.ServiceName, healthpb.HealthCheckResponse_NOT_SERVING)
 		cancelRun()
 		waitForOutboxWorker(ctx, workerDone, cfg.GRPC.ShutdownTimeout, logger)
-		return gracefulStop(grpcServer, cfg.GRPC.ShutdownTimeout)
+		return errors.Join(
+			shutdownAdminServer(ctx, adminServer, cfg.GRPC.ShutdownTimeout),
+			gracefulStop(grpcServer, cfg.GRPC.ShutdownTimeout),
+		)
 	case err := <-serveErr:
 		cancelRun()
 		waitForOutboxWorker(ctx, workerDone, cfg.GRPC.ShutdownTimeout, logger)
+		_ = shutdownAdminServer(ctx, adminServer, cfg.GRPC.ShutdownTimeout)
 		if errors.Is(err, grpcgo.ErrServerStopped) {
 			return nil
 		}
 		return fmt.Errorf("serve grpc: %w", err)
+	case err := <-adminErr:
+		cancelRun()
+		waitForOutboxWorker(ctx, workerDone, cfg.GRPC.ShutdownTimeout, logger)
+		_ = gracefulStop(grpcServer, cfg.GRPC.ShutdownTimeout)
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return fmt.Errorf("serve admin http: %w", err)
 	}
 }
 
-func startOutboxWorker(ctx context.Context, cfg config.Config, outboxRepo events.OutboxRepository, logger *slog.Logger) (<-chan error, events.Publisher, error) {
+func startOutboxWorker(ctx context.Context, cfg config.Config, outboxRepo events.OutboxRepository, logger *slog.Logger, metrics events.Metrics) (<-chan error, events.Publisher, error) {
 	if !cfg.OutboxWorker.Enabled {
 		return nil, nil, nil
 	}
@@ -160,6 +195,7 @@ func startOutboxWorker(ctx context.Context, cfg config.Config, outboxRepo events
 		PublishTimeout:  cfg.OutboxWorker.PublishTimeout,
 		DeadLetterTopic: cfg.Events.DeadLetterTopic,
 		Logger:          logger,
+		Metrics:         metrics,
 	})
 	if err != nil {
 		if closer, ok := publisher.(events.ClosePublisher); ok {

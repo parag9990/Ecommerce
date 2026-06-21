@@ -62,7 +62,7 @@ describe("PrivacyControlsPage", () => {
     expect(screen.getByText("PII masking policy")).toBeInTheDocument();
     expect(screen.getByText("Retention settings")).toBeInTheDocument();
     expect(screen.getByText("Deletion request")).toBeInTheDocument();
-    expect(screen.getByText("Recent deletion requests")).toBeInTheDocument();
+    expect(await screen.findByText("Recent deletion requests")).toBeInTheDocument();
   });
 });
 

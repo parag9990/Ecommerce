@@ -1,0 +1,23 @@
+package health
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"time"
+)
+
+type Check func(context.Context) error
+
+func Handler(checks map[string]Check, timeout time.Duration) http.Handler {
+	if timeout <= 0 { timeout = 2 * time.Second }
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), timeout); defer cancel()
+		failures := map[string]string{}
+		for name, check := range checks { if check != nil { if err := check(ctx); err != nil { failures[name] = "unavailable" } } }
+		status, state := http.StatusOK, "ready"
+		if len(failures) > 0 { status, state = http.StatusServiceUnavailable, "not_ready" }
+		w.Header().Set("Content-Type", "application/json"); w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": state, "checks": failures})
+	})
+}

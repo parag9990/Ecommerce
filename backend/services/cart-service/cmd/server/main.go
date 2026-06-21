@@ -184,7 +184,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	handler, err := httptransport.NewHandler(schemaUsecase, cartUsecase, logger)
+	handler, err := httptransport.NewHandler(schemaUsecase, cartUsecase, logger, httptransport.WithCartReader(cartRepository))
 	if err != nil {
 		logger.Error("cart.http_handler.init_failed", slog.String("error", err.Error()))
 		os.Exit(1)

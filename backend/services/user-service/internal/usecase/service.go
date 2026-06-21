@@ -277,6 +277,9 @@ func (s *Service) CreateUser(ctx context.Context, input CreateUserInput) (domain
 	if err != nil {
 		return domain.User{}, err
 	}
+	if actor.Type != audit.ActorTypeService && actor.Type != audit.ActorTypeSystem {
+		return domain.User{}, domain.ErrForbidden
+	}
 	actorID := actor.AuditID()
 
 	userID, err := s.ids.NewUserID(ctx)
@@ -446,6 +449,10 @@ func (s *Service) CreateAddress(ctx context.Context, input CreateAddressInput) (
 
 	var created domain.Address
 	if err := s.withWriteRepositories(ctx, func(ctx context.Context, repositories TransactionRepositories) error {
+		if err := repositories.Addresses.LockUserForAddressMutation(ctx, userID); err != nil {
+			s.logError(ctx, "create_address.lock_user", err, slog.String("user_id", userID))
+			return err
+		}
 		existing, err := repositories.Addresses.ListAddresses(ctx, userID, maxUserAddresses+1, 0)
 		if err != nil {
 			s.logError(ctx, "create_address.count_existing", err, slog.String("user_id", userID))
@@ -537,6 +544,10 @@ func (s *Service) UpdateAddress(ctx context.Context, input UpdateAddressInput) (
 
 	var updated domain.Address
 	if err := s.withWriteRepositories(ctx, func(ctx context.Context, repositories TransactionRepositories) error {
+		if err := repositories.Addresses.LockUserForAddressMutation(ctx, userID); err != nil {
+			s.logError(ctx, "update_address.lock_user", err, slog.String("user_id", userID))
+			return err
+		}
 		current, err := repositories.Addresses.FindAddress(ctx, userID, addressID)
 		if err != nil {
 			s.logError(ctx, "update_address.find", err, slog.String("user_id", userID), slog.String("address_id", addressID))
@@ -612,6 +623,10 @@ func (s *Service) DeleteAddress(ctx context.Context, input DeleteAddressInput) e
 
 	auditRecord := domain.NewMutationAudit(actor.AuditID(), s.clock.Now())
 	return s.withWriteRepositories(ctx, func(ctx context.Context, repositories TransactionRepositories) error {
+		if err := repositories.Addresses.LockUserForAddressMutation(ctx, userID); err != nil {
+			s.logError(ctx, "delete_address.lock_user", err, slog.String("user_id", userID))
+			return err
+		}
 		current, err := repositories.Addresses.FindAddress(ctx, userID, addressID)
 		if err != nil {
 			s.logError(ctx, "delete_address.find", err, slog.String("user_id", userID), slog.String("address_id", addressID))
@@ -649,7 +664,13 @@ func (s *Service) GetSellerProfile(ctx context.Context, input GetSellerProfileIn
 		if userID != "" && seller.UserID != userID {
 			return domain.SellerProfile{}, domain.ErrForbidden
 		}
+		if err := requireSelfOrService(input.Caller, seller.UserID); err != nil {
+			return domain.SellerProfile{}, err
+		}
 		return seller, nil
+	}
+	if err := requireSelfOrService(input.Caller, userID); err != nil {
+		return domain.SellerProfile{}, err
 	}
 
 	seller, err := s.sellers.GetSellerProfileByUserID(ctx, userID)
@@ -1049,8 +1070,14 @@ func toDomainValidationError(validationErr sharedvalidation.Error) error {
 
 func requireSelfOrService(caller Caller, userID string) error {
 	callerUserID := strings.TrimSpace(caller.UserID)
-	if callerUserID == "" || callerUserID == userID {
+	if callerUserID == userID {
 		return nil
+	}
+	if callerUserID == "" && strings.TrimSpace(caller.ServiceName) != "" {
+		return nil
+	}
+	if callerUserID == "" {
+		return audit.ErrMissingActor
 	}
 	return domain.ErrForbidden
 }

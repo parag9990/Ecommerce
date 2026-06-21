@@ -9,7 +9,7 @@ import { saveCsvBlob } from "../lib/save-csv-blob";
 
 export function useExportReport() {
   return useMutation({
-    mutationFn: exportAnalyticsReport,
+    mutationFn: (request: ExportReportRequest) => exportAnalyticsReport(request),
     onSuccess: (result, variables: ExportReportRequest) => {
       saveCsvBlob(
         result.blob,

@@ -8,8 +8,11 @@ import (
 	"strings"
 
 	gatewayauth "ecommerce/api-gateway/internal/auth"
+	"ecommerce/api-gateway/internal/authctx"
+	"ecommerce/api-gateway/internal/clients"
 	"ecommerce/api-gateway/internal/config"
 	"ecommerce/api-gateway/internal/domain"
+	"ecommerce/api-gateway/internal/handlers"
 	"ecommerce/api-gateway/internal/observability"
 	"ecommerce/api-gateway/internal/ratelimit"
 	"ecommerce/api-gateway/internal/usecase"
@@ -26,6 +29,7 @@ type RouterOptions struct {
 	RateLimitPolicies []ratelimit.Policy
 	RequestValidator  RequestValidator
 	Metrics           *observability.Metrics
+	UserClient        clients.UserClient
 }
 
 func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecase.RouteCatalog, logger *slog.Logger, downstreamHealth DownstreamHealthChecker, opts RouterOptions) (http.Handler, error) {
@@ -55,9 +59,17 @@ func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecas
 
 	mux.HandleFunc("GET /health/live", handler.HealthLive)
 	mux.HandleFunc("GET /health/ready", handler.HealthReady)
+	var userHandler *handlers.UserHandler
+	if opts.UserClient != nil {
+		userHandler = handlers.NewUserHandler(opts.UserClient, logger)
+	}
 	for _, route := range routes {
 		route := route
-		baseHandler := RequestValidationMiddleware(route, requestValidator, logger, opts.Metrics)(http.HandlerFunc(handler.RouteDefined(route)))
+		endpoint := handler.RouteDefined(route)
+		if userHandler != nil {
+			endpoint = userRouteEndpoint(route, userHandler, endpoint)
+		}
+		baseHandler := RequestValidationMiddleware(route, requestValidator, logger, opts.Metrics)(http.HandlerFunc(endpoint))
 		routeHandler, err := secureRoute(route, baseHandler, verifier, cfg.WebhookSignatureHeader, logger, rateLimiter, opts.Metrics, cfg.Observability.Normalize(cfg.ServiceName, cfg.Environment).UserHashSalt)
 		if err != nil {
 			return nil, fmt.Errorf("configure route %s: %w", route.Key(), err)
@@ -75,6 +87,44 @@ func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecas
 	wrapped = RecoveryMiddleware(logger)(wrapped)
 	wrapped = RequestIDMiddleware(wrapped)
 	return wrapped, nil
+}
+
+func userRouteEndpoint(route domain.RouteDefinition, handler *handlers.UserHandler, fallback http.HandlerFunc) http.HandlerFunc {
+	var endpoint http.HandlerFunc
+	switch string(route.Method) + " " + route.Path {
+	case "GET /api/v1/me":
+		endpoint = handler.GetMe
+	case "PATCH /api/v1/me":
+		endpoint = handler.UpdateMe
+	case "GET /api/v1/me/addresses":
+		endpoint = handler.ListAddresses
+	case "POST /api/v1/me/addresses":
+		endpoint = handler.CreateAddress
+	case "PATCH /api/v1/me/addresses/{address_id}":
+		endpoint = handler.UpdateAddress
+	case "DELETE /api/v1/me/addresses/{address_id}":
+		endpoint = handler.DeleteAddress
+	case "GET /api/v1/sellers/me":
+		endpoint = handler.GetSellerMe
+	case "PATCH /api/v1/sellers/me":
+		endpoint = handler.UpdateSellerMe
+	default:
+		return fallback
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := gatewayauth.ClaimsFromContext(r.Context())
+		if ok {
+			r = r.WithContext(authctx.WithClaims(r.Context(), authctx.Claims{
+				UserID:    claims.UserID(),
+				SessionID: claims.SessionID,
+				SellerID:  claims.SellerID,
+				Roles:     append([]string(nil), claims.Roles...),
+				TokenType: claims.TokenType,
+			}))
+		}
+		endpoint(w, r)
+	}
 }
 
 func secureRoute(route domain.RouteDefinition, next http.Handler, verifier TokenVerifier, webhookSignatureHeader string, logger *slog.Logger, rateLimiter *rateLimitMiddleware, metrics *observability.Metrics, userHashSalt string) (http.Handler, error) {

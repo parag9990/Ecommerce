@@ -1,12 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { HttpResponse, http } from "msw";
-import { setupServer } from "msw/node";
 import {
-  afterAll,
-  afterEach,
-  beforeAll,
+  beforeEach,
   describe,
   expect,
   it,
@@ -24,20 +20,21 @@ vi.mock("../components/new-returning-chart", () => ({
 }));
 
 let requestUrls: URL[] = [];
+let responseBody: unknown;
+let responseStatus: number;
 
-const server = setupServer(
-  http.get("/api/v1/analytics/retention", ({ request }) => {
-    requestUrls.push(new URL(request.url));
-    return HttpResponse.json(retentionResponse());
-  })
-);
-
-beforeAll(() => server.listen());
-afterEach(() => {
+beforeEach(() => {
   requestUrls = [];
-  server.resetHandlers();
+  responseBody = retentionResponse();
+  responseStatus = 200;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string | URL | Request) => {
+      requestUrls.push(new URL(String(input)));
+      return jsonResponse(responseBody, responseStatus);
+    })
+  );
 });
-afterAll(() => server.close());
 
 describe("CohortRetentionPage", () => {
   it("renders summary cards, chart, privacy notice, legend, and matrix", async () => {
@@ -51,7 +48,7 @@ describe("CohortRetentionPage", () => {
     expect(screen.getByText("Privacy-safe aggregate")).toBeInTheDocument();
     expect(screen.getByText("Retention scale")).toBeInTheDocument();
     expect(screen.getByText("Cohort retention")).toBeInTheDocument();
-    expect(screen.getByText("May 18 - May 24")).toBeInTheDocument();
+    expect(screen.getAllByText("May 18 - May 24").length).toBeGreaterThan(0);
     expect(screen.getAllByText("35.0%").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Masked").length).toBeGreaterThan(0);
   });
@@ -99,9 +96,7 @@ describe("CohortRetentionPage", () => {
   });
 
   it("renders an empty state when no cohorts are returned", async () => {
-    server.use(
-      http.get("/api/v1/analytics/retention", () =>
-        HttpResponse.json({
+    responseBody = {
           cohorts: [],
           meta: { from: "2026-05-22", interval: "week", to: "2026-05-28", window: 8 },
           new_vs_returning: [],
@@ -111,9 +106,7 @@ describe("CohortRetentionPage", () => {
             returning_rate: 0,
             returning_users: 0
           }
-        })
-      )
-    );
+        };
 
     renderPage();
 
@@ -123,19 +116,13 @@ describe("CohortRetentionPage", () => {
   });
 
   it("renders an error state when the retention endpoint fails", async () => {
-    server.use(
-      http.get("/api/v1/analytics/retention", () =>
-        HttpResponse.json(
-          {
+    responseStatus = 500;
+    responseBody = {
             error: {
               code: "SESSION_ANALYTICS_UNAVAILABLE",
               message: "Session analytics unavailable."
             }
-          },
-          { status: 500 }
-        )
-      )
-    );
+          };
 
     renderPage();
 
@@ -206,4 +193,11 @@ function retentionResponse() {
       worst_cohort: "2026-W22"
     }
   };
+}
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    headers: { "Content-Type": "application/json" },
+    status
+  });
 }

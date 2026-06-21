@@ -1,0 +1,28 @@
+package clients
+
+import (
+	userv1 "github.com/parag/ecommerce/backend/shared/gen/go/ecommerce/user/v1"
+	"google.golang.org/grpc"
+)
+
+type UserClient = userv1.UserServiceClient
+
+type UserServiceClient interface {
+	OutboundClient
+	userv1.UserServiceClient
+	isUserServiceClient()
+}
+
+type userServiceClient struct {
+	OutboundClient
+	userv1.UserServiceClient
+}
+
+func newUserServiceClient(descriptor ServiceDescriptor, conn grpc.ClientConnInterface) UserServiceClient {
+	return userServiceClient{
+		OutboundClient:    newOutboundClient(descriptor, conn),
+		UserServiceClient: userv1.NewUserServiceClient(conn),
+	}
+}
+
+func (userServiceClient) isUserServiceClient() {}

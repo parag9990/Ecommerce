@@ -1,0 +1,473 @@
+name: ecommerce-local
+
+x-app-defaults: &app-defaults
+  restart: unless-stopped
+  networks: [ecommerce-local-network]
+
+x-mysql-migration: &mysql-migration
+  image: migrate/migrate:v4.18.2
+  restart: "no"
+  networks: [ecommerce-local-network]
+  depends_on:
+    mysql:
+      condition: service_healthy
+
+services:
+  mysql:
+    image: mysql:8.4
+    <<: *app-defaults
+    environment:
+      MYSQL_ROOT_PASSWORD: local_password
+    ports: ["3306:3306"]
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./infra/mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-plocal_password"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  mongodb:
+    image: mongo:8.0
+    <<: *app-defaults
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: local_admin
+      MONGO_INITDB_ROOT_PASSWORD: local_mongo_password
+    ports: ["27017:27017"]
+    volumes: ["mongodb_data:/data/db"]
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --username local_admin --password local_mongo_password --authenticationDatabase admin --eval 'db.adminCommand(\"ping\")' localhost:27017/admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  redis:
+    image: redis:7.4-alpine
+    <<: *app-defaults
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "local_redis_password"]
+    ports: ["6379:6379"]
+    volumes: ["redis_data:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "local_redis_password", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    <<: *app-defaults
+    environment:
+      RABBITMQ_DEFAULT_USER: ecommerce
+      RABBITMQ_DEFAULT_PASS: local_rabbitmq_password
+      RABBITMQ_DEFAULT_VHOST: ecommerce
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes: ["rabbitmq_data:/var/lib/rabbitmq"]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  kafka:
+    image: apache/kafka:3.9.1
+    <<: *app-defaults
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:29092,CONTROLLER://:29093,PLAINTEXT_HOST://:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    ports: ["9092:9092"]
+    volumes: ["kafka_data:/var/lib/kafka/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:29092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+
+  typesense:
+    image: typesense/typesense:29.0
+    <<: *app-defaults
+    command: ["--data-dir", "/data", "--api-key", "local_typesense_key", "--enable-cors"]
+    ports: ["8108:8108"]
+    volumes: ["typesense_data:/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8108/health | grep -q ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    <<: *app-defaults
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.68.0
+    <<: *app-defaults
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "4317:4317"
+      - "16686:16686"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.130.1
+    <<: *app-defaults
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./infra/observability/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    depends_on: [jaeger]
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    <<: *app-defaults
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus"]
+    ports: ["9095:9090"]
+    volumes:
+      - ./infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+
+  migrate-auth:
+    <<: *mysql-migration
+    volumes: ["./backend/services/auth-service/migrations:/migrations:ro"]
+    command: ["-path=/migrations", "-database=mysql://root:local_password@tcp(mysql:3306)/auth_db?multiStatements=true", "up"]
+  migrate-user:
+    <<: *mysql-migration
+    volumes: ["./backend/services/user-service/migrations:/migrations:ro"]
+    command: ["-path=/migrations", "-database=mysql://root:local_password@tcp(mysql:3306)/user_db?multiStatements=true", "up"]
+  migrate-order:
+    <<: *mysql-migration
+    volumes: ["./backend/services/order-service/migrations:/migrations:ro"]
+    command: ["-path=/migrations", "-database=mysql://root:local_password@tcp(mysql:3306)/order_db?multiStatements=true", "up"]
+  migrate-payment:
+    <<: *mysql-migration
+    volumes: ["./backend/services/payment-service/migrations:/migrations:ro"]
+    command: ["-path=/migrations", "-database=mysql://root:local_password@tcp(mysql:3306)/payment_db?multiStatements=true", "up"]
+  migrate-cms:
+    <<: *mysql-migration
+    volumes: ["./backend/services/cms-service/migrations:/migrations:ro"]
+    command: ["-path=/migrations", "-database=mysql://root:local_password@tcp(mysql:3306)/cms_db?multiStatements=true", "up"]
+  migrate-superadmin:
+    <<: *mysql-migration
+    volumes: ["./backend/services/superadmin-service/migrations:/migrations:ro"]
+    command: ["-path=/migrations", "-database=mysql://root:local_password@tcp(mysql:3306)/superadmin_db?multiStatements=true", "up"]
+
+  migrate-mongodb:
+    image: mongo:8.0
+    restart: "no"
+    networks: [ecommerce-local-network]
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    volumes: ["./backend/services:/workspace/services:ro"]
+    entrypoint: ["/bin/bash", "-ec"]
+    command:
+      - |
+        uri='mongodb://local_admin:local_mongo_password@mongodb:27017/admin?authSource=admin'
+        for service in product-service cart-service wishlist-service recommendation-service session-service notification-service; do
+          while IFS= read -r file; do
+            echo "Applying $$file"
+            mongosh "$$uri" --quiet --file "$$file"
+          done < <(find "/workspace/services/$$service/migrations" -type f \( -name '*.up.js' -o -name '*.mongodb.js' \) ! -name '*.down.*' | sort)
+        done
+
+  auth-service:
+    build: {context: ., dockerfile: backend/services/auth-service/Dockerfile}
+    <<: *app-defaults
+    env_file: [backend/services/auth-service/.env.example]
+    ports: ["8081:8081"]
+    depends_on:
+      migrate-auth: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/healthz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  user-service:
+    build: {context: ., dockerfile: backend/services/user-service/Dockerfile}
+    <<: *app-defaults
+    env_file: [backend/services/user-service/.env.example]
+    ports: ["50052:50052"]
+    depends_on:
+      migrate-user: {condition: service_completed_successfully}
+      rabbitmq: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9091/health/ready >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  product-service:
+    build: {context: ., dockerfile: backend/services/product-service/Dockerfile}
+    <<: *app-defaults
+    env_file: [backend/services/product-service/.env.example]
+    ports: ["8082:8082"]
+    depends_on:
+      migrate-mongodb: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/readyz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  cart-service:
+    build: {context: ., dockerfile: backend/services/cart-service/Dockerfile}
+    <<: *app-defaults
+    env_file: [backend/services/cart-service/.env.example]
+    ports: ["8083:8083"]
+    depends_on:
+      migrate-mongodb: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8083/readyz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  wishlist-service:
+    build: {context: ., dockerfile: backend/services/wishlist-service/Dockerfile}
+    <<: *app-defaults
+    env_file: [backend/services/wishlist-service/.env.example]
+    ports: ["8084:8084"]
+    depends_on:
+      migrate-mongodb: {condition: service_completed_successfully}
+      kafka: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8084/readyz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  search-service:
+    build: {context: ., dockerfile: backend/services/search-service/Dockerfile}
+    <<: *app-defaults
+    env_file: [backend/services/search-service/.env.example]
+    ports: ["8085:8085"]
+    depends_on:
+      typesense: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8085/healthz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  session-service:
+    build: {context: ., dockerfile: backend/services/session-service/Dockerfile}
+    <<: *app-defaults
+    env_file: [backend/services/session-service/.env.example]
+    ports: ["8086:8086"]
+    depends_on:
+      migrate-mongodb: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8086/healthz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  cms-service:
+    build: {context: ., dockerfile: backend/services/cms-service/Dockerfile}
+    <<: *app-defaults
+    env_file: [backend/services/cms-service/.env.example]
+    ports:
+      - "8087:8087"
+      - "50057:9098"
+    depends_on:
+      migrate-cms: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8087/healthz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  recommendation-service:
+    build: {context: ., dockerfile: backend/services/recommendation-service/Dockerfile}
+    <<: *app-defaults
+    env_file: [backend/services/recommendation-service/.env.example]
+    ports:
+      - "8089:8088"
+      - "50058:9088"
+    depends_on:
+      migrate-mongodb: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8088/healthz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  order-service:
+    build: {context: ., dockerfile: backend/services/order-service/Dockerfile}
+    <<: *app-defaults
+    env_file: [backend/services/order-service/.env.example]
+    ports: ["8090:8090"]
+    depends_on:
+      migrate-order: {condition: service_completed_successfully}
+      cart-service: {condition: service_healthy}
+      product-service: {condition: service_healthy}
+      payment-service: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8090/readyz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  payment-service:
+    build: {context: ., dockerfile: backend/services/payment-service/Dockerfile}
+    <<: *app-defaults
+    env_file: [backend/services/payment-service/.env.example]
+    ports: ["8091:8080"]
+    depends_on:
+      migrate-payment: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  notification-service:
+    build: {context: ., dockerfile: backend/services/notification-service/Dockerfile}
+    <<: *app-defaults
+    env_file: [backend/services/notification-service/.env.example]
+    ports:
+      - "8092:8081"
+      - "50060:9090"
+    depends_on:
+      migrate-mongodb: {condition: service_completed_successfully}
+      rabbitmq: {condition: service_healthy}
+      mailpit: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9090"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  superadmin-service:
+    build: {context: ., dockerfile: backend/services/superadmin-service/Dockerfile}
+    <<: *app-defaults
+    env_file: [backend/services/superadmin-service/.env.example]
+    ports: ["8093:8088"]
+    depends_on:
+      migrate-superadmin: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8088/readyz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  api-gateway:
+    build: {context: ., dockerfile: backend/services/api-gateway/Dockerfile}
+    <<: *app-defaults
+    env_file: [backend/services/api-gateway/.env.example]
+    ports:
+      - "8080:8080"
+      - "8099:9090"
+      - "19090:9091"
+    depends_on:
+      redis: {condition: service_healthy}
+      auth-service: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health/live >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  user-app:
+    build:
+      context: .
+      dockerfile: frontend/user-app/Dockerfile
+      args: {VITE_API_BASE_URL: "http://localhost:8080", VITE_GRPC_WEB_BASE_URL: "http://localhost:8099"}
+    <<: *app-defaults
+    ports: ["3000:8080"]
+    depends_on: [api-gateway]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  seller-dashboard:
+    build:
+      context: .
+      dockerfile: frontend/seller-dashboard/Dockerfile
+      args: {VITE_API_BASE_URL: "http://localhost:8080/api/v1", VITE_LOGIN_URL: "http://localhost:3000/login"}
+    <<: *app-defaults
+    ports: ["3001:8080"]
+    depends_on: [api-gateway]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  session-analytics-dashboard:
+    profiles: ["incomplete"]
+    build:
+      context: .
+      dockerfile: frontend/session-analytics-dashboard/Dockerfile
+      args: {VITE_API_BASE_URL: "http://localhost:8086"}
+    <<: *app-defaults
+    ports: ["3002:8080"]
+    depends_on: [session-service]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  superadmin-panel:
+    build:
+      context: .
+      dockerfile: frontend/superadmin-panel/Dockerfile
+      args: {VITE_API_BASE_URL: "http://localhost:8080/api/v1"}
+    <<: *app-defaults
+    ports: ["3003:8080"]
+    depends_on: [api-gateway]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+networks:
+  ecommerce-local-network:
+    name: ecommerce-local-network
+
+volumes:
+  mysql_data:
+  mongodb_data:
+  redis_data:
+  rabbitmq_data:
+  kafka_data:
+  typesense_data:
+  prometheus_data:

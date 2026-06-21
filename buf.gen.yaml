@@ -1,11 +1,10 @@
-version: v1
-
+version: v2
 plugins:
-  - plugin: go
-    out: backend/services/cms-service
+  - remote: buf.build/protocolbuffers/go:v1.35.2
+    out: backend/shared/gen/go
     opt:
-      - module=github.com/example/ecommerce-platform/backend/services/cms-service
-  - plugin: go-grpc
-    out: backend/services/cms-service
+      - paths=source_relative
+  - remote: buf.build/grpc/go:v1.5.1
+    out: backend/shared/gen/go
     opt:
-      - module=github.com/example/ecommerce-platform/backend/services/cms-service
+      - paths=source_relative

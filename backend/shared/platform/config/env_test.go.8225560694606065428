@@ -1,0 +1,14 @@
+package config
+
+import (
+	"testing"
+	"time"
+)
+
+func TestEnvParsesTypedValues(t *testing.T) {
+	values := map[string]string{"ENABLED": "true", "LIMIT": "12", "TIMEOUT": "3s"}
+	env := Env{Lookup: func(key string) (string, bool) { value, ok := values[key]; return value, ok }}
+	if value, err := env.Bool("ENABLED", false); err != nil || !value { t.Fatalf("Bool() = %v, %v", value, err) }
+	if value, err := env.Int("LIMIT", 1, 1); err != nil || value != 12 { t.Fatalf("Int() = %v, %v", value, err) }
+	if value, err := env.Duration("TIMEOUT", time.Second); err != nil || value != 3*time.Second { t.Fatalf("Duration() = %v, %v", value, err) }
+}
