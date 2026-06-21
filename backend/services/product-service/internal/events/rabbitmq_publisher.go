@@ -55,14 +55,14 @@ func (p *RabbitMQPublisher) Publish(ctx context.Context, topic string, envelope 
 	if err := p.ensureChannelLocked(); err != nil {
 		return err
 	}
-	if err := p.ensureQueueLocked(topic); err != nil {
+	if err := p.ensureExchangeLocked(topic); err != nil {
 		p.resetLocked()
 		return err
 	}
 	err = p.channel.PublishWithContext(
 		ctx,
-		"",
 		topic,
+		productRoutingKey(envelope.EventType),
 		true,
 		false,
 		amqp.Publishing{
@@ -114,12 +114,13 @@ func (p *RabbitMQPublisher) ensureChannelLocked() error {
 	return nil
 }
 
-func (p *RabbitMQPublisher) ensureQueueLocked(topic string) error {
+func (p *RabbitMQPublisher) ensureExchangeLocked(topic string) error {
 	if _, ok := p.declared[topic]; ok {
 		return nil
 	}
-	_, err := p.channel.QueueDeclare(
+	err := p.channel.ExchangeDeclare(
 		topic,
+		"topic",
 		true,
 		false,
 		false,
@@ -127,10 +128,27 @@ func (p *RabbitMQPublisher) ensureQueueLocked(topic string) error {
 		nil,
 	)
 	if err != nil {
-		return fmt.Errorf("declare rabbitmq queue %q: %w", topic, err)
+		return fmt.Errorf("declare rabbitmq exchange %q: %w", topic, err)
 	}
 	p.declared[topic] = struct{}{}
 	return nil
+}
+
+func productRoutingKey(eventType string) string {
+	switch domain.ProductEventType(strings.TrimSpace(eventType)) {
+	case domain.ProductEventCreated:
+		return "product.created"
+	case domain.ProductEventUpdated:
+		return "product.updated"
+	case domain.ProductEventPublished:
+		return "product.published"
+	case domain.ProductEventUnpublished:
+		return "product.unpublished"
+	case domain.ProductEventInventoryChanged:
+		return "product.inventory_changed"
+	default:
+		return "product.unknown"
+	}
 }
 
 func (p *RabbitMQPublisher) resetLocked() error {

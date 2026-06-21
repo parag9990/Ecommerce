@@ -78,6 +78,7 @@ type synonymDTO struct {
 type createSynonymRequest struct {
 	Root     string   `json:"root"`
 	Synonyms []string `json:"synonyms"`
+	Reason   string   `json:"reason"`
 }
 
 type reindexRequest struct {

@@ -30,6 +30,7 @@ type RouterOptions struct {
 	RequestValidator  RequestValidator
 	Metrics           *observability.Metrics
 	UserClient        clients.UserClient
+	SearchClient      clients.SearchServiceClient
 }
 
 func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecase.RouteCatalog, logger *slog.Logger, downstreamHealth DownstreamHealthChecker, opts RouterOptions) (http.Handler, error) {
@@ -63,11 +64,18 @@ func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecas
 	if opts.UserClient != nil {
 		userHandler = handlers.NewUserHandler(opts.UserClient, logger)
 	}
+	var searchHandler *handlers.SearchHandler
+	if opts.SearchClient != nil {
+		searchHandler = handlers.NewSearchHandler(opts.SearchClient, logger)
+	}
 	for _, route := range routes {
 		route := route
 		endpoint := handler.RouteDefined(route)
 		if userHandler != nil {
 			endpoint = userRouteEndpoint(route, userHandler, endpoint)
+		}
+		if searchHandler != nil {
+			endpoint = searchRouteEndpoint(route, searchHandler, endpoint)
 		}
 		baseHandler := RequestValidationMiddleware(route, requestValidator, logger, opts.Metrics)(http.HandlerFunc(endpoint))
 		routeHandler, err := secureRoute(route, baseHandler, verifier, cfg.WebhookSignatureHeader, logger, rateLimiter, opts.Metrics, cfg.Observability.Normalize(cfg.ServiceName, cfg.Environment).UserHashSalt)
@@ -87,6 +95,21 @@ func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecas
 	wrapped = RecoveryMiddleware(logger)(wrapped)
 	wrapped = RequestIDMiddleware(wrapped)
 	return wrapped, nil
+}
+
+func searchRouteEndpoint(route domain.RouteDefinition, handler *handlers.SearchHandler, fallback http.HandlerFunc) http.HandlerFunc {
+	switch string(route.Method) + " " + route.Path {
+	case "GET /api/v1/search":
+		return handler.SearchProducts
+	case "GET /api/v1/search/autocomplete":
+		return handler.Autocomplete
+	case "POST /api/v1/admin/search/synonyms":
+		return handler.CreateSynonym
+	case "GET /api/v1/admin/search/synonyms":
+		return handler.ListSynonyms
+	default:
+		return fallback
+	}
 }
 
 func userRouteEndpoint(route domain.RouteDefinition, handler *handlers.UserHandler, fallback http.HandlerFunc) http.HandlerFunc {

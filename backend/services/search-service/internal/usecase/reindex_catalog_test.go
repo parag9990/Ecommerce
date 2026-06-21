@@ -45,6 +45,9 @@ func TestReindexCatalogUsecaseAliasSuccessSwapsAfterValidation(t *testing.T) {
 	if index.swappedAlias != "products" || index.swappedCollection != "products_20260524_120000" {
 		t.Fatalf("swap = %s -> %s", index.swappedAlias, index.swappedCollection)
 	}
+	if index.copiedSynonymsFrom != "products_20260523_120000" || index.copiedSynonymsTo != "products_20260524_120000" {
+		t.Fatalf("synonym copy = %s -> %s", index.copiedSynonymsFrom, index.copiedSynonymsTo)
+	}
 	if !result.AliasSwapped || result.PreviousCollection != "products_20260523_120000" || result.ProductsIndexed != 2 {
 		t.Fatalf("result = %#v", result)
 	}
@@ -184,15 +187,18 @@ func (r *fakeProductCatalogReader) ListSearchableProducts(_ context.Context, req
 }
 
 type fakeReindexRepository struct {
-	previousAlias     string
-	ensureCollections []string
-	imported          []domain.ProductDocument
-	count             int
-	countErr          error
-	smokeErr          error
-	swappedAlias      string
-	swappedCollection string
-	cleanupCalled     bool
+	previousAlias      string
+	ensureCollections  []string
+	imported           []domain.ProductDocument
+	count              int
+	countErr           error
+	smokeErr           error
+	copySynonymsErr    error
+	copiedSynonymsFrom string
+	copiedSynonymsTo   string
+	swappedAlias       string
+	swappedCollection  string
+	cleanupCalled      bool
 }
 
 func (r *fakeReindexRepository) EnsureCollection(_ context.Context, collection domain.CollectionSchema) error {
@@ -211,6 +217,12 @@ func (r *fakeReindexRepository) CountDocuments(context.Context, string) (int, er
 
 func (r *fakeReindexRepository) SmokeSearch(context.Context, string) error {
 	return r.smokeErr
+}
+
+func (r *fakeReindexRepository) CopySynonyms(_ context.Context, sourceCollection string, targetCollection string) error {
+	r.copiedSynonymsFrom = sourceCollection
+	r.copiedSynonymsTo = targetCollection
+	return r.copySynonymsErr
 }
 
 func (r *fakeReindexRepository) SwapAlias(_ context.Context, alias string, collection string) error {

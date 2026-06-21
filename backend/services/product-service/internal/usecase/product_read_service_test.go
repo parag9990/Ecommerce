@@ -93,6 +93,41 @@ func TestBatchGetProductsReturnsPublishedProductsInRequestOrder(t *testing.T) {
 	}
 }
 
+func TestExportSearchProductsPagesPublishedCatalog(t *testing.T) {
+	repo := newReadMemoryRepository()
+	repo.saveProduct(readProduct("prod_1", "seller_456", domain.ProductStatusPublished, "cat_shoes_running"))
+	repo.saveProduct(readProduct("prod_2", "seller_456", domain.ProductStatusDraft, "cat_shoes_running"))
+	repo.saveProduct(readProduct("prod_3", "seller_456", domain.ProductStatusPublished, "cat_shoes_running"))
+	repo.saveProduct(readProduct("prod_4", "seller_456", domain.ProductStatusPublished, "cat_shoes_running"))
+	service := newTestProductReadService(t, repo)
+
+	first, err := service.ExportSearchProducts(context.Background(), SearchProductExportRequest{Limit: 2})
+	if err != nil {
+		t.Fatalf("first export page: %v", err)
+	}
+	if len(first.Products) != 2 || first.Total != 3 || !first.HasMore || first.NextCursor != "2" {
+		t.Fatalf("first export page = %+v", first)
+	}
+
+	second, err := service.ExportSearchProducts(context.Background(), SearchProductExportRequest{Limit: 2, Cursor: first.NextCursor})
+	if err != nil {
+		t.Fatalf("second export page: %v", err)
+	}
+	if len(second.Products) != 1 || second.HasMore || second.NextCursor != "" {
+		t.Fatalf("second export page = %+v", second)
+	}
+	if len(repo.lastProductFilter.Statuses) != 1 || repo.lastProductFilter.Statuses[0] != domain.ProductStatusPublished {
+		t.Fatalf("export statuses = %+v", repo.lastProductFilter.Statuses)
+	}
+}
+
+func TestExportSearchProductsRejectsInvalidCursor(t *testing.T) {
+	service := newTestProductReadService(t, newReadMemoryRepository())
+
+	_, err := service.ExportSearchProducts(context.Background(), SearchProductExportRequest{Limit: 2, Cursor: "not-an-offset"})
+	assertServiceError(t, err, ErrorCodeValidation)
+}
+
 func TestListCategoriesReturnsActiveCategoriesOnly(t *testing.T) {
 	parentID := "cat_fashion"
 	repo := newReadMemoryRepository()

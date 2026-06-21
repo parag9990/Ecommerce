@@ -26,6 +26,7 @@ func TestRouteCatalogLoadsMasterAPIContract(t *testing.T) {
 	assertRoute(t, catalog, "product.detail", domain.MethodGet, "/api/v1/products/{product_id}", "product-service", "ProductService.GetProduct", domain.AuthPublic)
 	assertRoute(t, catalog, "payment.webhook", domain.MethodPost, "/api/v1/webhooks/payments/{provider}", "payment-service", "PaymentService.HandleWebhook", domain.AuthWebhook)
 	assertRoute(t, catalog, "admin.setting_update", domain.MethodPatch, "/api/v1/admin/settings/{key}", "superadmin-service", "SuperadminService.UpdatePlatformSetting", domain.AuthSuperadmin)
+	assertRoute(t, catalog, "admin.search_synonyms", domain.MethodGet, "/api/v1/admin/search/synonyms", "search-service", "SearchService.ListSynonyms", domain.AuthAdmin)
 
 	groups, err := catalog.Groups(context.Background())
 	if err != nil {
@@ -43,6 +44,10 @@ func TestRouteCatalogLoadsMasterAPIContract(t *testing.T) {
 	}
 	if _, ok := schemas["CartItemInput"]; !ok {
 		t.Fatal("expected CartItemInput schema to be loaded")
+	}
+	searchSchema, ok := schemas["SearchRequest"]
+	if !ok || searchSchema.Properties["filter"].Type != "array" {
+		t.Fatal("expected SearchRequest to allow repeated filter query parameters")
 	}
 }
 

@@ -10,6 +10,7 @@ const (
 	MinSynonymTermLength   = 2
 	MaxSynonymTermLength   = 50
 	MaxSearchSynonymTerms  = 20
+	MaxSynonymReasonLength = 500
 	DefaultSynonymPage     = 1
 	DefaultSynonymPageSize = 50
 	MaxSynonymPageSize     = 100
@@ -32,6 +33,7 @@ type Synonym struct {
 type SearchSynonymInput struct {
 	Root     string
 	Synonyms []string
+	Reason   string
 }
 
 type SearchSynonym struct {
@@ -82,6 +84,10 @@ func (s Synonym) Validate() error {
 
 func NormalizeSearchSynonymInput(input SearchSynonymInput) (SearchSynonymInput, error) {
 	root := NormalizeSynonymTerm(input.Root)
+	reason := strings.TrimSpace(input.Reason)
+	if len([]rune(reason)) > MaxSynonymReasonLength {
+		return SearchSynonymInput{}, fmt.Errorf("%w: reason cannot exceed %d characters", ErrInvalidSynonym, MaxSynonymReasonLength)
+	}
 	if err := validateSynonymTerm("root", root); err != nil {
 		return SearchSynonymInput{}, err
 	}
@@ -115,6 +121,7 @@ func NormalizeSearchSynonymInput(input SearchSynonymInput) (SearchSynonymInput, 
 	return SearchSynonymInput{
 		Root:     root,
 		Synonyms: synonyms,
+		Reason:   reason,
 	}, nil
 }
 

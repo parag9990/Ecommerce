@@ -7,6 +7,7 @@ import (
 
 func TestLoadTypesenseConfig(t *testing.T) {
 	t.Setenv("TYPESENSE_HOST", "typesense")
+	t.Setenv("SEARCH_GRPC_ADDR", ":9085")
 	t.Setenv("TYPESENSE_PORT", "8108")
 	t.Setenv("TYPESENSE_PROTOCOL", "http")
 	t.Setenv("TYPESENSE_API_KEY", "dev-typesense-key")
@@ -14,6 +15,7 @@ func TestLoadTypesenseConfig(t *testing.T) {
 	t.Setenv("TYPESENSE_POPULAR_QUERIES_COLLECTION", "popular_queries")
 	t.Setenv("TYPESENSE_TIMEOUT_MS", "300")
 	t.Setenv("PRODUCT_SERVICE_URL", "http://product-service:8082")
+	t.Setenv("PRODUCT_SERVICE_READY_PATH", "/readyz")
 	t.Setenv("PRODUCT_SERVICE_SEARCH_EXPORT_PATH", "/internal/v1/products/search-export")
 	t.Setenv("PRODUCT_SERVICE_TIMEOUT_MS", "250")
 	t.Setenv("PRODUCT_SERVICE_SEARCH_EXPORT_TIMEOUT_MS", "2000")
@@ -56,6 +58,9 @@ func TestLoadTypesenseConfig(t *testing.T) {
 	if cfg.Typesense.Endpoint() != "http://typesense:8108" {
 		t.Fatalf("typesense endpoint = %q", cfg.Typesense.Endpoint())
 	}
+	if cfg.GRPC.Address != ":9085" {
+		t.Fatalf("grpc address = %q", cfg.GRPC.Address)
+	}
 	if cfg.Typesense.APIKey != "dev-typesense-key" {
 		t.Fatal("typesense api key was not loaded")
 	}
@@ -70,6 +75,9 @@ func TestLoadTypesenseConfig(t *testing.T) {
 	}
 	if cfg.Product.URL != "http://product-service:8082" {
 		t.Fatalf("product service url = %q", cfg.Product.URL)
+	}
+	if cfg.Product.ReadyPath != "/readyz" {
+		t.Fatalf("product ready path = %q", cfg.Product.ReadyPath)
 	}
 	if cfg.Product.Timeout != 250*time.Millisecond {
 		t.Fatalf("product timeout = %s", cfg.Product.Timeout)

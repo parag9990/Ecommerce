@@ -117,6 +117,12 @@ func (u *ReindexCatalogUsecase) Execute(ctx context.Context, req domain.ReindexR
 		u.record(ctx, req.Mode, "failed", "index_pages", result, err, startedAt)
 		return domain.ReindexResult{}, err
 	}
+	if req.Mode == domain.ReindexModeAlias && !req.DryRun && result.PreviousCollection != "" && result.PreviousCollection != result.TargetCollection {
+		if err := u.index.CopySynonyms(ctx, result.PreviousCollection, result.TargetCollection); err != nil {
+			u.record(ctx, req.Mode, "failed", "copy_synonyms", result, err, startedAt)
+			return domain.ReindexResult{}, err
+		}
+	}
 
 	if err := u.validateResult(ctx, req, result); err != nil {
 		u.record(ctx, req.Mode, "failed", "validate_target", result, err, startedAt)

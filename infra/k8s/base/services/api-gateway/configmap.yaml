@@ -22,7 +22,7 @@ data:
   GRPC_WEB_ENABLED: "true"
   GRPC_ADDR: :9090
   GRPC_WEB_POLICY_PATH: /app/config/grpcweb-policies.json
-  GRPC_WEB_EXPOSED_SERVICES: ecommerce.session.v1.SessionService,ecommerce.superadmin.v1.SuperadminService,ecommerce.cms.v1.CMSService
+  GRPC_WEB_EXPOSED_SERVICES: ecommerce.search.v1.SearchService,ecommerce.session.v1.SessionService,ecommerce.superadmin.v1.SuperadminService,ecommerce.cms.v1.CMSService
   GRPC_TLS_ENABLED: "false"
   GRPC_ALLOW_UNAVAILABLE_DOWNSTREAMS: "true"
   REDIS_ADDR: redis.data.svc.cluster.local:6379
@@ -37,7 +37,7 @@ data:
   WISHLIST_GRPC_ADDR: wishlist-service.core.svc.cluster.local:8084
   ORDER_GRPC_ADDR: order-service.core.svc.cluster.local:8090
   PAYMENT_GRPC_ADDR: payment-service.core.svc.cluster.local:8080
-  SEARCH_GRPC_ADDR: search-service.core.svc.cluster.local:8085
+  SEARCH_GRPC_ADDR: search-service.core.svc.cluster.local:9085
   CMS_GRPC_ADDR: cms-service.core.svc.cluster.local:9098
   SESSION_GRPC_ADDR: session-service.core.svc.cluster.local:8086
   NOTIFICATION_GRPC_ADDR: notification-service.core.svc.cluster.local:9090

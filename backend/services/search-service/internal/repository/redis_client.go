@@ -125,6 +125,18 @@ func (c *RedisClient) SetNX(ctx context.Context, key string, value string, ttl t
 	return resp.stringValue() == "OK", nil
 }
 
+func (c *RedisClient) Delete(ctx context.Context, key string) error {
+	if strings.TrimSpace(key) == "" {
+		return errors.New("redis key is required")
+	}
+	resp, err := c.do(ctx, "DEL", key)
+	if err != nil {
+		return err
+	}
+	_, err = resp.intValue()
+	return err
+}
+
 func (c *RedisClient) do(ctx context.Context, args ...string) (redisValue, error) {
 	if c == nil {
 		return redisValue{}, errors.New("redis client is not initialized")

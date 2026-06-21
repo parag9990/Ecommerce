@@ -59,14 +59,16 @@ type ProductSearchEventPayload struct {
 }
 
 type EventEnvelope struct {
-	EventID    string         `json:"event_id" bson:"event_id"`
-	EventType  string         `json:"event_type" bson:"event_type"`
-	Version    int            `json:"version" bson:"version"`
-	Source     string         `json:"source" bson:"source"`
-	RequestID  string         `json:"request_id" bson:"request_id"`
-	TraceID    string         `json:"trace_id" bson:"trace_id"`
-	OccurredAt time.Time      `json:"occurred_at" bson:"occurred_at"`
-	Payload    map[string]any `json:"payload" bson:"payload"`
+	EventID       string         `json:"event_id" bson:"event_id"`
+	EventType     string         `json:"event_type" bson:"event_type"`
+	Version       int            `json:"version" bson:"version"`
+	Source        string         `json:"source" bson:"source"`
+	Producer      string         `json:"producer" bson:"producer"`
+	RequestID     string         `json:"request_id" bson:"request_id"`
+	TraceID       string         `json:"trace_id" bson:"trace_id"`
+	CorrelationID string         `json:"correlation_id" bson:"correlation_id"`
+	OccurredAt    time.Time      `json:"occurred_at" bson:"occurred_at"`
+	Payload       map[string]any `json:"payload" bson:"payload"`
 }
 
 type ProductOutboxEvent struct {
@@ -184,14 +186,16 @@ func (e ProductOutboxEvent) Envelope() EventEnvelope {
 		payload[key] = value
 	}
 	return EventEnvelope{
-		EventID:    e.ID,
-		EventType:  e.EventType,
-		Version:    e.Version,
-		Source:     e.Source,
-		RequestID:  e.RequestID,
-		TraceID:    e.TraceID,
-		OccurredAt: e.OccurredAt,
-		Payload:    payload,
+		EventID:       e.ID,
+		EventType:     e.EventType,
+		Version:       e.Version,
+		Source:        e.Source,
+		Producer:      e.Source,
+		RequestID:     e.RequestID,
+		TraceID:       e.TraceID,
+		CorrelationID: e.RequestID,
+		OccurredAt:    e.OccurredAt,
+		Payload:       payload,
 	}
 }
 

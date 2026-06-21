@@ -25,12 +25,14 @@ type HTTPProductExportClientConfig struct {
 	BaseURL          string
 	SearchExportPath string
 	Timeout          time.Duration
+	ServiceToken     string
 }
 
 type HTTPProductExportClient struct {
 	baseURL          *url.URL
 	searchExportPath string
 	httpClient       *http.Client
+	serviceToken     string
 }
 
 func NewHTTPProductExportClient(cfg HTTPProductExportClientConfig, httpClient *http.Client) (*HTTPProductExportClient, error) {
@@ -57,6 +59,7 @@ func NewHTTPProductExportClient(cfg HTTPProductExportClientConfig, httpClient *h
 		baseURL:          baseURL,
 		searchExportPath: cfg.SearchExportPath,
 		httpClient:       httpClient,
+		serviceToken:     strings.TrimSpace(cfg.ServiceToken),
 	}, nil
 }
 
@@ -78,6 +81,9 @@ func (c *HTTPProductExportClient) ListSearchableProducts(ctx context.Context, re
 		return domain.ProductExportPage{}, fmt.Errorf("%w: build request: %v", domain.ErrProductCatalogExportUnavailable, err)
 	}
 	httpReq.Header.Set("Accept", "application/json")
+	if c.serviceToken != "" {
+		httpReq.Header.Set("X-Service-Token", c.serviceToken)
+	}
 	if requestID := requestctx.RequestID(ctx); requestID != "" {
 		httpReq.Header.Set("X-Request-ID", requestID)
 	}

@@ -64,8 +64,8 @@ services:
       RABBITMQ_DEFAULT_PASS: local_rabbitmq_password
       RABBITMQ_DEFAULT_VHOST: ecommerce
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
     volumes: ["rabbitmq_data:/var/lib/rabbitmq"]
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
@@ -101,13 +101,16 @@ services:
       start_period: 30s
 
   typesense:
-    image: typesense/typesense:29.0
+    build:
+      context: .
+      dockerfile: infra/docker/typesense/Dockerfile
+    image: ecommerce-local-typesense:29.0
     <<: *app-defaults
     command: ["--data-dir", "/data", "--api-key", "local_typesense_key", "--enable-cors"]
-    ports: ["8108:8108"]
+    ports: ["${TYPESENSE_HOST_PORT:-8108}:8108"]
     volumes: ["typesense_data:/data"]
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8108/health | grep -q ok"]
+      test: ["CMD", "/usr/local/bin/http-healthcheck", "http://127.0.0.1:8108/health"]
       interval: 10s
       timeout: 5s
       retries: 15
@@ -287,13 +290,16 @@ services:
     build: {context: ., dockerfile: backend/services/search-service/Dockerfile}
     <<: *app-defaults
     env_file: [backend/services/search-service/.env.example]
-    ports: ["8085:8085"]
+    ports:
+      - "8085:8085"
+      - "50055:9085"
     depends_on:
+      product-service: {condition: service_healthy}
       typesense: {condition: service_healthy}
       redis: {condition: service_healthy}
       rabbitmq: {condition: service_healthy}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8085/healthz >/dev/null"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8085/readyz >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 15

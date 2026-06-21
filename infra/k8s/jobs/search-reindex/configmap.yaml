@@ -19,7 +19,7 @@ data:
   TYPESENSE_POPULAR_QUERIES_COLLECTION: "popular_queries"
   TYPESENSE_TIMEOUT_MS: "300"
   PRODUCT_SERVICE_URL: "http://product-service.core.svc.cluster.local:8082"
-  PRODUCT_SERVICE_BATCH_GET_PATH: "/internal/v1/products:batchGet"
+  PRODUCT_SERVICE_BATCH_GET_PATH: "/internal/v1/products/batch"
   PRODUCT_SERVICE_SEARCH_EXPORT_PATH: "/internal/v1/products/search-export"
   PRODUCT_SERVICE_TIMEOUT_MS: "300"
   PRODUCT_SERVICE_SEARCH_EXPORT_TIMEOUT_MS: "2000"

@@ -1,0 +1,96 @@
+syntax = "proto3";
+
+package ecommerce.search.v1;
+
+option go_package = "github.com/parag/ecommerce/backend/shared/gen/go/ecommerce/search/v1;searchv1";
+
+import "google/protobuf/struct.proto";
+
+service SearchService {
+  rpc SearchProducts(SearchRequest) returns (SearchResponse);
+  rpc Autocomplete(AutocompleteRequest) returns (AutocompleteResponse);
+  rpc CreateSynonym(CreateSynonymRequest) returns (SearchSynonym);
+  rpc ListSynonyms(ListSynonymsRequest) returns (ListSynonymsResponse);
+}
+
+message SearchRequest {
+  string query = 1;
+  map<string, string> filters = 2;
+  string sort = 3;
+  int32 page = 4;
+  int32 page_size = 5;
+}
+
+message SearchResponse {
+  repeated Product products = 1;
+  repeated Facet facets = 2;
+  int64 total = 3;
+}
+
+message Product {
+  string product_id = 1;
+  string seller_id = 2;
+  string title = 3;
+  string description = 4;
+  string brand = 5;
+  string category_id = 6;
+  string status = 7;
+  repeated ProductVariant variants = 8;
+}
+
+message ProductVariant {
+  string sku = 1;
+  google.protobuf.Struct attributes = 2;
+  Money price = 3;
+  int32 stock_quantity = 4;
+}
+
+message Money {
+  double amount = 1;
+  string currency = 2;
+}
+
+message Facet {
+  string field = 1;
+  repeated FacetValue values = 2;
+}
+
+message FacetValue {
+  string value = 1;
+  int64 count = 2;
+}
+
+message AutocompleteRequest {
+  string query = 1;
+  int32 limit = 2;
+}
+
+message AutocompleteSuggestion {
+  string value = 1;
+  string type = 2;
+  string label = 3;
+}
+
+message AutocompleteResponse {
+  repeated AutocompleteSuggestion suggestions = 1;
+}
+
+message CreateSynonymRequest {
+  string root = 1;
+  repeated string synonyms = 2;
+}
+
+message ListSynonymsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message SearchSynonym {
+  string synonym_id = 1;
+  string root = 2;
+  repeated string synonyms = 3;
+}
+
+message ListSynonymsResponse {
+  repeated SearchSynonym synonyms = 1;
+}

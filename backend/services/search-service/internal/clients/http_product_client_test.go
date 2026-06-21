@@ -65,6 +65,28 @@ func TestHTTPProductClientMapsNonSuccessStatus(t *testing.T) {
 	}
 }
 
+func TestHTTPProductClientChecksReadiness(t *testing.T) {
+	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodGet || r.URL.Path != defaultProductReadyPath {
+			t.Fatalf("readiness request = %s %s", r.Method, r.URL.Path)
+		}
+		if r.Header.Get("X-Service-Token") != "service-token" {
+			t.Fatalf("service token = %q", r.Header.Get("X-Service-Token"))
+		}
+		return textResponse(http.StatusOK, `{"status":"ready"}`), nil
+	})}
+	client, err := NewHTTPProductClient(HTTPProductClientConfig{
+		BaseURL: "http://product-service", Timeout: time.Second, ServiceToken: "service-token",
+	}, httpClient)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	if err := client.CheckReady(context.Background()); err != nil {
+		t.Fatalf("check ready: %v", err)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {

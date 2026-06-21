@@ -751,21 +751,21 @@
       "id": "admin.search_synonyms",
       "method": "GET",
       "path": "/api/v1/admin/search/synonyms",
-      "service": "superadmin-service",
-      "grpc": "SuperadminService.ListSearchSynonyms",
+      "service": "search-service",
+      "grpc": "SearchService.ListSynonyms",
       "auth": "admin",
-      "request_schema": "Empty",
+      "request_schema": "PaginationRequest",
       "response_schema": "SearchSynonymListResponse"
     },
     {
       "id": "admin.search_synonym_upsert",
       "method": "POST",
       "path": "/api/v1/admin/search/synonyms",
-      "service": "superadmin-service",
-      "grpc": "SuperadminService.UpsertSearchSynonym",
+      "service": "search-service",
+      "grpc": "SearchService.CreateSynonym",
       "auth": "admin",
       "request_schema": "SearchSynonymUpsertInput",
-      "response_schema": "SearchSynonymListResponse"
+      "response_schema": "SearchSynonym"
     }
   ],
   "grpc_services": {
@@ -876,8 +876,6 @@
       "methods": [
         {"name": "SearchProducts", "input_schema": "SearchRequest", "output_schema": "SearchResponse", "auth": "public"},
         {"name": "Autocomplete", "input_schema": "AutocompleteRequest", "output_schema": "AutocompleteResponse", "auth": "public"},
-        {"name": "ReindexProduct", "input_schema": "IdPathRequest", "output_schema": "SuccessResponse", "auth": "admin"},
-        {"name": "DeleteProductFromIndex", "input_schema": "IdPathRequest", "output_schema": "SuccessResponse", "auth": "internal"},
         {"name": "CreateSynonym", "input_schema": "SearchSynonymInput", "output_schema": "SearchSynonym", "auth": "admin"},
         {"name": "ListSynonyms", "input_schema": "PaginationRequest", "output_schema": "SearchSynonymListResponse", "auth": "admin"}
       ]
@@ -977,7 +975,7 @@
     "InventoryReservationRequest": {"type": "object", "required": ["order_id", "items"], "properties": {"order_id": {"type": "string"}, "items": {"type": "array", "items": {"type": "object"}}, "ttl_seconds": {"type": "integer"}}},
     "InventoryReservationResponse": {"type": "object", "properties": {"reservation_id": {"type": "string"}, "expires_at": {"type": "string", "format": "date-time"}}},
     "InventoryReservationActionRequest": {"type": "object", "required": ["reservation_id"], "properties": {"reservation_id": {"type": "string"}, "reason": {"type": "string"}}},
-    "SearchRequest": {"type": "object", "properties": {"q": {"type": "string"}, "filters": {"type": "object"}, "sort": {"type": "string"}, "page": {"type": "integer"}, "page_size": {"type": "integer"}}},
+    "SearchRequest": {"type": "object", "properties": {"q": {"type": "string"}, "filters": {"type": "object"}, "filter": {"type": "array", "items": {"type": "string"}}, "brand": {"type": "string"}, "category_id": {"type": "string"}, "seller_id": {"type": "string"}, "min_price": {"type": "string"}, "max_price": {"type": "string"}, "min_rating": {"type": "string"}, "in_stock": {"type": "string"}, "filters[brand]": {"type": "string"}, "filters[category_id]": {"type": "string"}, "filters[seller_id]": {"type": "string"}, "filters[min_price]": {"type": "string"}, "filters[max_price]": {"type": "string"}, "filters[min_rating]": {"type": "string"}, "filters[in_stock]": {"type": "string"}, "sort": {"type": "string"}, "page": {"type": "integer"}, "page_size": {"type": "integer"}}},
     "SearchResponse": {"type": "object", "properties": {"products": {"type": "array", "items": {"$ref": "#/schemas/Product"}}, "facets": {"type": "object"}, "total": {"type": "integer"}}},
     "AutocompleteRequest": {"type": "object", "properties": {"q": {"type": "string"}, "limit": {"type": "integer"}}},
     "AutocompleteResponse": {"type": "object", "properties": {"suggestions": {"type": "array", "items": {"type": "string"}}}},

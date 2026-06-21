@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,11 +16,19 @@ import (
 	"github.com/example/ecommerce-platform/backend/services/search-service/internal/domain"
 	"github.com/example/ecommerce-platform/backend/services/search-service/internal/events"
 	"github.com/example/ecommerce-platform/backend/services/search-service/internal/indexer"
+	"github.com/example/ecommerce-platform/backend/services/search-service/internal/observability"
 	"github.com/example/ecommerce-platform/backend/services/search-service/internal/repository"
 	"github.com/example/ecommerce-platform/backend/services/search-service/internal/schema"
+	grpctransport "github.com/example/ecommerce-platform/backend/services/search-service/internal/transport/grpc"
 	httptransport "github.com/example/ecommerce-platform/backend/services/search-service/internal/transport/http"
 	"github.com/example/ecommerce-platform/backend/services/search-service/internal/usecase"
+	searchv1 "github.com/parag/ecommerce/backend/shared/gen/go/ecommerce/search/v1"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/typesense/typesense-go/v2/typesense"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthv1 "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 func main() {
@@ -33,6 +42,7 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	metrics := observability.NewMetrics(prometheus.DefaultRegisterer)
 
 	collection, policy, synonyms := schema.MustProductSchemaContract()
 	collection.Name = cfg.Typesense.ProductsCollection
@@ -61,11 +71,16 @@ func main() {
 		os.Exit(1)
 	}
 	ensureCtx, cancelEnsure := context.WithTimeout(ctx, 10*time.Second)
-	if err := collectionRepo.EnsureCollection(ensureCtx, collection); err != nil {
+	activeProductsCollection, err := collectionRepo.EnsureAliasedCollection(ensureCtx, cfg.Typesense.ProductsCollection, cfg.Reindex.CollectionPrefix, collection, time.Now())
+	if err != nil {
 		cancelEnsure()
 		logger.Error("search.typesense.collection_ensure_failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
+	logger.Info("search.typesense.collection_ready",
+		slog.String("alias", cfg.Typesense.ProductsCollection),
+		slog.String("active_collection", activeProductsCollection),
+	)
 	if err := collectionRepo.EnsureCollection(ensureCtx, popularQueriesCollection); err != nil {
 		cancelEnsure()
 		logger.Error("search.typesense.popular_queries_collection_ensure_failed", slog.String("error", err.Error()))
@@ -90,7 +105,7 @@ func main() {
 		logger.Error("search.redis_client.init_failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
-	zeroResultTracker, err := buildZeroResultTracker(cfg, redisClient, logger)
+	zeroResultTracker, err := buildZeroResultTracker(cfg, redisClient, metrics, logger)
 	if err != nil {
 		logger.Error("search.zero_result_tracker.init_failed", slog.String("error", err.Error()))
 		os.Exit(1)
@@ -98,7 +113,9 @@ func main() {
 	productClient, err := clients.NewHTTPProductClient(clients.HTTPProductClientConfig{
 		BaseURL:      cfg.Product.URL,
 		BatchGetPath: cfg.Product.BatchGetPath,
+		ReadyPath:    cfg.Product.ReadyPath,
 		Timeout:      cfg.Product.Timeout,
+		ServiceToken: cfg.Product.ServiceToken,
 	}, nil)
 	if err != nil {
 		logger.Error("search.product_client.init_failed", slog.String("error", err.Error()))
@@ -113,6 +130,7 @@ func main() {
 		TypesenseTimeout:  cfg.Typesense.RequestTimeout,
 		HydrationTimeout:  cfg.Product.Timeout,
 		ZeroResultTracker: zeroResultTracker,
+		Metrics:           metrics,
 	}, logger)
 	if err != nil {
 		logger.Error("search.search_usecase.init_failed", slog.String("error", err.Error()))
@@ -136,6 +154,7 @@ func main() {
 		CacheTimeout:       cfg.Search.AutocompleteCacheTimeout,
 		PrefixCacheTTL:     cfg.Search.AutocompletePrefixCacheTTL,
 		EmptyQueryCacheTTL: cfg.Search.AutocompleteEmptyCacheTTL,
+		Metrics:            metrics,
 	}, logger)
 	if err != nil {
 		logger.Error("search.autocomplete_usecase.init_failed", slog.String("error", err.Error()))
@@ -166,6 +185,7 @@ func main() {
 		BaseURL:          cfg.Product.URL,
 		SearchExportPath: cfg.Product.SearchExportPath,
 		Timeout:          cfg.Product.SearchExportTimeout,
+		ServiceToken:     cfg.Product.ServiceToken,
 	}, nil)
 	if err != nil {
 		logger.Error("search.product_export_client.init_failed", slog.String("error", err.Error()))
@@ -192,6 +212,7 @@ func main() {
 		ProductPageTimeout:     cfg.Product.SearchExportTimeout,
 		ImportTimeout:          cfg.Reindex.ImportTimeout,
 		OldCollectionRetention: cfg.Reindex.OldCollectionRetention,
+		Metrics:                metrics,
 	}, logger)
 	if err != nil {
 		logger.Error("search.reindex_usecase.init_failed", slog.String("error", err.Error()))
@@ -208,6 +229,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	var productConsumer *events.RabbitMQProductConsumer
 	handler, err := httptransport.NewHandler(
 		schemaUsecase,
 		searchUsecase,
@@ -217,15 +239,49 @@ func main() {
 		httptransport.WithReindexStarter(reindexStarter),
 		httptransport.WithAdminAuthorizer(httptransport.NewHeaderAdminAuthorizer(cfg.Admin.AuthEnabled)),
 		httptransport.WithAdminRateLimiter(httptransport.NewFixedWindowAdminRateLimiter(cfg.Admin.MutationRateLimit, cfg.Admin.MutationRateWindow)),
+		httptransport.WithReadinessChecker(httptransport.ReadinessFunc(func(checkCtx context.Context) error {
+			if err := redisClient.Ping(checkCtx); err != nil {
+				return err
+			}
+			if _, err := collectionRepo.EnsureAliasedCollection(checkCtx, cfg.Typesense.ProductsCollection, cfg.Reindex.CollectionPrefix, collection, time.Now()); err != nil {
+				return err
+			}
+			if err := collectionRepo.EnsureCollection(checkCtx, popularQueriesCollection); err != nil {
+				return err
+			}
+			if err := productClient.CheckReady(checkCtx); err != nil {
+				return err
+			}
+			if cfg.Indexer.Enabled && (productConsumer == nil || !productConsumer.Ready()) {
+				return errors.New("product indexer consumer is not connected")
+			}
+			return nil
+		})),
+		httptransport.WithMetricsHandler(promhttp.Handler()),
 	)
 	if err != nil {
 		logger.Error("search.http.handler_init_failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
+	grpcHandler, err := grpctransport.NewHandler(searchUsecase, autocompleteUsecase, createSynonymUsecase, listSynonymsUsecase)
+	if err != nil {
+		logger.Error("search.grpc.handler_init_failed", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	grpcListener, err := net.Listen("tcp", cfg.GRPC.Address)
+	if err != nil {
+		logger.Error("search.grpc.listen_failed", slog.String("addr", cfg.GRPC.Address), slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	grpcServer := grpc.NewServer()
+	searchv1.RegisterSearchServiceServer(grpcServer, grpcHandler)
+	healthServer := health.NewServer()
+	healthServer.SetServingStatus("", healthv1.HealthCheckResponse_SERVING)
+	healthServer.SetServingStatus(searchv1.SearchService_ServiceDesc.ServiceName, healthv1.HealthCheckResponse_SERVING)
+	healthv1.RegisterHealthServer(grpcServer, healthServer)
 
-	var productConsumer *events.RabbitMQProductConsumer
 	if cfg.Indexer.Enabled {
-		productConsumer, err = buildProductIndexerConsumer(ctx, cfg, typesenseClient, logger)
+		productConsumer, err = buildProductIndexerConsumer(ctx, cfg, typesenseClient, metrics, logger)
 		if err != nil {
 			logger.Error("search.product_consumer.init_failed", slog.String("error", err.Error()))
 			os.Exit(1)
@@ -252,6 +308,13 @@ func main() {
 			stop()
 		}
 	}()
+	go func() {
+		logger.Info("search.grpc.started", slog.String("addr", cfg.GRPC.Address))
+		if err := grpcServer.Serve(grpcListener); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+			logger.Error("search.grpc.serve_failed", slog.String("error", err.Error()))
+			stop()
+		}
+	}()
 
 	if productConsumer != nil {
 		go func() {
@@ -266,6 +329,18 @@ func main() {
 
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), cfg.HTTP.ShutdownTimeout)
 	defer cancelShutdown()
+	healthServer.SetServingStatus("", healthv1.HealthCheckResponse_NOT_SERVING)
+	healthServer.SetServingStatus(searchv1.SearchService_ServiceDesc.ServiceName, healthv1.HealthCheckResponse_NOT_SERVING)
+	grpcStopped := make(chan struct{})
+	go func() {
+		grpcServer.GracefulStop()
+		close(grpcStopped)
+	}()
+	select {
+	case <-grpcStopped:
+	case <-shutdownCtx.Done():
+		grpcServer.Stop()
+	}
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.Error("search.http.shutdown_failed", slog.String("error", err.Error()))
 		os.Exit(1)
@@ -277,13 +352,14 @@ func main() {
 	logger.Info("search.http.stopped")
 }
 
-func buildZeroResultTracker(cfg config.Config, redisClient *repository.RedisClient, logger *slog.Logger) (*usecase.ZeroResultTracker, error) {
+func buildZeroResultTracker(cfg config.Config, redisClient *repository.RedisClient, metrics usecase.ZeroResultMetricsRecorder, logger *slog.Logger) (*usecase.ZeroResultTracker, error) {
 	options := usecase.ZeroResultTrackerOptions{
 		Enabled:     cfg.Search.ZeroResultTrackingEnabled,
 		DedupeTTL:   cfg.Search.ZeroResultDedupeTTL,
 		SendTimeout: cfg.Search.ZeroResultSendTimeout,
 		QueueSize:   cfg.Search.ZeroResultQueueSize,
 		WorkerCount: cfg.Search.ZeroResultWorkerCount,
+		Metrics:     metrics,
 	}
 	if !cfg.Search.ZeroResultTrackingEnabled {
 		return usecase.NewZeroResultTracker(nil, nil, options, logger)
@@ -304,7 +380,7 @@ func buildZeroResultTracker(cfg config.Config, redisClient *repository.RedisClie
 	return usecase.NewZeroResultTracker(dedupe, sessionClient, options, logger)
 }
 
-func buildProductIndexerConsumer(ctx context.Context, cfg config.Config, typesenseClient *typesense.Client, logger *slog.Logger) (*events.RabbitMQProductConsumer, error) {
+func buildProductIndexerConsumer(ctx context.Context, cfg config.Config, typesenseClient *typesense.Client, metrics *observability.Metrics, logger *slog.Logger) (*events.RabbitMQProductConsumer, error) {
 	productRepo, err := repository.NewTypesenseProductRepository(typesenseClient, cfg.Typesense.ProductsCollection)
 	if err != nil {
 		return nil, err
@@ -349,5 +425,6 @@ func buildProductIndexerConsumer(ctx context.Context, cfg config.Config, typesen
 		RetryBaseDelay:     cfg.Queue.ProductIndexerRetryBaseDelay,
 		RetryMaxDelay:      cfg.Queue.ProductIndexerRetryMaxDelay,
 		MessageTimeout:     cfg.Indexer.MessageTimeout,
+		Metrics:            metrics,
 	}, productIndexer, processedEvents, logger)
 }

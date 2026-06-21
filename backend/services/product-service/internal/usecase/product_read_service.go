@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	"product-service/internal/domain"
@@ -21,6 +22,7 @@ type ProductReadUseCase interface {
 	ListPublicProducts(ctx context.Context, request ListProductsRequest) (ProductListResult, error)
 	GetPublicProduct(ctx context.Context, productID string) (*domain.Product, error)
 	BatchGetProducts(ctx context.Context, request BatchGetProductsRequest) ([]domain.Product, error)
+	ExportSearchProducts(ctx context.Context, request SearchProductExportRequest) (SearchProductExportResult, error)
 	ListCategories(ctx context.Context, request ListCategoriesRequest) ([]domain.Category, error)
 	ListSellerProducts(ctx context.Context, request SellerListProductsRequest) (ProductListResult, error)
 	GetSellerProduct(ctx context.Context, request SellerGetProductRequest) (*domain.Product, error)
@@ -57,6 +59,18 @@ type SellerGetProductRequest struct {
 
 type BatchGetProductsRequest struct {
 	ProductIDs []string
+}
+
+type SearchProductExportRequest struct {
+	Cursor string
+	Limit  int
+}
+
+type SearchProductExportResult struct {
+	Products   []domain.Product
+	NextCursor string
+	HasMore    bool
+	Total      int64
 }
 
 type ListCategoriesRequest struct {
@@ -177,6 +191,48 @@ func (s *ProductReadService) BatchGetProducts(ctx context.Context, request Batch
 	}
 	s.logger.Debug("batch product read", "viewer_type", "internal", "requested_count", len(ids), "result_count", len(products))
 	return products, nil
+}
+
+func (s *ProductReadService) ExportSearchProducts(ctx context.Context, request SearchProductExportRequest) (SearchProductExportResult, error) {
+	if err := ctx.Err(); err != nil {
+		return SearchProductExportResult{}, err
+	}
+	limit := request.Limit
+	if limit <= 0 {
+		limit = 500
+	}
+	if limit > 5000 {
+		return SearchProductExportResult{}, serviceError(ErrorKindInvalidArgument, ErrorCodeValidation, "search export limit cannot exceed 5000", nil)
+	}
+	offset := 0
+	if cursor := strings.TrimSpace(request.Cursor); cursor != "" {
+		parsed, err := strconv.Atoi(cursor)
+		if err != nil || parsed < 0 || parsed%limit != 0 {
+			return SearchProductExportResult{}, serviceError(ErrorKindInvalidArgument, ErrorCodeValidation, "invalid search export cursor", err)
+		}
+		offset = parsed
+	}
+	products, total, err := s.products.ListProducts(ctx, repository.ProductReadFilter{
+		Statuses: []domain.ProductStatus{domain.ProductStatusPublished},
+		Page:     offset/limit + 1,
+		PageSize: limit,
+		Sort:     repository.ProductReadSortNewest,
+	})
+	if err != nil {
+		return SearchProductExportResult{}, fmt.Errorf("export searchable products: %w", err)
+	}
+	nextOffset := offset + len(products)
+	hasMore := int64(nextOffset) < total
+	nextCursor := ""
+	if hasMore {
+		nextCursor = strconv.Itoa(nextOffset)
+	}
+	return SearchProductExportResult{
+		Products:   products,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+		Total:      total,
+	}, nil
 }
 
 func (s *ProductReadService) ListCategories(ctx context.Context, request ListCategoriesRequest) ([]domain.Category, error) {

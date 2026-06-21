@@ -158,9 +158,10 @@ func run() error {
 	}
 
 	router, err := httptransport.NewRouterWithOptions(ctx, cfg, routeCatalog, log, grpcClients, httptransport.RouterOptions{
-		RateLimiter: rateLimiter,
-		Metrics:     metrics,
-		UserClient:  grpcClients.User,
+		RateLimiter:  rateLimiter,
+		Metrics:      metrics,
+		UserClient:   grpcClients.User,
+		SearchClient: grpcClients.Search,
 	})
 	if err != nil {
 		return err

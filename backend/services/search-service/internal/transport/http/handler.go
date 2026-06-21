@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/example/ecommerce-platform/backend/services/search-service/internal/domain"
 	"github.com/example/ecommerce-platform/backend/services/search-service/internal/requestctx"
@@ -42,6 +43,14 @@ type ReindexStarter interface {
 	Start(ctx context.Context, req domain.ReindexRequest) (domain.ReindexAccepted, error)
 }
 
+type ReadinessChecker interface {
+	Check(context.Context) error
+}
+
+type ReadinessFunc func(context.Context) error
+
+func (f ReadinessFunc) Check(ctx context.Context) error { return f(ctx) }
+
 type Handler struct {
 	schemaUsecase       SchemaUsecase
 	searchUsecase       SearchUsecase
@@ -51,7 +60,29 @@ type Handler struct {
 	reindexStarter      ReindexStarter
 	adminAuthorizer     AdminAuthorizer
 	adminRateLimiter    AdminRateLimiter
+	readiness           ReadinessChecker
+	metricsHandler      http.Handler
 	logger              *slog.Logger
+}
+
+func WithMetricsHandler(metrics http.Handler) HandlerOption {
+	return func(h *Handler) error {
+		if metrics == nil {
+			return errors.New("metrics handler is required")
+		}
+		h.metricsHandler = metrics
+		return nil
+	}
+}
+
+func WithReadinessChecker(checker ReadinessChecker) HandlerOption {
+	return func(h *Handler) error {
+		if checker == nil {
+			return errors.New("readiness checker is required")
+		}
+		h.readiness = checker
+		return nil
+	}
 }
 
 type HandlerOption func(*Handler) error
@@ -141,6 +172,28 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/admin/search/reindex", h.handleAdminSearchReindex)
 	mux.HandleFunc("/api/v1/admin/search/synonyms", h.handleAdminSearchSynonyms)
 	mux.HandleFunc("/internal/v1/search/schema/products", h.handleProductSchema)
+	mux.HandleFunc("/readyz", h.handleReady)
+	if h.metricsHandler != nil {
+		mux.Handle("/metrics", h.metricsHandler)
+	}
+}
+
+func (h *Handler) handleReady(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	if h.readiness == nil {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	if err := h.readiness.Check(ctx); err != nil {
+		h.logger.WarnContext(ctx, "search.readiness.failed", slog.String("error", err.Error()))
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "not_ready"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 }
 
 func (h *Handler) handleSearchProducts(w http.ResponseWriter, r *http.Request) {
@@ -297,13 +350,14 @@ func (h *Handler) handleCreateSynonym(w http.ResponseWriter, r *http.Request) {
 	result, err := h.createSynonym.Execute(ctx, domain.SearchSynonymInput{
 		Root:     req.Root,
 		Synonyms: req.Synonyms,
+		Reason:   req.Reason,
 	})
 	if err != nil {
 		h.writeAdminError(w, r.WithContext(ctx), err)
 		return
 	}
 
-	h.logSynonymAudit(ctx, actor, "search.synonym.upsert", result)
+	h.logSynonymAudit(ctx, actor, "search.synonym.upsert", req.Reason, result)
 	writeJSON(w, http.StatusOK, searchSynonymResponseDTO(result))
 }
 
@@ -364,12 +418,13 @@ func (h *Handler) authorizeAdmin(ctx context.Context, r *http.Request, permissio
 	return h.adminAuthorizer.Authorize(ctx, r, permission)
 }
 
-func (h *Handler) logSynonymAudit(ctx context.Context, actor AdminActor, action string, synonym domain.SearchSynonym) {
+func (h *Handler) logSynonymAudit(ctx context.Context, actor AdminActor, action string, reason string, synonym domain.SearchSynonym) {
 	h.logger.Info("search.admin.audit",
 		slog.String("request_id", requestctx.RequestID(ctx)),
 		slog.String("actor_admin_id", actor.ID),
 		slog.String("actor_role", strings.Join(actor.Roles, ",")),
 		slog.String("action", action),
+		slog.String("reason", strings.TrimSpace(reason)),
 		slog.String("resource_type", "search_synonym"),
 		slog.String("resource_id", synonym.ID),
 		slog.String("root", synonym.Root),

@@ -80,7 +80,7 @@ func normalizeRoleHeader(value string) []string {
 	seen := make(map[string]struct{}, len(parts))
 	roles := make([]string, 0, len(parts))
 	for _, part := range parts {
-		role := strings.TrimSpace(part)
+		role := strings.ToLower(strings.TrimSpace(part))
 		if role == "" {
 			continue
 		}

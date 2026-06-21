@@ -2,6 +2,7 @@ package domain
 
 const (
 	ProductEventPublished        = "ProductPublished"
+	ProductEventCreated          = "ProductCreated"
 	ProductEventUpdated          = "ProductUpdated"
 	ProductEventPriceChanged     = "ProductPriceChanged"
 	ProductEventInventoryChanged = "ProductInventoryChanged"
@@ -14,7 +15,8 @@ const (
 
 func IsSupportedProductEvent(eventType string) bool {
 	switch eventType {
-	case ProductEventPublished,
+	case ProductEventCreated,
+		ProductEventPublished,
 		ProductEventUpdated,
 		ProductEventPriceChanged,
 		ProductEventInventoryChanged,

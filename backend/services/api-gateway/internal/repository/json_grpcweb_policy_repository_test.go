@@ -35,8 +35,8 @@ func TestProjectGRPCWebPolicyFileLoads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load project grpc-web policies: %v", err)
 	}
-	if len(policies) != 5 {
-		t.Fatalf("expected five project grpc-web policies, got %d", len(policies))
+	if len(policies) != 6 {
+		t.Fatalf("expected six project grpc-web policies, got %d", len(policies))
 	}
 }
 

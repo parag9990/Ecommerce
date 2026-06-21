@@ -30,6 +30,7 @@ type ReindexRepository interface {
 	ImportProducts(ctx context.Context, collection string, docs []domain.ProductDocument) error
 	CountDocuments(ctx context.Context, collection string) (int, error)
 	SmokeSearch(ctx context.Context, collection string) error
+	CopySynonyms(ctx context.Context, sourceCollection string, targetCollection string) error
 	SwapAlias(ctx context.Context, alias string, collection string) error
 	ResolveAlias(ctx context.Context, alias string) (string, error)
 	CleanupOldCollections(ctx context.Context, prefix string, activeCollection string, preserveCollection string, retention time.Duration, now time.Time) ([]string, error)
@@ -52,6 +53,7 @@ type AutocompleteCache interface {
 }
 
 type SynonymRepository interface {
+	GetSynonym(ctx context.Context, id string) (domain.SearchSynonym, bool, error)
 	UpsertSynonym(ctx context.Context, synonym domain.SearchSynonym) (domain.SearchSynonym, error)
 	ListSynonyms(ctx context.Context, page domain.SearchSynonymPageRequest) ([]domain.SearchSynonym, error)
 }
@@ -101,6 +103,7 @@ type ZeroResultSearchTracker interface {
 
 type ZeroResultDedupeStore interface {
 	MarkFirstSeen(ctx context.Context, key string, ttl time.Duration) (bool, error)
+	Release(ctx context.Context, key string) error
 }
 
 type SessionEventSink interface {

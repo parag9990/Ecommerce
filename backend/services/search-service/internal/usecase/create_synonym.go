@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/example/ecommerce-platform/backend/services/search-service/internal/domain"
+	"github.com/example/ecommerce-platform/backend/services/search-service/internal/requestctx"
 )
 
 const defaultSynonymAdminTimeout = 500 * time.Millisecond
@@ -51,6 +53,15 @@ func (u *CreateSynonymUsecase) Execute(ctx context.Context, input domain.SearchS
 
 	repoCtx, cancel := context.WithTimeout(ctx, u.options.Timeout)
 	defer cancel()
+	before, existed, err := u.repo.GetSynonym(repoCtx, synonym.ID)
+	if err != nil {
+		u.logger.Error("search.synonym.read_before_upsert_failed",
+			slog.String("request_id", requestID(ctx)),
+			slog.String("synonym_id", synonym.ID),
+			slog.String("error", err.Error()),
+		)
+		return domain.SearchSynonym{}, err
+	}
 
 	saved, err := u.repo.UpsertSynonym(repoCtx, synonym)
 	if err != nil {
@@ -66,9 +77,13 @@ func (u *CreateSynonymUsecase) Execute(ctx context.Context, input domain.SearchS
 
 	u.logger.Info("search.synonym.upserted",
 		slog.String("request_id", requestID(ctx)),
+		slog.String("actor_id", requestctx.Analytics(ctx).UserID),
+		slog.String("action", "search.synonym.upsert"),
 		slog.String("synonym_id", saved.ID),
-		slog.String("root", saved.Root),
-		slog.Int("synonym_count", len(saved.Synonyms)),
+		slog.String("reason", strings.TrimSpace(input.Reason)),
+		slog.Bool("resource_existed", existed),
+		slog.Any("before", before),
+		slog.Any("after", saved),
 		slog.Int("duration_ms", elapsedMS(started)),
 	)
 	return saved, nil

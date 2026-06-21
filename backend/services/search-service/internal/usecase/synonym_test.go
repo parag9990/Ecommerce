@@ -91,6 +91,9 @@ func newCreateSynonymTestUsecase(t *testing.T) (*CreateSynonymUsecase, *fakeSyno
 }
 
 type fakeSynonymRepository struct {
+	before      domain.SearchSynonym
+	found       bool
+	getErr      error
 	upsertCalls int
 	upserted    domain.SearchSynonym
 	upsertErr   error
@@ -98,6 +101,10 @@ type fakeSynonymRepository struct {
 	page        domain.SearchSynonymPageRequest
 	listed      []domain.SearchSynonym
 	listErr     error
+}
+
+func (r *fakeSynonymRepository) GetSynonym(_ context.Context, _ string) (domain.SearchSynonym, bool, error) {
+	return r.before, r.found, r.getErr
 }
 
 func (r *fakeSynonymRepository) UpsertSynonym(_ context.Context, synonym domain.SearchSynonym) (domain.SearchSynonym, error) {

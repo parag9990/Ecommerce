@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	defaultProductBatchGetPath  = "/internal/v1/products:batchGet"
+	defaultProductBatchGetPath  = "/internal/v1/products/batch"
+	defaultProductReadyPath     = "/readyz"
 	defaultProductClientTimeout = 300 * time.Millisecond
 	maxProductResponseBytes     = 4 << 20
 )
@@ -25,13 +26,17 @@ const (
 type HTTPProductClientConfig struct {
 	BaseURL      string
 	BatchGetPath string
+	ReadyPath    string
 	Timeout      time.Duration
+	ServiceToken string
 }
 
 type HTTPProductClient struct {
 	baseURL      *url.URL
 	batchGetPath string
+	readyPath    string
 	httpClient   *http.Client
+	serviceToken string
 }
 
 func NewHTTPProductClient(cfg HTTPProductClientConfig, httpClient *http.Client) (*HTTPProductClient, error) {
@@ -48,6 +53,9 @@ func NewHTTPProductClient(cfg HTTPProductClientConfig, httpClient *http.Client) 
 	if strings.TrimSpace(cfg.BatchGetPath) == "" {
 		cfg.BatchGetPath = defaultProductBatchGetPath
 	}
+	if strings.TrimSpace(cfg.ReadyPath) == "" {
+		cfg.ReadyPath = defaultProductReadyPath
+	}
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = defaultProductClientTimeout
 	}
@@ -57,7 +65,9 @@ func NewHTTPProductClient(cfg HTTPProductClientConfig, httpClient *http.Client) 
 	return &HTTPProductClient{
 		baseURL:      baseURL,
 		batchGetPath: cfg.BatchGetPath,
+		readyPath:    cfg.ReadyPath,
 		httpClient:   httpClient,
+		serviceToken: strings.TrimSpace(cfg.ServiceToken),
 	}, nil
 }
 
@@ -72,12 +82,15 @@ func (c *HTTPProductClient) BatchGetProducts(ctx context.Context, ids []string) 
 		return nil, fmt.Errorf("%w: encode request: %v", domain.ErrProductHydrationUnavailable, err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint(), bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint(c.batchGetPath), bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("%w: build request: %v", domain.ErrProductHydrationUnavailable, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	if c.serviceToken != "" {
+		req.Header.Set("X-Service-Token", c.serviceToken)
+	}
 	if requestID := requestctx.RequestID(ctx); requestID != "" {
 		req.Header.Set("X-Request-ID", requestID)
 	}
@@ -109,16 +122,35 @@ func (c *HTTPProductClient) BatchGetProducts(ctx context.Context, ids []string) 
 	return products, nil
 }
 
-func (c *HTTPProductClient) endpoint() string {
+func (c *HTTPProductClient) CheckReady(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoint(c.readyPath), nil)
+	if err != nil {
+		return fmt.Errorf("%w: build readiness request: %v", domain.ErrProductHydrationUnavailable, err)
+	}
+	if c.serviceToken != "" {
+		req.Header.Set("X-Service-Token", c.serviceToken)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("%w: product readiness: %v", domain.ErrProductHydrationUnavailable, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("%w: product readiness returned status %d", domain.ErrProductHydrationUnavailable, resp.StatusCode)
+	}
+	return nil
+}
+
+func (c *HTTPProductClient) endpoint(path string) string {
 	endpoint := *c.baseURL
 	basePath := strings.TrimRight(endpoint.Path, "/")
-	batchPath := "/" + strings.TrimLeft(c.batchGetPath, "/")
-	endpoint.Path = basePath + batchPath
+	endpointPath := "/" + strings.TrimLeft(path, "/")
+	endpoint.Path = basePath + endpointPath
 	return endpoint.String()
 }
 
 type batchGetProductsRequest struct {
-	IDs []string `json:"ids"`
+	IDs []string `json:"product_ids"`
 }
 
 type productListResponse struct {

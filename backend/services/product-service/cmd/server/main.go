@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -154,6 +155,17 @@ func routes(application *app.App, ping func(context.Context) error) http.Handler
 			return
 		}
 		result, err := application.ProductReadHandler.BatchGetProducts(r.Context(), input)
+		respond(w, result, err)
+	})
+	mux.HandleFunc("GET /internal/v1/products/search-export", func(w http.ResponseWriter, r *http.Request) {
+		if !authorizedInternalService(r, os.Getenv("PRODUCT_INTERNAL_SERVICE_TOKEN")) {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]string{"code": "UNAUTHENTICATED", "message": "valid service credentials are required"}})
+			return
+		}
+		result, err := application.ProductReadHandler.ExportSearchProducts(r.Context(), dto.SearchProductExportRequestDTO{
+			Cursor: r.URL.Query().Get("cursor"),
+			Limit:  intQuery(r, "limit", 500),
+		})
 		respond(w, result, err)
 	})
 	mux.HandleFunc("GET /api/v1/seller/products", func(w http.ResponseWriter, r *http.Request) {
@@ -342,6 +354,15 @@ func intQuery(r *http.Request, name string, fallback int) int {
 		return fallback
 	}
 	return value
+}
+
+func authorizedInternalService(r *http.Request, expected string) bool {
+	expected = strings.TrimSpace(expected)
+	if expected == "" {
+		return false
+	}
+	provided := strings.TrimSpace(r.Header.Get("X-Service-Token"))
+	return len(provided) == len(expected) && subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
 }
 
 func env(name, fallback string) string {

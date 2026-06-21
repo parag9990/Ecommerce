@@ -178,7 +178,8 @@ func (t *ZeroResultTracker) trackNow(ctx context.Context, event domain.ZeroResul
 	sendCtx, cancel := context.WithTimeout(ctx, t.sendTimeout)
 	defer cancel()
 
-	firstSeen, err := t.dedupe.MarkFirstSeen(sendCtx, event.DedupeKey(), t.dedupeTTL)
+	dedupeKey := event.DedupeKey()
+	firstSeen, err := t.dedupe.MarkFirstSeen(sendCtx, dedupeKey, t.dedupeTTL)
 	if err != nil {
 		t.logger.WarnContext(ctx, "search.zero_result.dedupe_failed",
 			slog.String("request_id", event.RequestID),
@@ -200,11 +201,15 @@ func (t *ZeroResultTracker) trackNow(ctx context.Context, event domain.ZeroResul
 	}
 
 	if err := t.sink.IngestSearchEvent(sendCtx, event); err != nil {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), t.sendTimeout)
+		cleanupErr := t.dedupe.Release(cleanupCtx, dedupeKey)
+		cleanupCancel()
 		t.logger.WarnContext(ctx, "search.zero_result.ingest_failed",
 			slog.String("request_id", event.RequestID),
 			slog.String("query_hash", event.QueryHash()),
 			slog.String("session_id_hash", event.SessionIDHash()),
 			slog.String("error", err.Error()),
+			slog.Any("dedupe_release_error", cleanupErr),
 		)
 		t.record(ctx, ZeroResultOutcomeFailed, "session_ingest_error", elapsedMS(started))
 		return

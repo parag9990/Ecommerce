@@ -126,6 +126,7 @@ func buildReindexUsecase(cfg config.Config, logger *slog.Logger) (*usecase.Reind
 		BaseURL:          cfg.Product.URL,
 		SearchExportPath: cfg.Product.SearchExportPath,
 		Timeout:          cfg.Product.SearchExportTimeout,
+		ServiceToken:     cfg.Product.ServiceToken,
 	}, nil)
 	if err != nil {
 		return nil, err

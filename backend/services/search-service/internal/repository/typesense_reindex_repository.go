@@ -120,6 +120,35 @@ func (r *TypesenseReindexRepository) SmokeSearch(ctx context.Context, collection
 	return nil
 }
 
+func (r *TypesenseReindexRepository) CopySynonyms(ctx context.Context, sourceCollection string, targetCollection string) error {
+	sourceCollection = strings.TrimSpace(sourceCollection)
+	targetCollection = strings.TrimSpace(targetCollection)
+	if sourceCollection == "" || targetCollection == "" {
+		return fmt.Errorf("%w: source and target collections are required", domain.ErrInvalidReindexRequest)
+	}
+	if sourceCollection == targetCollection {
+		return nil
+	}
+
+	items, err := r.client.Collection(sourceCollection).Synonyms().Retrieve(ctx)
+	if err != nil {
+		return fmt.Errorf("%w: list synonyms from %q: %v", domain.ErrSearchBackendUnavailable, sourceCollection, err)
+	}
+	for _, item := range items {
+		if item == nil || item.Id == nil || strings.TrimSpace(*item.Id) == "" {
+			continue
+		}
+		payload := &api.SearchSynonymSchema{
+			Root:     item.Root,
+			Synonyms: append([]string(nil), item.Synonyms...),
+		}
+		if _, err := r.client.Collection(targetCollection).Synonyms().Upsert(ctx, strings.TrimSpace(*item.Id), payload); err != nil {
+			return fmt.Errorf("%w: copy synonym %q to %q: %v", domain.ErrSearchBackendUnavailable, strings.TrimSpace(*item.Id), targetCollection, err)
+		}
+	}
+	return nil
+}
+
 func (r *TypesenseReindexRepository) SwapAlias(ctx context.Context, alias string, collection string) error {
 	alias = strings.TrimSpace(alias)
 	collection = strings.TrimSpace(collection)
@@ -127,7 +156,18 @@ func (r *TypesenseReindexRepository) SwapAlias(ctx context.Context, alias string
 		return fmt.Errorf("%w: alias and collection are required", domain.ErrInvalidReindexRequest)
 	}
 	if _, err := r.client.Aliases().Upsert(ctx, alias, &api.CollectionAliasSchema{CollectionName: collection}); err != nil {
-		return fmt.Errorf("%w: swap alias %q to %q: %v", domain.ErrSearchCollectionUnavailable, alias, collection, err)
+		if !isCollectionNameConflict(err) {
+			return fmt.Errorf("%w: swap alias %q to %q: %v", domain.ErrSearchCollectionUnavailable, alias, collection, err)
+		}
+		if _, retrieveErr := r.client.Collection(alias).Retrieve(ctx); retrieveErr != nil {
+			return fmt.Errorf("%w: verify legacy collection %q: %v", domain.ErrSearchCollectionUnavailable, alias, retrieveErr)
+		}
+		if _, deleteErr := r.client.Collection(alias).Delete(ctx); deleteErr != nil {
+			return fmt.Errorf("%w: remove legacy collection %q: %v", domain.ErrSearchCollectionUnavailable, alias, deleteErr)
+		}
+		if _, retryErr := r.client.Aliases().Upsert(ctx, alias, &api.CollectionAliasSchema{CollectionName: collection}); retryErr != nil {
+			return fmt.Errorf("%w: create alias %q after legacy migration: %v", domain.ErrSearchCollectionUnavailable, alias, retryErr)
+		}
 	}
 	return nil
 }
@@ -140,7 +180,13 @@ func (r *TypesenseReindexRepository) ResolveAlias(ctx context.Context, alias str
 	resolved, err := r.client.Alias(alias).Retrieve(ctx)
 	if err != nil {
 		if isTypesenseStatus(err, http.StatusNotFound) {
-			return "", nil
+			if _, collectionErr := r.client.Collection(alias).Retrieve(ctx); collectionErr == nil {
+				return alias, nil
+			} else if isTypesenseStatus(collectionErr, http.StatusNotFound) {
+				return "", nil
+			} else {
+				return "", fmt.Errorf("%w: resolve legacy collection %q: %v", domain.ErrSearchCollectionUnavailable, alias, collectionErr)
+			}
 		}
 		return "", fmt.Errorf("%w: resolve alias %q: %v", domain.ErrSearchCollectionUnavailable, alias, err)
 	}
@@ -148,6 +194,13 @@ func (r *TypesenseReindexRepository) ResolveAlias(ctx context.Context, alias str
 		return "", nil
 	}
 	return strings.TrimSpace(resolved.CollectionName), nil
+}
+
+func isCollectionNameConflict(err error) bool {
+	var httpErr *typesense.HTTPError
+	return errors.As(err, &httpErr) &&
+		httpErr.Status == http.StatusInternalServerError &&
+		strings.Contains(strings.ToLower(string(httpErr.Body)), "conflicts with an existing collection name")
 }
 
 func (r *TypesenseReindexRepository) CleanupOldCollections(ctx context.Context, prefix string, activeCollection string, preserveCollection string, retention time.Duration, now time.Time) ([]string, error) {

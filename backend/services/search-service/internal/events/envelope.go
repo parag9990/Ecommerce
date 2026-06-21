@@ -29,6 +29,9 @@ func DecodeProductEnvelope(raw []byte) (Envelope[ProductIndexPayload], error) {
 	if err := json.Unmarshal(raw, &envelope); err != nil {
 		return Envelope[ProductIndexPayload]{}, fmt.Errorf("%w: decode product envelope: %v", domain.ErrInvalidProductEvent, err)
 	}
+	if strings.TrimSpace(envelope.CorrelationID) == "" {
+		envelope.CorrelationID = strings.TrimSpace(envelope.RequestID)
+	}
 	return envelope, nil
 }
 

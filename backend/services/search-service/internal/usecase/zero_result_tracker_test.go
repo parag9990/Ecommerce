@@ -59,12 +59,16 @@ func TestZeroResultTrackerHandlesDedupeAndSinkFailure(t *testing.T) {
 
 	t.Run("sink", func(t *testing.T) {
 		metrics := &capturingZeroResultMetrics{}
-		tracker := newZeroResultTrackerForTest(t, &fakeZeroResultDedupe{firstSeen: true}, &fakeSessionSink{err: errors.New("session down")}, metrics)
+		dedupe := &fakeZeroResultDedupe{firstSeen: true}
+		tracker := newZeroResultTrackerForTest(t, dedupe, &fakeSessionSink{err: errors.New("session down")}, metrics)
 
 		tracker.trackNow(context.Background(), trackableZeroResultEvent())
 
 		if metrics.last.Outcome != ZeroResultOutcomeFailed || metrics.last.Reason != "session_ingest_error" {
 			t.Fatalf("metrics = %#v", metrics.last)
+		}
+		if dedupe.releasedKey == "" || dedupe.releasedKey != dedupe.key {
+			t.Fatalf("dedupe release = %q, marked = %q", dedupe.releasedKey, dedupe.key)
 		}
 	})
 }
@@ -115,10 +119,17 @@ func trackableZeroResultEvent() domain.ZeroResultSearchEvent {
 }
 
 type fakeZeroResultDedupe struct {
-	key       string
-	ttl       time.Duration
-	firstSeen bool
-	err       error
+	key         string
+	ttl         time.Duration
+	firstSeen   bool
+	err         error
+	releasedKey string
+	releaseErr  error
+}
+
+func (d *fakeZeroResultDedupe) Release(_ context.Context, key string) error {
+	d.releasedKey = key
+	return d.releaseErr
 }
 
 func (d *fakeZeroResultDedupe) MarkFirstSeen(_ context.Context, key string, ttl time.Duration) (bool, error) {

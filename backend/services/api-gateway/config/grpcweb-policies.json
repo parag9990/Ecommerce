@@ -1,6 +1,12 @@
 {
   "policies": [
     {
+      "full_method": "/ecommerce.search.v1.SearchService/Autocomplete",
+      "downstream": "search",
+      "auth_mode": "public",
+      "timeout": "500ms"
+    },
+    {
       "full_method": "/ecommerce.session.v1.SessionService/IngestEvent",
       "downstream": "session",
       "auth_mode": "optional",

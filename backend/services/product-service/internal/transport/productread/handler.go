@@ -59,6 +59,16 @@ func (h *Handler) BatchGetProducts(ctx context.Context, request dto.BatchGetProd
 	return &response, nil
 }
 
+func (h *Handler) ExportSearchProducts(ctx context.Context, request dto.SearchProductExportRequestDTO) (*dto.SearchProductExportResponseDTO, error) {
+	result, err := h.useCase.ExportSearchProducts(ctx, request.ToUseCase())
+	if err != nil {
+		h.logger.Error("search product export failed", "limit", request.Limit, "error", err)
+		return nil, err
+	}
+	response := dto.SearchProductExportFromUseCase(result)
+	return &response, nil
+}
+
 func (h *Handler) ListCategories(ctx context.Context, request dto.ListCategoriesRequestDTO) (*dto.CategoryListResponseDTO, error) {
 	categories, err := h.useCase.ListCategories(ctx, request.ToUseCase())
 	if err != nil {

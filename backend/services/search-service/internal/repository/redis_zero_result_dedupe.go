@@ -27,3 +27,10 @@ func (s *RedisZeroResultDedupeStore) MarkFirstSeen(ctx context.Context, key stri
 	}
 	return s.client.SetNX(ctx, key, "1", ttl)
 }
+
+func (s *RedisZeroResultDedupeStore) Release(ctx context.Context, key string) error {
+	if strings.TrimSpace(key) == "" {
+		return errors.New("zero-result dedupe key is required")
+	}
+	return s.client.Delete(ctx, key)
+}

@@ -12,6 +12,7 @@ import (
 
 const (
 	defaultHTTPAddress                       = ":8085"
+	defaultGRPCAddress                       = ":9085"
 	defaultShutdownTimeout                   = 10 * time.Second
 	defaultTypesenseHost                     = "localhost"
 	defaultTypesensePort                     = 8108
@@ -20,7 +21,8 @@ const (
 	defaultTypesensePopularQueriesCollection = "popular_queries"
 	defaultTypesenseRequestTimeout           = 300 * time.Millisecond
 	defaultProductServiceURL                 = "http://localhost:8082"
-	defaultProductServiceBatchGetPath        = "/internal/v1/products:batchGet"
+	defaultProductServiceBatchGetPath        = "/internal/v1/products/batch"
+	defaultProductServiceReadyPath           = "/readyz"
 	defaultProductServiceSearchExportPath    = "/internal/v1/products/search-export"
 	defaultProductServiceTimeout             = 300 * time.Millisecond
 	defaultProductServiceSearchExportTimeout = 2 * time.Second
@@ -65,6 +67,7 @@ const (
 
 type Config struct {
 	HTTP      HTTPConfig
+	GRPC      GRPCConfig
 	Typesense TypesenseConfig
 	Search    SearchConfig
 	Admin     AdminConfig
@@ -74,6 +77,10 @@ type Config struct {
 	Queue     QueueConfig
 	Redis     RedisConfig
 	Reindex   ReindexConfig
+}
+
+type GRPCConfig struct {
+	Address string
 }
 
 type HTTPConfig struct {
@@ -121,7 +128,9 @@ type AdminConfig struct {
 type ProductServiceConfig struct {
 	URL                 string
 	BatchGetPath        string
+	ReadyPath           string
 	SearchExportPath    string
+	ServiceToken        string
 	Timeout             time.Duration
 	SearchExportTimeout time.Duration
 }
@@ -236,6 +245,9 @@ func Load() (Config, error) {
 			IdleTimeout:     envDuration("SEARCH_HTTP_IDLE_TIMEOUT", 60*time.Second),
 			ShutdownTimeout: envDuration("SEARCH_SHUTDOWN_TIMEOUT", defaultShutdownTimeout),
 		},
+		GRPC: GRPCConfig{
+			Address: envString("SEARCH_GRPC_ADDR", defaultGRPCAddress),
+		},
 		Typesense: TypesenseConfig{
 			URL:                      envString("TYPESENSE_URL", ""),
 			Host:                     envString("TYPESENSE_HOST", defaultTypesenseHost),
@@ -270,7 +282,9 @@ func Load() (Config, error) {
 		Product: ProductServiceConfig{
 			URL:                 envString("PRODUCT_SERVICE_URL", defaultProductServiceURL),
 			BatchGetPath:        envString("PRODUCT_SERVICE_BATCH_GET_PATH", defaultProductServiceBatchGetPath),
+			ReadyPath:           envString("PRODUCT_SERVICE_READY_PATH", defaultProductServiceReadyPath),
 			SearchExportPath:    envString("PRODUCT_SERVICE_SEARCH_EXPORT_PATH", defaultProductServiceSearchExportPath),
+			ServiceToken:        strings.TrimSpace(os.Getenv("PRODUCT_SERVICE_TOKEN")),
 			Timeout:             envDurationMS("PRODUCT_SERVICE_TIMEOUT_MS", defaultProductServiceTimeout),
 			SearchExportTimeout: envDurationMS("PRODUCT_SERVICE_SEARCH_EXPORT_TIMEOUT_MS", defaultProductServiceSearchExportTimeout),
 		},
@@ -339,6 +353,9 @@ func (c Config) Validate() error {
 	}
 	if c.HTTP.ShutdownTimeout <= 0 {
 		return errors.New("SEARCH_SHUTDOWN_TIMEOUT must be greater than zero")
+	}
+	if strings.TrimSpace(c.GRPC.Address) == "" {
+		return errors.New("SEARCH_GRPC_ADDR cannot be empty")
 	}
 	if err := c.Typesense.Validate(); err != nil {
 		return err
@@ -493,6 +510,9 @@ func (c ProductServiceConfig) Validate() error {
 	}
 	if strings.TrimSpace(c.BatchGetPath) == "" {
 		return errors.New("PRODUCT_SERVICE_BATCH_GET_PATH cannot be empty")
+	}
+	if strings.TrimSpace(c.ReadyPath) == "" {
+		return errors.New("PRODUCT_SERVICE_READY_PATH cannot be empty")
 	}
 	if strings.TrimSpace(c.SearchExportPath) == "" {
 		return errors.New("PRODUCT_SERVICE_SEARCH_EXPORT_PATH cannot be empty")

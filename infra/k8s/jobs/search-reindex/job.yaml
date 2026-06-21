@@ -21,9 +21,9 @@ spec:
       restartPolicy: Never
       containers:
         - name: reindex
-          image: registry.example.com/search-service:latest
+          image: search-service:dev
           imagePullPolicy: IfNotPresent
-          command: ["/search-reindex"]
+          command: ["/app/search-reindex"]
           args:
             - "--mode=alias"
             - "--batch-size=500"

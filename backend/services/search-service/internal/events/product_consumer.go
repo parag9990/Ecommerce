@@ -8,6 +8,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -26,6 +27,20 @@ type ProcessedEventStore interface {
 	MarkProcessed(ctx context.Context, eventID string) error
 }
 
+type ProductConsumerMetricsRecorder interface {
+	RecordProductEvent(ctx context.Context, eventType string, outcome string)
+	ObserveProductEventLag(ctx context.Context, eventType string, lag time.Duration)
+	ObserveProductIndexDuration(ctx context.Context, eventType string, outcome string, duration time.Duration)
+}
+
+type NopProductConsumerMetricsRecorder struct{}
+
+func (NopProductConsumerMetricsRecorder) RecordProductEvent(context.Context, string, string) {}
+func (NopProductConsumerMetricsRecorder) ObserveProductEventLag(context.Context, string, time.Duration) {
+}
+func (NopProductConsumerMetricsRecorder) ObserveProductIndexDuration(context.Context, string, string, time.Duration) {
+}
+
 type RabbitMQConsumerConfig struct {
 	URL                string
 	Exchange           string
@@ -40,6 +55,7 @@ type RabbitMQConsumerConfig struct {
 	RetryBaseDelay     time.Duration
 	RetryMaxDelay      time.Duration
 	MessageTimeout     time.Duration
+	Metrics            ProductConsumerMetricsRecorder
 }
 
 type RabbitMQProductConsumer struct {
@@ -47,6 +63,7 @@ type RabbitMQProductConsumer struct {
 	indexer    ProductIndexer
 	eventStore ProcessedEventStore
 	logger     *slog.Logger
+	connected  atomic.Bool
 }
 
 func NewRabbitMQProductConsumer(cfg RabbitMQConsumerConfig, indexer ProductIndexer, eventStore ProcessedEventStore, logger *slog.Logger) (*RabbitMQProductConsumer, error) {
@@ -62,6 +79,9 @@ func NewRabbitMQProductConsumer(cfg RabbitMQConsumerConfig, indexer ProductIndex
 	}
 	if logger == nil {
 		logger = slog.Default()
+	}
+	if cfg.Metrics == nil {
+		cfg.Metrics = NopProductConsumerMetricsRecorder{}
 	}
 	return &RabbitMQProductConsumer{
 		cfg:        cfg,
@@ -115,6 +135,8 @@ func (c *RabbitMQProductConsumer) runOnce(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("start rabbitmq consumer: %w", err)
 	}
+	c.connected.Store(true)
+	defer c.connected.Store(false)
 
 	c.logger.InfoContext(ctx, "search.product_consumer.started",
 		slog.String("exchange", c.cfg.Exchange),
@@ -139,6 +161,10 @@ func (c *RabbitMQProductConsumer) runOnce(ctx context.Context) error {
 			c.processDelivery(ctx, channel, delivery)
 		}
 	}
+}
+
+func (c *RabbitMQProductConsumer) Ready() bool {
+	return c != nil && c.connected.Load()
 }
 
 func (c *RabbitMQProductConsumer) setupTopology(channel *amqp.Channel) error {
@@ -183,6 +209,9 @@ func (c *RabbitMQProductConsumer) processDelivery(parent context.Context, channe
 		c.handleFailure(parent, channel, delivery, envelope, err, true)
 		return
 	}
+	if lag := time.Since(envelope.OccurredAt); lag >= 0 {
+		c.cfg.Metrics.ObserveProductEventLag(messageCtx, envelope.EventType, lag)
+	}
 
 	processed, err := c.eventStore.WasProcessed(messageCtx, envelope.EventID)
 	if err != nil {
@@ -190,6 +219,7 @@ func (c *RabbitMQProductConsumer) processDelivery(parent context.Context, channe
 		return
 	}
 	if processed {
+		c.cfg.Metrics.RecordProductEvent(messageCtx, envelope.EventType, "duplicate")
 		c.logger.InfoContext(messageCtx, "search.product_consumer.duplicate_acked",
 			slog.String("event_id", envelope.EventID),
 			slog.String("event_type", envelope.EventType),
@@ -200,11 +230,14 @@ func (c *RabbitMQProductConsumer) processDelivery(parent context.Context, channe
 		return
 	}
 
+	indexStarted := time.Now()
 	result, err := c.indexer.Handle(messageCtx, envelope)
 	if err != nil {
+		c.cfg.Metrics.ObserveProductIndexDuration(messageCtx, envelope.EventType, "failed", time.Since(indexStarted))
 		c.handleFailure(parent, channel, delivery, envelope, err, IsPermanentProductIndexError(err))
 		return
 	}
+	c.cfg.Metrics.ObserveProductIndexDuration(messageCtx, envelope.EventType, "success", time.Since(indexStarted))
 	if err := c.eventStore.MarkProcessed(messageCtx, envelope.EventID); err != nil {
 		c.handleFailure(parent, channel, delivery, envelope, err, false)
 		return
@@ -217,6 +250,7 @@ func (c *RabbitMQProductConsumer) processDelivery(parent context.Context, channe
 		slog.String("action", result.Action),
 		slog.String("trace_id", envelope.TraceID),
 	)
+	c.cfg.Metrics.RecordProductEvent(messageCtx, envelope.EventType, "indexed")
 	ackDelivery(delivery, c.logger)
 }
 
@@ -243,6 +277,7 @@ func (c *RabbitMQProductConsumer) handleFailure(ctx context.Context, channel *am
 			slog.Int("retry_count", retryCount),
 			slog.String("error", err.Error()),
 		)
+		c.cfg.Metrics.RecordProductEvent(ctx, envelope.EventType, "dead_lettered")
 		ackDelivery(delivery, c.logger)
 		return
 	}
@@ -257,6 +292,7 @@ func (c *RabbitMQProductConsumer) handleFailure(ctx context.Context, channel *am
 		slog.Duration("delay", delay),
 		slog.String("error", err.Error()),
 	)
+	c.cfg.Metrics.RecordProductEvent(ctx, envelope.EventType, "retry_scheduled")
 	if !sleepContext(ctx, delay) {
 		nackDelivery(delivery, true, c.logger)
 		return
