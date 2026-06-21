@@ -51,6 +51,7 @@ type HTTPConfig struct {
 type DownstreamConfig struct {
 	CartBaseURL          string
 	ProductBaseURL       string
+	ProductServiceToken  string
 	PaymentBaseURL       string
 	PaymentInternalToken string
 	PaymentEventsToken   string
@@ -161,6 +162,7 @@ func Load() (Config, error) {
 		Downstream: DownstreamConfig{
 			CartBaseURL:           envValue("ORDER_CART_BASE_URL", "http://cart-service:8083"),
 			ProductBaseURL:        envValue("ORDER_PRODUCT_BASE_URL", "http://product-service:8082"),
+			ProductServiceToken:   strings.TrimSpace(os.Getenv("ORDER_PRODUCT_SERVICE_TOKEN")),
 			PaymentBaseURL:        envValue("ORDER_PAYMENT_BASE_URL", "http://payment-service:8080"),
 			PaymentInternalToken: strings.TrimSpace(os.Getenv("ORDER_PAYMENT_INTERNAL_TOKEN")),
 			PaymentEventsToken:   strings.TrimSpace(os.Getenv("ORDER_PAYMENT_EVENTS_TOKEN")),
@@ -234,6 +236,9 @@ func (c Config) Validate() error {
 	}
 	if len(c.Downstream.PaymentInternalToken) < 32 {
 		return errors.New("ORDER_PAYMENT_INTERNAL_TOKEN must be at least 32 characters")
+	}
+	if strings.TrimSpace(c.Downstream.ProductServiceToken) == "" {
+		return errors.New("ORDER_PRODUCT_SERVICE_TOKEN is required")
 	}
 	if len(c.Downstream.PaymentEventsToken) < 32 {
 		return errors.New("ORDER_PAYMENT_EVENTS_TOKEN must be at least 32 characters")

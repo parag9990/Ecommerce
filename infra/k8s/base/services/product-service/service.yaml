@@ -12,3 +12,4 @@ spec:
     app.kubernetes.io/name: product-service
   ports:
     - { name: http, port: 8082, targetPort: http, protocol: TCP }
+    - { name: grpc, port: 9092, targetPort: grpc, protocol: TCP }

@@ -13,5 +13,5 @@ RUN addgroup -S app && adduser -S -G app app
 WORKDIR /app
 COPY --from=build /out/service /app/service
 USER app
-EXPOSE 8082
+EXPOSE 8082 9092
 ENTRYPOINT ["/app/service"]

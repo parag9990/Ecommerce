@@ -16,16 +16,21 @@ import (
 
 const DefaultMongoDatabaseName = "product_db"
 
+const defaultInternalServiceToken = "local_product_service_token"
+
 type Config struct {
-	ServiceName string
-	Environment string
-	LogLevel    slog.Level
-	Catalog     CatalogConfig
-	Read        ReadConfig
-	CMS         CMSConfig
-	Mongo       MongoConfig
-	Inventory   InventoryConfig
-	Events      ProductEventsConfig
+	ServiceName          string
+	Environment          string
+	LogLevel             slog.Level
+	HTTPAddress          string
+	GRPCAddress          string
+	InternalServiceToken string
+	Catalog              CatalogConfig
+	Read                 ReadConfig
+	CMS                  CMSConfig
+	Mongo                MongoConfig
+	Inventory            InventoryConfig
+	Events               ProductEventsConfig
 }
 
 type CatalogConfig struct {
@@ -53,6 +58,7 @@ type InventoryConfig struct {
 	MinReservationTTLSeconds     int
 	MaxReservationTTLSeconds     int
 	ExpiryBatchLimit             int64
+	ExpiryIntervalSeconds        int
 }
 
 type ProductEventsConfig struct {
@@ -77,7 +83,10 @@ type CMSConfig struct {
 func Load() (Config, error) {
 	cfg := Default()
 	cfg.ServiceName = stringEnv("SERVICE_NAME", cfg.ServiceName)
-	cfg.Environment = stringEnv("ENVIRONMENT", cfg.Environment)
+	cfg.Environment = stringEnv("ENVIRONMENT", stringEnv("APP_ENV", cfg.Environment))
+	cfg.HTTPAddress = stringEnv("PRODUCT_HTTP_ADDR", cfg.HTTPAddress)
+	cfg.GRPCAddress = stringEnv("PRODUCT_GRPC_ADDR", cfg.GRPCAddress)
+	cfg.InternalServiceToken = stringEnv("PRODUCT_INTERNAL_SERVICE_TOKEN", cfg.InternalServiceToken)
 	cfg.Catalog.DefaultCurrency = stringEnv("PRODUCT_DEFAULT_CURRENCY", cfg.Catalog.DefaultCurrency)
 	cfg.Catalog.StrictAttributeSchema = boolEnv("PRODUCT_STRICT_ATTRIBUTE_SCHEMA", cfg.Catalog.StrictAttributeSchema)
 	cfg.Catalog.RequirePrimaryImageForPublish = boolEnv("PRODUCT_REQUIRE_PRIMARY_IMAGE_FOR_PUBLISH", cfg.Catalog.RequirePrimaryImageForPublish)
@@ -96,6 +105,7 @@ func Load() (Config, error) {
 	cfg.Inventory.MinReservationTTLSeconds = intEnv("PRODUCT_INVENTORY_MIN_TTL_SECONDS", cfg.Inventory.MinReservationTTLSeconds)
 	cfg.Inventory.MaxReservationTTLSeconds = intEnv("PRODUCT_INVENTORY_MAX_TTL_SECONDS", cfg.Inventory.MaxReservationTTLSeconds)
 	cfg.Inventory.ExpiryBatchLimit = int64Env("PRODUCT_INVENTORY_EXPIRY_BATCH_LIMIT", cfg.Inventory.ExpiryBatchLimit)
+	cfg.Inventory.ExpiryIntervalSeconds = intEnv("PRODUCT_INVENTORY_EXPIRY_INTERVAL_SECONDS", cfg.Inventory.ExpiryIntervalSeconds)
 	cfg.Events.Enabled = boolEnv("PRODUCT_EVENTS_ENABLED", cfg.Events.Enabled)
 	cfg.Events.Topic = stringEnv("PRODUCT_EVENTS_TOPIC", cfg.Events.Topic)
 	cfg.Events.Broker = stringEnv("PRODUCT_EVENT_BROKER", cfg.Events.Broker)
@@ -122,9 +132,12 @@ func Load() (Config, error) {
 func Default() Config {
 	options := domain.DefaultValidationOptions()
 	return Config{
-		ServiceName: "product-service",
-		Environment: "local",
-		LogLevel:    slog.LevelInfo,
+		ServiceName:          "product-service",
+		Environment:          "local",
+		LogLevel:             slog.LevelInfo,
+		HTTPAddress:          ":8082",
+		GRPCAddress:          ":9092",
+		InternalServiceToken: defaultInternalServiceToken,
 		Catalog: CatalogConfig{
 			DefaultCurrency:               options.DefaultCurrency,
 			StrictAttributeSchema:         options.StrictAttributeSchema,
@@ -152,6 +165,7 @@ func Default() Config {
 			MinReservationTTLSeconds:     30,
 			MaxReservationTTLSeconds:     3600,
 			ExpiryBatchLimit:             100,
+			ExpiryIntervalSeconds:        30,
 		},
 		Events: ProductEventsConfig{
 			Enabled:              true,
@@ -174,6 +188,18 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.Environment) == "" {
 		return fmt.Errorf("ENVIRONMENT is required")
+	}
+	if strings.TrimSpace(c.HTTPAddress) == "" {
+		return fmt.Errorf("PRODUCT_HTTP_ADDR is required")
+	}
+	if strings.TrimSpace(c.GRPCAddress) == "" {
+		return fmt.Errorf("PRODUCT_GRPC_ADDR is required")
+	}
+	if strings.TrimSpace(c.InternalServiceToken) == "" {
+		return fmt.Errorf("PRODUCT_INTERNAL_SERVICE_TOKEN is required")
+	}
+	if strings.EqualFold(c.Environment, "production") && c.InternalServiceToken == defaultInternalServiceToken {
+		return fmt.Errorf("PRODUCT_INTERNAL_SERVICE_TOKEN must be changed in production")
 	}
 	if c.Catalog.MaxImagesPerProduct <= 0 {
 		return fmt.Errorf("PRODUCT_MAX_IMAGES_PER_PRODUCT must be greater than zero")
@@ -216,6 +242,9 @@ func (c Config) Validate() error {
 	}
 	if c.Inventory.ExpiryBatchLimit <= 0 {
 		return fmt.Errorf("PRODUCT_INVENTORY_EXPIRY_BATCH_LIMIT must be greater than zero")
+	}
+	if c.Inventory.ExpiryIntervalSeconds <= 0 {
+		return fmt.Errorf("PRODUCT_INVENTORY_EXPIRY_INTERVAL_SECONDS must be greater than zero")
 	}
 	if c.Events.Enabled {
 		if strings.TrimSpace(c.Events.Topic) == "" {

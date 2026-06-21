@@ -6,6 +6,7 @@ import (
 )
 
 func TestLoadCheckoutConfig(t *testing.T) {
+	t.Setenv("ORDER_PRODUCT_SERVICE_TOKEN", "product-service-token")
 	t.Setenv("ORDER_MYSQL_DSN", "user:password@tcp(localhost:3306)/order_db")
 	t.Setenv("ORDER_INVENTORY_RESERVATION_TTL", "12m")
 	t.Setenv("ORDER_INVENTORY_RELEASE_TIMEOUT", "750ms")
@@ -58,6 +59,7 @@ func TestLoadCheckoutConfig(t *testing.T) {
 }
 
 func TestLoadRejectsMissingDatabaseDSNAndInvalidDuration(t *testing.T) {
+	t.Setenv("ORDER_PRODUCT_SERVICE_TOKEN", "product-service-token")
 	t.Setenv("ORDER_MYSQL_DSN", "")
 	t.Setenv("ORDER_PAYMENT_RETURN_URL", "https://shop.example.test/checkout/result")
 	t.Setenv("ORDER_GRPC_TRUSTED_CALLER_TOKEN", "trusted-caller-token-at-least-32-chars")

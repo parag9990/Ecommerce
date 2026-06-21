@@ -47,3 +47,16 @@ type InventoryReservationRepository interface {
 type InventorySnapshotRepository interface {
 	CreateInventorySnapshot(ctx context.Context, snapshot domain.InventorySnapshot) error
 }
+
+// AtomicInventoryRepository keeps multi-item stock mutations and the reservation
+// state transition in one MongoDB transaction.
+type AtomicInventoryRepository interface {
+	ReserveInventoryAtomic(ctx context.Context, reservation *domain.InventoryReservation) ([]InventoryStockMutation, error)
+	FinalizeInventoryReservationAtomic(
+		ctx context.Context,
+		reservation domain.InventoryReservation,
+		status domain.InventoryReservationStatus,
+		reason string,
+		at time.Time,
+	) ([]InventoryStockMutation, error)
+}

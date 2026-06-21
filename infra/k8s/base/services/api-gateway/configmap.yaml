@@ -32,7 +32,7 @@ data:
   JWT_JWKS_URL: http://auth-service.core.svc.cluster.local:8081/.well-known/jwks.json
   AUTH_GRPC_ADDR: auth-service.core.svc.cluster.local:8081
   USER_GRPC_ADDR: user-service.core.svc.cluster.local:50052
-  PRODUCT_GRPC_ADDR: product-service.core.svc.cluster.local:8082
+  PRODUCT_GRPC_ADDR: product-service.core.svc.cluster.local:9092
   CART_GRPC_ADDR: cart-service.core.svc.cluster.local:8083
   WISHLIST_GRPC_ADDR: wishlist-service.core.svc.cluster.local:8084
   ORDER_GRPC_ADDR: order-service.core.svc.cluster.local:8090

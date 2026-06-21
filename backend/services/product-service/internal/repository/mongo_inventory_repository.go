@@ -14,6 +14,78 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
+func (r *MongoProductRepository) ReserveInventoryAtomic(
+	ctx context.Context,
+	reservation *domain.InventoryReservation,
+) ([]InventoryStockMutation, error) {
+	if reservation == nil {
+		return nil, fmt.Errorf("inventory reservation is required")
+	}
+	mutations := make([]InventoryStockMutation, 0, len(reservation.Items))
+	err := r.withTransaction(ctx, func(tx context.Context) error {
+		for index := range reservation.Items {
+			item := &reservation.Items[index]
+			mutation, err := r.ReserveVariant(tx, item.ProductID, item.VariantID, item.Quantity, reservation.CreatedAt)
+			if err != nil {
+				return err
+			}
+			item.SKU = mutation.SKU
+			item.SellerID = mutation.SellerID
+			mutations = append(mutations, mutation)
+		}
+		if report := reservation.Validate(); report.HasErrors() {
+			return domain.ValidationError{Report: report}
+		}
+		return r.CreateInventoryReservation(tx, reservation)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mutations, nil
+}
+
+func (r *MongoProductRepository) FinalizeInventoryReservationAtomic(
+	ctx context.Context,
+	reservation domain.InventoryReservation,
+	terminalStatus domain.InventoryReservationStatus,
+	reason string,
+	at time.Time,
+) ([]InventoryStockMutation, error) {
+	mutations := make([]InventoryStockMutation, 0, len(reservation.Items))
+	err := r.withTransaction(ctx, func(tx context.Context) error {
+		for _, item := range reservation.Items {
+			var mutation InventoryStockMutation
+			var err error
+			switch terminalStatus {
+			case domain.ReservationStatusCommitted:
+				mutation, err = r.CommitVariant(tx, item.ProductID, item.VariantID, item.Quantity, at)
+			case domain.ReservationStatusReleased, domain.ReservationStatusExpired:
+				mutation, err = r.ReleaseVariant(tx, item.ProductID, item.VariantID, item.Quantity, at)
+			default:
+				return fmt.Errorf("unsupported terminal reservation status %q", terminalStatus)
+			}
+			if err != nil {
+				return err
+			}
+			mutations = append(mutations, mutation)
+		}
+		switch terminalStatus {
+		case domain.ReservationStatusCommitted:
+			return r.MarkReservationCommitted(tx, reservation.ID, at)
+		case domain.ReservationStatusReleased:
+			return r.MarkReservationReleased(tx, reservation.ID, reason, at)
+		case domain.ReservationStatusExpired:
+			return r.MarkReservationExpired(tx, reservation.ID, reason, at)
+		default:
+			return fmt.Errorf("unsupported terminal reservation status %q", terminalStatus)
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mutations, nil
+}
+
 func (r *MongoProductRepository) ReserveVariant(
 	ctx context.Context,
 	productID string,

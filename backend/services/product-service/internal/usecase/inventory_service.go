@@ -80,6 +80,7 @@ type InventoryService struct {
 	options       InventoryServiceOptions
 	productEvents ProductEventRecorder
 	productReader repository.ProductFinder
+	atomic        repository.AtomicInventoryRepository
 }
 
 type reservedInventoryItem struct {
@@ -115,7 +116,7 @@ func NewInventoryService(
 		logger = slog.Default()
 	}
 	options = normalizeInventoryOptions(options)
-	return &InventoryService{
+	service := &InventoryService{
 		stock:        stock,
 		reservations: reservations,
 		snapshots:    snapshots,
@@ -123,7 +124,11 @@ func NewInventoryService(
 		clock:        clock,
 		logger:       logger,
 		options:      options,
-	}, nil
+	}
+	if atomic, ok := stock.(repository.AtomicInventoryRepository); ok {
+		service.atomic = atomic
+	}
+	return service, nil
 }
 
 func (s *InventoryService) EnableProductEventRecording(
@@ -156,49 +161,25 @@ func (s *InventoryService) ReserveInventory(
 		return nil, fmt.Errorf("find existing inventory reservation: %w", err)
 	}
 
-	reservedItems := make([]reservedInventoryItem, 0, len(request.Items))
-	for _, item := range request.Items {
-		mutation, err := s.stock.ReserveVariant(ctx, item.ProductID, item.VariantID, item.Quantity, now)
-		if err != nil {
-			s.rollbackReservedItems(ctx, reservedItems, now, "reserve_failed")
-			return nil, s.mapStockMutationError(err)
-		}
-		reservedItems = append(reservedItems, reservedInventoryItem{
-			item: domain.InventoryReservationItem{
-				ProductID: mutation.ProductID,
-				VariantID: mutation.VariantID,
-				SKU:       mutation.SKU,
-				SellerID:  mutation.SellerID,
-				Quantity:  item.Quantity,
-			},
-			mutation: mutation,
-		})
-	}
-
 	reservation := domain.InventoryReservation{
 		ID:             s.ids.NewInventoryReservationID(),
 		OrderID:        request.OrderID,
 		IdempotencyKey: request.IdempotencyKey,
 		Status:         domain.ReservationStatusReserved,
-		Items:          reservationItems(reservedItems),
+		Items:          inventoryReservationItems(request.Items),
 		ExpiresAt:      now.Add(ttl),
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
-	if report := reservation.Validate(); report.HasErrors() {
-		s.rollbackReservedItems(ctx, reservedItems, now, "reservation_validation_failed")
-		return nil, validationFailed(report)
-	}
-
-	if err := s.reservations.CreateInventoryReservation(ctx, &reservation); err != nil {
-		s.rollbackReservedItems(ctx, reservedItems, now, "reservation_create_failed")
+	reservedItems, err := s.reserveItems(ctx, &reservation, now)
+	if err != nil {
 		if errors.Is(err, repository.ErrDuplicateKey) {
 			existing, findErr := s.reservations.FindReservationByOrderID(ctx, request.OrderID)
 			if findErr == nil {
 				return s.reserveResultForExisting(ctx, *existing, now)
 			}
 		}
-		return nil, fmt.Errorf("create inventory reservation: %w", err)
+		return nil, s.mapStockMutationError(err)
 	}
 
 	for _, item := range reservedItems {
@@ -282,20 +263,12 @@ func (s *InventoryService) CommitInventory(ctx context.Context, request Inventor
 		return serviceError(ErrorKindFailedPrecondition, ErrorCodeReservationExpired, "reservation has expired", nil)
 	}
 
-	mutations := make([]repository.InventoryStockMutation, 0, len(reservation.Items))
-	for _, item := range reservation.Items {
-		mutation, err := s.stock.CommitVariant(ctx, item.ProductID, item.VariantID, item.Quantity, now)
-		if err != nil {
-			return s.mapStockMutationError(err)
-		}
-		mutations = append(mutations, mutation)
-	}
-
-	if err := s.reservations.MarkReservationCommitted(ctx, reservation.ID, now); err != nil {
+	mutations, err := s.finalizeReservation(ctx, *reservation, domain.ReservationStatusCommitted, normalizeReason(request.Reason, "payment_success"), now)
+	if err != nil {
 		if s.terminalStatusMatches(ctx, reservation.ID, domain.ReservationStatusCommitted) {
 			return nil
 		}
-		return s.mapReservationWriteError(err, "commit inventory reservation")
+		return s.mapStockMutationError(err)
 	}
 
 	for _, mutation := range mutations {
@@ -417,16 +390,8 @@ func (s *InventoryService) releaseReservation(
 	reason string,
 	now time.Time,
 ) error {
-	mutations := make([]repository.InventoryStockMutation, 0, len(reservation.Items))
-	for _, item := range reservation.Items {
-		mutation, err := s.stock.ReleaseVariant(ctx, item.ProductID, item.VariantID, item.Quantity, now)
-		if err != nil {
-			return s.mapStockMutationError(err)
-		}
-		mutations = append(mutations, mutation)
-	}
-
-	if err := s.reservations.MarkReservationReleased(ctx, reservation.ID, reason, now); err != nil {
+	mutations, err := s.finalizeReservation(ctx, reservation, domain.ReservationStatusReleased, reason, now)
+	if err != nil {
 		if s.terminalStatusMatches(ctx, reservation.ID, domain.ReservationStatusReleased) ||
 			s.terminalStatusMatches(ctx, reservation.ID, domain.ReservationStatusExpired) {
 			return nil
@@ -434,7 +399,7 @@ func (s *InventoryService) releaseReservation(
 		if s.terminalStatusMatches(ctx, reservation.ID, domain.ReservationStatusCommitted) {
 			return serviceError(ErrorKindFailedPrecondition, ErrorCodeReservationAlreadyCommitted, "committed reservation cannot be released", nil)
 		}
-		return s.mapReservationWriteError(err, "release inventory reservation")
+		return s.mapStockMutationError(err)
 	}
 
 	for _, mutation := range mutations {
@@ -452,21 +417,13 @@ func (s *InventoryService) expireReservation(ctx context.Context, reservation do
 		return nil
 	}
 	reason := "reservation_expired"
-	mutations := make([]repository.InventoryStockMutation, 0, len(reservation.Items))
-	for _, item := range reservation.Items {
-		mutation, err := s.stock.ReleaseVariant(ctx, item.ProductID, item.VariantID, item.Quantity, now)
-		if err != nil {
-			return s.mapStockMutationError(err)
-		}
-		mutations = append(mutations, mutation)
-	}
-
-	if err := s.reservations.MarkReservationExpired(ctx, reservation.ID, reason, now); err != nil {
+	mutations, err := s.finalizeReservation(ctx, reservation, domain.ReservationStatusExpired, reason, now)
+	if err != nil {
 		if s.terminalStatusMatches(ctx, reservation.ID, domain.ReservationStatusExpired) ||
 			s.terminalStatusMatches(ctx, reservation.ID, domain.ReservationStatusReleased) {
 			return nil
 		}
-		return s.mapReservationWriteError(err, "expire inventory reservation")
+		return s.mapStockMutationError(err)
 	}
 	for _, mutation := range mutations {
 		s.writeInventorySnapshot(ctx, reservation, mutation, domain.InventorySnapshotTypeRelease, reason, now)
@@ -475,6 +432,91 @@ func (s *InventoryService) expireReservation(ctx context.Context, reservation do
 		return err
 	}
 	return nil
+}
+
+func (s *InventoryService) reserveItems(
+	ctx context.Context,
+	reservation *domain.InventoryReservation,
+	now time.Time,
+) ([]reservedInventoryItem, error) {
+	if s.atomic != nil {
+		mutations, err := s.atomic.ReserveInventoryAtomic(ctx, reservation)
+		if err != nil {
+			return nil, err
+		}
+		items := make([]reservedInventoryItem, 0, len(mutations))
+		for index, mutation := range mutations {
+			items = append(items, reservedInventoryItem{item: reservation.Items[index], mutation: mutation})
+		}
+		return items, nil
+	}
+
+	items := make([]reservedInventoryItem, 0, len(reservation.Items))
+	for _, item := range reservation.Items {
+		mutation, err := s.stock.ReserveVariant(ctx, item.ProductID, item.VariantID, item.Quantity, now)
+		if err != nil {
+			s.rollbackReservedItems(ctx, items, now, "reserve_failed")
+			return nil, err
+		}
+		items = append(items, reservedInventoryItem{
+			item: domain.InventoryReservationItem{
+				ProductID: mutation.ProductID, VariantID: mutation.VariantID, SKU: mutation.SKU,
+				SellerID: mutation.SellerID, Quantity: item.Quantity,
+			},
+			mutation: mutation,
+		})
+	}
+	reservation.Items = reservationItems(items)
+	if report := reservation.Validate(); report.HasErrors() {
+		s.rollbackReservedItems(ctx, items, now, "reservation_validation_failed")
+		return nil, validationFailed(report)
+	}
+	if err := s.reservations.CreateInventoryReservation(ctx, reservation); err != nil {
+		s.rollbackReservedItems(ctx, items, now, "reservation_create_failed")
+		return nil, err
+	}
+	return items, nil
+}
+
+func (s *InventoryService) finalizeReservation(
+	ctx context.Context,
+	reservation domain.InventoryReservation,
+	terminalStatus domain.InventoryReservationStatus,
+	reason string,
+	now time.Time,
+) ([]repository.InventoryStockMutation, error) {
+	if s.atomic != nil {
+		return s.atomic.FinalizeInventoryReservationAtomic(ctx, reservation, terminalStatus, reason, now)
+	}
+	mutations := make([]repository.InventoryStockMutation, 0, len(reservation.Items))
+	for _, item := range reservation.Items {
+		var mutation repository.InventoryStockMutation
+		var err error
+		if terminalStatus == domain.ReservationStatusCommitted {
+			mutation, err = s.stock.CommitVariant(ctx, item.ProductID, item.VariantID, item.Quantity, now)
+		} else {
+			mutation, err = s.stock.ReleaseVariant(ctx, item.ProductID, item.VariantID, item.Quantity, now)
+		}
+		if err != nil {
+			return nil, err
+		}
+		mutations = append(mutations, mutation)
+	}
+	var err error
+	switch terminalStatus {
+	case domain.ReservationStatusCommitted:
+		err = s.reservations.MarkReservationCommitted(ctx, reservation.ID, now)
+	case domain.ReservationStatusReleased:
+		err = s.reservations.MarkReservationReleased(ctx, reservation.ID, reason, now)
+	case domain.ReservationStatusExpired:
+		err = s.reservations.MarkReservationExpired(ctx, reservation.ID, reason, now)
+	default:
+		err = fmt.Errorf("unsupported terminal reservation status %q", terminalStatus)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return mutations, nil
 }
 
 func (s *InventoryService) rollbackReservedItems(
@@ -572,6 +614,18 @@ func reservationItems(items []reservedInventoryItem) []domain.InventoryReservati
 	result := make([]domain.InventoryReservationItem, 0, len(items))
 	for _, item := range items {
 		result = append(result, item.item)
+	}
+	return result
+}
+
+func inventoryReservationItems(items []ReserveInventoryItem) []domain.InventoryReservationItem {
+	result := make([]domain.InventoryReservationItem, 0, len(items))
+	for _, item := range items {
+		result = append(result, domain.InventoryReservationItem{
+			ProductID: item.ProductID,
+			VariantID: item.VariantID,
+			Quantity:  item.Quantity,
+		})
 	}
 	return result
 }

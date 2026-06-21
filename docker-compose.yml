@@ -35,6 +35,15 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: local_admin
       MONGO_INITDB_ROOT_PASSWORD: local_mongo_password
+      MONGO_REPLICA_SET_KEY: bG9jYWxNb25nb2RiUmVwbGljYVNldEtleUNoYW5nZU1lMTIzNDU2Nzg5MA==
+    entrypoint: ["/bin/bash", "-ec"]
+    command:
+      - |
+        rm -f /tmp/mongodb-keyfile
+        printf '%s' "$$MONGO_REPLICA_SET_KEY" > /tmp/mongodb-keyfile
+        chmod 400 /tmp/mongodb-keyfile
+        chown mongodb:mongodb /tmp/mongodb-keyfile
+        exec /usr/local/bin/docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all --keyFile /tmp/mongodb-keyfile
     ports: ["27017:27017"]
     volumes: ["mongodb_data:/data/db"]
     healthcheck:
@@ -43,6 +52,20 @@ services:
       timeout: 5s
       retries: 20
       start_period: 20s
+
+  init-mongodb-replica:
+    image: mongo:8.0
+    restart: "no"
+    networks: [ecommerce-local-network]
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-ec"]
+    command:
+      - |
+        uri='mongodb://local_admin:local_mongo_password@mongodb:27017/admin?authSource=admin'
+        mongosh "$$uri" --quiet --eval 'try { rs.status() } catch (error) { printjson(rs.initiate({_id:"rs0",members:[{_id:0,host:"mongodb:27017"}]})) }'
+        until mongosh "$$uri" --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)'; do sleep 2; done
 
   redis:
     image: redis:7.4-alpine
@@ -184,8 +207,8 @@ services:
     restart: "no"
     networks: [ecommerce-local-network]
     depends_on:
-      mongodb:
-        condition: service_healthy
+      init-mongodb-replica:
+        condition: service_completed_successfully
     volumes: ["./backend/services:/workspace/services:ro"]
     entrypoint: ["/bin/bash", "-ec"]
     command:
@@ -205,8 +228,8 @@ services:
     restart: "no"
     networks: [ecommerce-local-network]
     depends_on:
-      mongodb:
-        condition: service_healthy
+      init-mongodb-replica:
+        condition: service_completed_successfully
     environment:
       SESSION_MONGO_DATABASE: session_db
     volumes: ["./backend/services/session-service/migrations:/migrations:ro"]
@@ -252,9 +275,10 @@ services:
     build: {context: ., dockerfile: backend/services/product-service/Dockerfile}
     <<: *app-defaults
     env_file: [backend/services/product-service/.env.example]
-    ports: ["8082:8082"]
+    ports: ["8082:8082", "9093:9092"]
     depends_on:
       migrate-mongodb: {condition: service_completed_successfully}
+      rabbitmq: {condition: service_healthy}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8082/readyz >/dev/null"]
       interval: 10s

@@ -1,8 +1,15 @@
 package main
 
 import (
+	"context"
+	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 func TestAuthorizedInternalServiceFailsClosed(t *testing.T) {
@@ -17,5 +24,52 @@ func TestAuthorizedInternalServiceFailsClosed(t *testing.T) {
 	}
 	if !authorizedInternalService(request, "service-token") {
 		t.Fatal("matching token must be accepted")
+	}
+}
+
+func TestInternalServiceAuthProtectsEveryInternalRoute(t *testing.T) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	handler := internalServiceAuth(next, "service-token")
+
+	for _, test := range []struct {
+		name       string
+		path       string
+		token      string
+		wantStatus int
+	}{
+		{name: "missing internal token", path: "/internal/v1/products/batch", wantStatus: http.StatusUnauthorized},
+		{name: "wrong internal token", path: "/internal/v1/inventory/reservations", token: "wrong", wantStatus: http.StatusUnauthorized},
+		{name: "valid internal token", path: "/internal/v1/products/batch", token: "service-token", wantStatus: http.StatusNoContent},
+		{name: "public route", path: "/api/v1/products", wantStatus: http.StatusNoContent},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, test.path, nil)
+			if test.token != "" {
+				request.Header.Set("X-Service-Token", test.token)
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != test.wantStatus {
+				t.Fatalf("status = %d, want %d", response.Code, test.wantStatus)
+			}
+		})
+	}
+}
+
+func TestInternalGRPCAuth(t *testing.T) {
+	interceptor := internalGRPCAuth("service-token")
+	handler := func(context.Context, any) (any, error) { return "ok", nil }
+	internalInfo := &grpc.UnaryServerInfo{FullMethod: "/ecommerce.product.v1.ProductService/ReserveInventory"}
+	publicInfo := &grpc.UnaryServerInfo{FullMethod: "/ecommerce.product.v1.ProductService/ListProducts"}
+
+	if _, err := interceptor(context.Background(), nil, internalInfo, handler); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("missing token error = %v, want unauthenticated", err)
+	}
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-service-token", "service-token"))
+	if _, err := interceptor(ctx, nil, internalInfo, handler); err != nil {
+		t.Fatalf("valid token rejected: %v", err)
+	}
+	if _, err := interceptor(context.Background(), nil, publicInfo, handler); err != nil {
+		t.Fatalf("public method rejected: %v", err)
 	}
 }

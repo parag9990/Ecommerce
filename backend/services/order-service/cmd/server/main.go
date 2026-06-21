@@ -58,7 +58,7 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	productClient, err := clients.NewProductHTTPClient(cfg.Downstream.ProductBaseURL, httpClient)
+	productClient, err := clients.NewProductHTTPClient(cfg.Downstream.ProductBaseURL, httpClient, cfg.Downstream.ProductServiceToken)
 	if err != nil {
 		return err
 	}

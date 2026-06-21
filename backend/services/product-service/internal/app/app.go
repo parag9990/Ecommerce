@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"product-service/internal/client"
 	"product-service/internal/config"
@@ -332,10 +333,36 @@ func New(ctx context.Context, cfg config.Config, deps Dependencies) (*App, error
 }
 
 func (a *App) StartBackgroundWorkers(ctx context.Context) {
-	if a == nil || a.ProductEventRelay == nil {
+	if a == nil {
 		return
 	}
-	go a.ProductEventRelay.Run(ctx)
+	if a.ProductEventRelay != nil {
+		go a.ProductEventRelay.Run(ctx)
+	}
+	if a.InventoryUseCase != nil {
+		go a.runInventoryExpiryWorker(ctx)
+	}
+}
+
+func (a *App) runInventoryExpiryWorker(ctx context.Context) {
+	interval := time.Duration(a.Config.Inventory.ExpiryIntervalSeconds) * time.Second
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		result, err := a.InventoryUseCase.ExpireReservations(ctx, usecase.ExpireInventoryReservationsRequest{
+			Limit: a.Config.Inventory.ExpiryBatchLimit,
+		})
+		if err != nil && ctx.Err() == nil {
+			a.Logger.Error("inventory reservation expiry cycle failed", "error", err)
+		} else if result.ExpiredCount > 0 || result.FailedCount > 0 {
+			a.Logger.Info("inventory reservation expiry cycle completed", "expired_count", result.ExpiredCount, "failed_count", result.FailedCount)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }
 
 func newLogger(cfg config.Config) *slog.Logger {

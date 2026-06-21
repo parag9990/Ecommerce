@@ -68,15 +68,20 @@ func (c *CartHTTPClient) GetCart(ctx context.Context, req usecase.GetCartRequest
 
 type ProductHTTPClient struct {
 	baseURL string
+	token   string
 	client  *http.Client
 }
 
-func NewProductHTTPClient(baseURL string, client *http.Client) (*ProductHTTPClient, error) {
+func NewProductHTTPClient(baseURL string, client *http.Client, serviceToken ...string) (*ProductHTTPClient, error) {
 	normalized, err := normalizeBaseURL(baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("product base URL: %w", err)
 	}
-	return &ProductHTTPClient{baseURL: normalized, client: requiredHTTPClient(client)}, nil
+	token := ""
+	if len(serviceToken) > 0 {
+		token = strings.TrimSpace(serviceToken[0])
+	}
+	return &ProductHTTPClient{baseURL: normalized, token: token, client: requiredHTTPClient(client)}, nil
 }
 
 func (c *ProductHTTPClient) BatchGetProducts(ctx context.Context, req usecase.BatchGetProductsRequest) (*usecase.BatchGetProductsResponse, error) {
@@ -152,6 +157,9 @@ func (c *ProductHTTPClient) post(ctx context.Context, path string, input any, ou
 		return err
 	}
 	request.Header.Set("Content-Type", "application/json")
+	if c.token != "" {
+		request.Header.Set("X-Service-Token", c.token)
+	}
 	if idempotencyKey != "" {
 		request.Header.Set("Idempotency-Key", idempotencyKey)
 	}

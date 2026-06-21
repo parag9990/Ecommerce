@@ -38,6 +38,9 @@ func TestCartHTTPClientMapsCheckoutSnapshot(t *testing.T) {
 
 func TestProductHTTPClientUsesOrderIDAndMapsSnapshots(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Service-Token") != "product-service-token" {
+			t.Fatalf("product service token = %q", r.Header.Get("X-Service-Token"))
+		}
 		switch r.URL.Path {
 		case "/internal/v1/products/batch":
 			_ = json.NewEncoder(w).Encode(map[string]any{"products": []map[string]any{{
@@ -58,7 +61,7 @@ func TestProductHTTPClientUsesOrderIDAndMapsSnapshots(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	client, err := NewProductHTTPClient(server.URL, server.Client())
+	client, err := NewProductHTTPClient(server.URL, server.Client(), "product-service-token")
 	if err != nil {
 		t.Fatal(err)
 	}

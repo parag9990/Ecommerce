@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,7 +21,16 @@ import (
 	eventing "product-service/internal/events"
 	"product-service/internal/repository"
 	"product-service/internal/transport/dto"
+	transportgrpc "product-service/internal/transport/grpc"
 	"product-service/internal/usecase"
+
+	productv1 "github.com/parag/ecommerce/backend/shared/gen/go/ecommerce/product/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/health"
+	healthv1 "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 const maxBodyBytes = 2 << 20
@@ -79,10 +89,25 @@ func run() error {
 		return err
 	}
 	application.StartBackgroundWorkers(ctx)
+	grpcHandler, err := transportgrpc.NewServer(application.ProductReadHandler, application.SellerProductHandler, application.InventoryHandler)
+	if err != nil {
+		return err
+	}
+	grpcListener, err := net.Listen("tcp", cfg.GRPCAddress)
+	if err != nil {
+		return fmt.Errorf("listen for product grpc on %s: %w", cfg.GRPCAddress, err)
+	}
+	defer grpcListener.Close()
+	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(internalGRPCAuth(cfg.InternalServiceToken)))
+	productv1.RegisterProductServiceServer(grpcServer, grpcHandler)
+	healthServer := health.NewServer()
+	healthv1.RegisterHealthServer(grpcServer, healthServer)
+	healthServer.SetServingStatus("", healthv1.HealthCheckResponse_SERVING)
+	healthServer.SetServingStatus(productv1.ProductService_ServiceDesc.ServiceName, healthv1.HealthCheckResponse_SERVING)
 
 	mux := routes(application, func(probeCtx context.Context) error { return mongoClient.Ping(probeCtx, nil) })
 	server := &http.Server{
-		Addr:              env("PRODUCT_HTTP_ADDR", ":8082"),
+		Addr:              cfg.HTTPAddress,
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
@@ -90,18 +115,34 @@ func run() error {
 		IdleTimeout:       60 * time.Second,
 	}
 	errCh := make(chan error, 1)
+	grpcErrCh := make(chan error, 1)
 	go func() {
 		logger.Info("product.http.started", "addr", server.Addr)
 		errCh <- server.ListenAndServe()
 	}()
+	go func() {
+		logger.Info("product.grpc.started", "addr", cfg.GRPCAddress)
+		grpcErrCh <- grpcServer.Serve(grpcListener)
+	}()
 
 	select {
 	case <-ctx.Done():
+		healthServer.SetServingStatus("", healthv1.HealthCheckResponse_NOT_SERVING)
+		healthServer.SetServingStatus(productv1.ProductService_ServiceDesc.ServiceName, healthv1.HealthCheckResponse_NOT_SERVING)
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		return server.Shutdown(shutdownCtx)
+		httpErr := server.Shutdown(shutdownCtx)
+		grpcServer.GracefulStop()
+		return httpErr
 	case err := <-errCh:
+		grpcServer.Stop()
 		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	case err := <-grpcErrCh:
+		_ = server.Close()
+		if errors.Is(err, grpc.ErrServerStopped) {
 			return nil
 		}
 		return err
@@ -158,10 +199,6 @@ func routes(application *app.App, ping func(context.Context) error) http.Handler
 		respond(w, result, err)
 	})
 	mux.HandleFunc("GET /internal/v1/products/search-export", func(w http.ResponseWriter, r *http.Request) {
-		if !authorizedInternalService(r, os.Getenv("PRODUCT_INTERNAL_SERVICE_TOKEN")) {
-			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]string{"code": "UNAUTHENTICATED", "message": "valid service credentials are required"}})
-			return
-		}
 		result, err := application.ProductReadHandler.ExportSearchProducts(r.Context(), dto.SearchProductExportRequestDTO{
 			Cursor: r.URL.Query().Get("cursor"),
 			Limit:  intQuery(r, "limit", 500),
@@ -255,7 +292,7 @@ func routes(application *app.App, ping func(context.Context) error) http.Handler
 		result, err := application.InventoryHandler.CommitInventory(r.Context(), input)
 		respond(w, result, err)
 	})
-	return mux
+	return internalServiceAuth(mux, application.Config.InternalServiceToken)
 }
 
 type internalStatusRequest struct {
@@ -365,9 +402,42 @@ func authorizedInternalService(r *http.Request, expected string) bool {
 	return len(provided) == len(expected) && subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
 }
 
-func env(name, fallback string) string {
-	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
-		return value
+func internalServiceAuth(next http.Handler, expected string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/internal/v1/") && !authorizedInternalService(r, expected) {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]string{
+				"code": "UNAUTHENTICATED", "message": "valid service credentials are required",
+			}})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func internalGRPCAuth(expected string) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		if !internalGRPCMethod(info.FullMethod) {
+			return handler(ctx, req)
+		}
+		md, _ := metadata.FromIncomingContext(ctx)
+		provided := ""
+		if values := md.Get("x-service-token"); len(values) > 0 {
+			provided = values[0]
+		}
+		expected = strings.TrimSpace(expected)
+		provided = strings.TrimSpace(provided)
+		if expected == "" || len(provided) != len(expected) || subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
+			return nil, status.Error(codes.Unauthenticated, "valid service credentials are required")
+		}
+		return handler(ctx, req)
 	}
-	return fallback
+}
+
+func internalGRPCMethod(fullMethod string) bool {
+	for _, method := range []string{"/BatchGetProducts", "/ReserveInventory", "/ReleaseInventory", "/CommitInventory"} {
+		if strings.HasSuffix(fullMethod, method) {
+			return true
+		}
+	}
+	return false
 }
