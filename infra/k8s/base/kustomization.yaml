@@ -8,3 +8,4 @@ resources:
   - namespaces/jobs.yaml
   - services/api-gateway
   - services/product-service
+  - services/session-service

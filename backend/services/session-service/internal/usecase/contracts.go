@@ -52,7 +52,7 @@ type HeatmapEventRepository interface {
 }
 
 type HeatmapRepository interface {
-	UpsertHeatmapPoint(ctx context.Context, point domain.HeatmapPoint, sessionID string) error
+	UpsertHeatmapPoint(ctx context.Context, point domain.HeatmapPoint, eventID string, sessionID string) (bool, error)
 	ListHeatmapPoints(ctx context.Context, filter domain.HeatmapFilter, limit int) ([]domain.HeatmapPoint, error)
 	FindHeatmapCheckpoint(ctx context.Context, workerName string) (domain.HeatmapAggregationCheckpoint, error)
 	SaveHeatmapCheckpoint(ctx context.Context, checkpoint domain.HeatmapAggregationCheckpoint) error

@@ -73,12 +73,11 @@ ensureCollection("heatmap_points", {
 ensureCollection("heatmap_bucket_sessions", {
   $jsonSchema: {
     bsonType: "object",
-    required: ["_id", "bucket_key", "point_id", "session_id", "first_seen_at", "updated_at"],
+    required: ["_id", "bucket_key", "point_id", "first_seen_at", "updated_at"],
     properties: {
       _id: { bsonType: "string" },
       bucket_key: { bsonType: "string" },
       point_id: { bsonType: "string" },
-      session_id: { bsonType: "string" },
       first_seen_at: { bsonType: "date" },
       updated_at: { bsonType: "date" },
     },
@@ -94,6 +93,20 @@ ensureCollection("heatmap_checkpoints", {
       worker_name: { bsonType: "string" },
       last_processed_at: { bsonType: "date" },
       updated_at: { bsonType: "date" },
+    },
+  },
+});
+
+ensureCollection("heatmap_processed_events", {
+  $jsonSchema: {
+    bsonType: "object",
+    required: ["_id", "event_id", "point_id", "processed_at", "retain_until"],
+    properties: {
+      _id: { bsonType: "string" },
+      event_id: { bsonType: "string" },
+      point_id: { bsonType: "string" },
+      processed_at: { bsonType: "date" },
+      retain_until: { bsonType: "date" },
     },
   },
 });
@@ -136,9 +149,13 @@ sessionDB.heatmap_points.createIndex(
   }
 );
 
-sessionDB.heatmap_bucket_sessions.createIndex(
-  { bucket_key: 1, session_id: 1 },
-  { unique: true, name: "uniq_heatmap_bucket_session" }
+if (sessionDB.heatmap_bucket_sessions.getIndexes().some((index) => index.name === "uniq_heatmap_bucket_session")) {
+  sessionDB.heatmap_bucket_sessions.dropIndex("uniq_heatmap_bucket_session");
+}
+
+sessionDB.heatmap_bucket_sessions.updateMany(
+  { session_id: { $exists: true } },
+  { $unset: { session_id: "" } }
 );
 
 sessionDB.heatmap_bucket_sessions.createIndex(
@@ -149,6 +166,21 @@ sessionDB.heatmap_bucket_sessions.createIndex(
 sessionDB.heatmap_checkpoints.createIndex(
   { worker_name: 1 },
   { unique: true, name: "uniq_heatmap_checkpoint_worker" }
+);
+
+sessionDB.heatmap_processed_events.createIndex(
+  { event_id: 1 },
+  { unique: true, name: "uniq_heatmap_processed_event" }
+);
+
+sessionDB.heatmap_processed_events.createIndex(
+  { retain_until: 1 },
+  { expireAfterSeconds: 0, name: "ttl_heatmap_processed_events" }
+);
+
+sessionDB.heatmap_processed_events.updateMany(
+  { session_id: { $exists: true } },
+  { $unset: { session_id: "" } }
 );
 
 sessionDB.session_events.createIndex(

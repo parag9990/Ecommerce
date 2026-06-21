@@ -15,26 +15,27 @@ import (
 )
 
 const (
-	heatmapPointsCollectionName         = "heatmap_points"
-	heatmapCheckpointsCollectionName    = "heatmap_checkpoints"
-	heatmapBucketSessionsCollectionName = "heatmap_bucket_sessions"
-	defaultHeatmapPointLimit            = 5000
-	defaultHeatmapRetentionDays         = 730
+	heatmapPointsCollectionName          = "heatmap_points"
+	heatmapCheckpointsCollectionName     = "heatmap_checkpoints"
+	heatmapBucketSessionsCollectionName  = "heatmap_bucket_sessions"
+	heatmapProcessedEventsCollectionName = "heatmap_processed_events"
+	defaultHeatmapPointLimit             = 5000
+	defaultHeatmapRetentionDays          = 730
 )
 
 type MongoHeatmapRepository struct {
-	points         *mongo.Collection
-	checkpoints    *mongo.Collection
-	bucketSessions *mongo.Collection
-	retentionDays  int
-	logger         *slog.Logger
+	points          *mongo.Collection
+	checkpoints     *mongo.Collection
+	bucketSessions  *mongo.Collection
+	processedEvents *mongo.Collection
+	retentionDays   int
+	logger          *slog.Logger
 }
 
 type heatmapBucketSessionDocument struct {
 	ID          string    `bson:"_id"`
 	BucketKey   string    `bson:"bucket_key"`
 	PointID     string    `bson:"point_id"`
-	SessionID   string    `bson:"session_id"`
 	FirstSeenAt time.Time `bson:"first_seen_at"`
 	UpdatedAt   time.Time `bson:"updated_at"`
 }
@@ -42,6 +43,14 @@ type heatmapBucketSessionDocument struct {
 type heatmapCheckpointDocument struct {
 	ID                                  string `bson:"_id"`
 	domain.HeatmapAggregationCheckpoint `bson:",inline"`
+}
+
+type heatmapProcessedEventDocument struct {
+	ID          string     `bson:"_id"`
+	EventID     string     `bson:"event_id"`
+	PointID     string     `bson:"point_id"`
+	ProcessedAt time.Time  `bson:"processed_at"`
+	RetainUntil *time.Time `bson:"retain_until,omitempty"`
 }
 
 type MongoHeatmapRepositoryOption func(*MongoHeatmapRepository)
@@ -62,11 +71,12 @@ func NewMongoHeatmapRepository(database *mongo.Database, logger *slog.Logger, op
 		logger = slog.Default()
 	}
 	repo := &MongoHeatmapRepository{
-		points:         database.Collection(heatmapPointsCollectionName),
-		checkpoints:    database.Collection(heatmapCheckpointsCollectionName),
-		bucketSessions: database.Collection(heatmapBucketSessionsCollectionName),
-		retentionDays:  defaultHeatmapRetentionDays,
-		logger:         logger,
+		points:          database.Collection(heatmapPointsCollectionName),
+		checkpoints:     database.Collection(heatmapCheckpointsCollectionName),
+		bucketSessions:  database.Collection(heatmapBucketSessionsCollectionName),
+		processedEvents: database.Collection(heatmapProcessedEventsCollectionName),
+		retentionDays:   defaultHeatmapRetentionDays,
+		logger:          logger,
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -120,11 +130,13 @@ func (r *MongoHeatmapRepository) EnsureIndexes(ctx context.Context) error {
 		return fmt.Errorf("create heatmap point indexes: %w", err)
 	}
 
+	if err := r.bucketSessions.Indexes().DropOne(ctx, "uniq_heatmap_bucket_session"); err != nil {
+		var commandErr mongo.CommandError
+		if !errors.As(err, &commandErr) || commandErr.Code != 27 {
+			return fmt.Errorf("drop legacy heatmap bucket-session index: %w", err)
+		}
+	}
 	sessionIndexes := []mongo.IndexModel{
-		{
-			Keys:    bson.D{{Key: "bucket_key", Value: 1}, {Key: "session_id", Value: 1}},
-			Options: options.Index().SetUnique(true).SetName("uniq_heatmap_bucket_session"),
-		},
 		{
 			Keys:    bson.D{{Key: "point_id", Value: 1}},
 			Options: options.Index().SetName("idx_heatmap_bucket_sessions_point"),
@@ -132,6 +144,20 @@ func (r *MongoHeatmapRepository) EnsureIndexes(ctx context.Context) error {
 	}
 	if _, err := r.bucketSessions.Indexes().CreateMany(ctx, sessionIndexes); err != nil {
 		return fmt.Errorf("create heatmap bucket-session indexes: %w", err)
+	}
+
+	processedEventIndexes := []mongo.IndexModel{
+		{
+			Keys:    bson.D{{Key: "event_id", Value: 1}},
+			Options: options.Index().SetUnique(true).SetName("uniq_heatmap_processed_event"),
+		},
+		{
+			Keys:    bson.D{{Key: "retain_until", Value: 1}},
+			Options: options.Index().SetExpireAfterSeconds(0).SetName("ttl_heatmap_processed_events"),
+		},
+	}
+	if _, err := r.processedEvents.Indexes().CreateMany(ctx, processedEventIndexes); err != nil {
+		return fmt.Errorf("create heatmap processed-event indexes: %w", err)
 	}
 
 	checkpointIndexes := []mongo.IndexModel{
@@ -148,31 +174,65 @@ func (r *MongoHeatmapRepository) EnsureIndexes(ctx context.Context) error {
 	return nil
 }
 
-func (r *MongoHeatmapRepository) UpsertHeatmapPoint(ctx context.Context, point domain.HeatmapPoint, sessionID string) error {
+func (r *MongoHeatmapRepository) UpsertHeatmapPoint(ctx context.Context, point domain.HeatmapPoint, eventID string, sessionID string) (bool, error) {
 	normalized := point.Normalize()
 	if err := normalized.Validate(); err != nil {
-		return fmt.Errorf("%w: %w", domain.ErrInvalidHeatmap, err)
+		return false, fmt.Errorf("%w: %w", domain.ErrInvalidHeatmap, err)
 	}
 	normalized = r.applyRetentionDefaults(normalized)
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return fmt.Errorf("%w: session_id is required", domain.ErrInvalidHeatmap)
+		return false, fmt.Errorf("%w: session_id is required", domain.ErrInvalidHeatmap)
+	}
+	eventID = strings.TrimSpace(eventID)
+	if eventID == "" {
+		return false, fmt.Errorf("%w: event_id is required", domain.ErrInvalidHeatmap)
+	}
+
+	inserted, rollbackProcessedEvent, err := r.insertProcessedEvent(ctx, normalized, eventID)
+	if err != nil {
+		return false, err
+	}
+	if !inserted {
+		return false, nil
 	}
 
 	uniqueSessionDelta, rollbackSessionMarker, err := r.insertBucketSession(ctx, normalized, sessionID)
 	if err != nil {
-		return err
+		rollbackProcessedEvent()
+		return false, err
 	}
 	filter := heatmapPointFilter(normalized)
 	update := heatmapPointUpdate(normalized, uniqueSessionDelta)
 	if _, err := r.points.UpdateOne(ctx, filter, update, options.UpdateOne().SetUpsert(true)); err != nil {
 		rollbackSessionMarker()
+		rollbackProcessedEvent()
 		if mongo.IsDuplicateKeyError(err) {
-			return fmt.Errorf("%w: duplicate heatmap bucket", domain.ErrInvalidHeatmap)
+			return false, fmt.Errorf("%w: duplicate heatmap bucket", domain.ErrInvalidHeatmap)
 		}
-		return fmt.Errorf("upsert heatmap point: %w", err)
+		return false, fmt.Errorf("upsert heatmap point: %w", err)
 	}
-	return nil
+	return true, nil
+}
+
+func (r *MongoHeatmapRepository) insertProcessedEvent(ctx context.Context, point domain.HeatmapPoint, eventID string) (bool, func(), error) {
+	doc := heatmapProcessedEventDocument{
+		ID:          "hme_" + eventID,
+		EventID:     eventID,
+		PointID:     point.ID,
+		ProcessedAt: time.Now().UTC(),
+		RetainUntil: point.RetainUntil,
+	}
+	_, err := r.processedEvents.InsertOne(ctx, doc)
+	if err == nil {
+		return true, func() {
+			_, _ = r.processedEvents.DeleteOne(context.Background(), bson.D{{Key: "_id", Value: doc.ID}})
+		}, nil
+	}
+	if mongo.IsDuplicateKeyError(err) {
+		return false, func() {}, nil
+	}
+	return false, func() {}, fmt.Errorf("insert heatmap processed-event marker: %w", err)
 }
 
 func (r *MongoHeatmapRepository) ListHeatmapPoints(ctx context.Context, filter domain.HeatmapFilter, limit int) ([]domain.HeatmapPoint, error) {
@@ -296,7 +356,6 @@ func (r *MongoHeatmapRepository) insertBucketSession(ctx context.Context, point 
 		ID:          markerID,
 		BucketKey:   point.BucketKey(),
 		PointID:     point.ID,
-		SessionID:   sessionID,
 		FirstSeenAt: point.FirstSeenAt,
 		UpdatedAt:   now,
 	}
@@ -341,16 +400,12 @@ func heatmapPointUpdate(point domain.HeatmapPoint, uniqueSessionDelta int) bson.
 		{Key: "_id", Value: point.ID},
 		{Key: "heatmap_type", Value: string(point.HeatmapType)},
 		{Key: "path", Value: point.Path},
-		{Key: "normalized_path", Value: point.NormalizedPath},
 		{Key: "device_type", Value: string(point.DeviceType)},
 		{Key: "viewport_bucket", Value: point.ViewportBucket},
 		{Key: "day", Value: point.Day},
 		{Key: "x", Value: point.X},
 		{Key: "y", Value: point.Y},
-		{Key: "schema_version", Value: point.SchemaVersion},
 		{Key: "created_at", Value: point.CreatedAt},
-		{Key: "retain_until", Value: point.RetainUntil},
-		{Key: "retention_class", Value: string(point.RetentionClass)},
 	}
 	if point.XBucket != nil {
 		setOnInsert = append(setOnInsert, bson.E{Key: "x_bucket", Value: *point.XBucket})

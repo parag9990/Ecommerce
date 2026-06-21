@@ -48,7 +48,7 @@ services:
     image: redis:7.4-alpine
     <<: *app-defaults
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "local_redis_password"]
-    ports: ["6379:6379"]
+    ports: ["${REDIS_PORT:-6379}:6379"]
     volumes: ["redis_data:/data"]
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "local_redis_password", "ping"]
@@ -195,6 +195,25 @@ services:
           done < <(find "/workspace/services/$$service/migrations" -type f \( -name '*.up.js' -o -name '*.mongodb.js' \) ! -name '*.down.*' | sort)
         done
 
+  migrate-session-mongodb:
+    image: mongo:8.0
+    restart: "no"
+    networks: [ecommerce-local-network]
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      SESSION_MONGO_DATABASE: session_db
+    volumes: ["./backend/services/session-service/migrations:/migrations:ro"]
+    entrypoint: ["/bin/bash", "-ec"]
+    command:
+      - |
+        uri='mongodb://local_admin:local_mongo_password@mongodb:27017/admin?authSource=admin'
+        while IFS= read -r file; do
+          echo "Applying $$file"
+          mongosh "$$uri" --quiet --file "$$file"
+        done < <(find /migrations -maxdepth 1 -type f \( -name '*.up.js' -o -name '*.mongodb.js' \) ! -name '*.down.*' | sort)
+
   auth-service:
     build: {context: ., dockerfile: backend/services/auth-service/Dockerfile}
     <<: *app-defaults
@@ -285,13 +304,22 @@ services:
     env_file: [backend/services/session-service/.env.example]
     ports: ["8086:8086"]
     depends_on:
-      migrate-mongodb: {condition: service_completed_successfully}
+      migrate-session-mongodb: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8086/healthz >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 15
+
+  session-retention-worker:
+    build: {context: ., dockerfile: backend/services/session-service/Dockerfile}
+    <<: *app-defaults
+    entrypoint: ["/app/retention-worker"]
+    env_file: [backend/services/session-service/.env.example]
+    depends_on:
+      migrate-session-mongodb: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
 
   cms-service:
     build: {context: ., dockerfile: backend/services/cms-service/Dockerfile}

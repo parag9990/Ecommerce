@@ -1,7 +1,7 @@
-.PHONY: setup env infra-up infra-down backend-up frontend-up docker-up docker-down docker-reset docker-logs test-go test-frontend test k8s-check k8s-up k8s-down tilt-up tilt-down
+.PHONY: setup env infra-up infra-down backend-up frontend-up docker-up docker-down docker-reset docker-logs session-retention-once test-go test-frontend test k8s-check k8s-up k8s-down tilt-up tilt-down
 
 INFRA = mysql mongodb redis rabbitmq kafka typesense mailpit jaeger prometheus
-BACKEND = auth-service user-service product-service cart-service wishlist-service search-service session-service cms-service recommendation-service order-service payment-service notification-service superadmin-service api-gateway
+BACKEND = auth-service user-service product-service cart-service wishlist-service search-service session-service session-retention-worker cms-service recommendation-service order-service payment-service notification-service superadmin-service api-gateway
 FRONTEND = user-app seller-dashboard superadmin-panel
 
 setup:
@@ -33,6 +33,9 @@ docker-reset:
 
 docker-logs:
 	docker compose logs -f
+
+session-retention-once:
+	docker compose run --rm -e SESSION_RETENTION_WORKER_RUN_ONCE=true session-retention-worker
 
 test-go:
 	@set -e; for service in backend/services/* backend/shared/* backend/proto-gen/go; do if [ -f "$$service/go.mod" ]; then echo "==> $$service"; (cd "$$service" && go test ./...); fi; done

@@ -156,12 +156,12 @@ Priority values:
 |---:|---|---|---|---|---|
 | 1 | Define session model | Anonymous id, user id, device, IP, user agent, channel, started/ended timestamps define karo. | Platform foundation | P0 | Completed |
 | 2 | Choose MongoDB plus Redis | Events high-volume flexible hote hain. Mongo store, Redis active sessions ke liye use karo. | Session model | P0 | Completed |
-| 3 | Event ingestion API | Frontend SDK page view, click, scroll, cart action events bhej sake. | API Gateway | P0 | Pending |
-| 4 | Journey tracking | Session ke andar ordered events store karo. User journey reconstruct ho sakegi. | Event API | P1 | Pending |
-| 5 | Device tracking | Browser, OS, device, location approximation parse karo. Fraud and analytics me useful hai. | Event API | P1 | Pending |
-| 6 | Heatmap concept | Click and scroll coordinates aggregate karo. UI optimization ke liye dashboard me show hoga. | Event ingestion | P2 | Pending |
-| 7 | Analytics APIs | Active users, funnels, conversion, retention, session replay metadata expose karo. | Aggregations | P1 | Pending |
-| 8 | Data retention policy | Raw events TTL, aggregated metrics long-term store rules define karo. Cost control ke liye zaruri hai. | MongoDB | P1 | Pending |
+| 3 | Event ingestion API | Frontend SDK page view, click, scroll, cart action events bhej sake. | API Gateway | P0 | Completed |
+| 4 | Journey tracking | Session ke andar ordered events store karo. User journey reconstruct ho sakegi. | Event API | P1 | Completed |
+| 5 | Device tracking | Browser, OS, device, location approximation parse karo. Fraud and analytics me useful hai. | Event API | P1 | Completed |
+| 6 | Heatmap concept | Click and scroll coordinates aggregate karo. UI optimization ke liye dashboard me show hoga. | Event ingestion | P2 | Completed |
+| 7 | Analytics APIs | Active users, funnels, conversion, retention, session replay metadata expose karo. | Aggregations | P1 | Completed |
+| 8 | Data retention policy | Raw events TTL, aggregated metrics long-term store rules define karo. Cost control ke liye zaruri hai. | MongoDB | P1 | Completed |
 
 ## Notification Service
 

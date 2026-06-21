@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: session-retention
+  namespace: core
+  labels:
+    app.kubernetes.io/name: session-service
+    app.kubernetes.io/part-of: ecommerce-platform
+    app.kubernetes.io/component: retention-worker
+spec:
+  schedule: "17 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: session-service
+            app.kubernetes.io/component: retention-worker
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: retention-worker
+              image: registry.example.com/ecommerce/session-service:dev
+              imagePullPolicy: IfNotPresent
+              command: ["/app/retention-worker"]
+              env:
+                - { name: SESSION_RETENTION_WORKER_RUN_ONCE, value: "true" }
+              envFrom:
+                - configMapRef: { name: session-service-config }
+                - secretRef: { name: session-service-secret }
+              resources:
+                requests: { cpu: 50m, memory: 96Mi }
+                limits: { cpu: 500m, memory: 512Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }

@@ -112,10 +112,13 @@ func (u *HeatmapAggregationUsecase) AggregateHeatmap(ctx context.Context, input 
 				)
 				continue
 			}
-			if err := u.points.UpsertHeatmapPoint(ctx, point, event.SessionID); err != nil {
+			processed, err := u.points.UpsertHeatmapPoint(ctx, point, event.EventID, event.SessionID)
+			if err != nil {
 				return output, fmt.Errorf("%w: upsert heatmap point: %w", ErrHeatmapStorageUnavailable, err)
 			}
-			output.PointsUpserted++
+			if processed {
+				output.PointsUpserted++
+			}
 		}
 		last := events[len(events)-1].Normalize()
 		cursor = &domain.HeatmapEventCursor{

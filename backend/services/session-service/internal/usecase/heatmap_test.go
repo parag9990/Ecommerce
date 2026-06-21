@@ -161,15 +161,16 @@ type heatmapRepoFake struct {
 
 type heatmapPointUpsert struct {
 	point     domain.HeatmapPoint
+	eventID   string
 	sessionID string
 }
 
-func (r *heatmapRepoFake) UpsertHeatmapPoint(ctx context.Context, point domain.HeatmapPoint, sessionID string) error {
+func (r *heatmapRepoFake) UpsertHeatmapPoint(ctx context.Context, point domain.HeatmapPoint, eventID string, sessionID string) (bool, error) {
 	if r.upsertErr != nil {
-		return r.upsertErr
+		return false, r.upsertErr
 	}
-	r.upserted = append(r.upserted, heatmapPointUpsert{point: point, sessionID: sessionID})
-	return nil
+	r.upserted = append(r.upserted, heatmapPointUpsert{point: point, eventID: eventID, sessionID: sessionID})
+	return true, nil
 }
 
 func (r *heatmapRepoFake) ListHeatmapPoints(ctx context.Context, filter domain.HeatmapFilter, limit int) ([]domain.HeatmapPoint, error) {
