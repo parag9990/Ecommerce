@@ -129,7 +129,13 @@ func (s *SendOTPService) Send(ctx context.Context, req domain.SendOTPRequest) (d
 		return domain.SendOTPResult{}, fmt.Errorf("record OTP delivery outcome: %w", err)
 	}
 	if err := s.recordAnalytics(ctx, record, safeSendErr); err != nil {
-		return domain.SendOTPResult{}, fmt.Errorf("record OTP delivery analytics: %w", err)
+		// The durable delivery record is the acknowledgement boundary. Analytics
+		// are secondary and must not turn an already-sent OTP into a retryable RPC
+		// failure, which could deliver duplicate security codes.
+		s.logger.WarnContext(ctx, "notification.otp.analytics_record_failed",
+			slog.String("delivery_id", deliveryID),
+			slog.String("channel", string(req.Channel)),
+		)
 	}
 
 	s.logger.InfoContext(ctx, "notification.otp.delivery_recorded",

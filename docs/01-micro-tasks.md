@@ -43,7 +43,7 @@ Priority values:
 | 4 | JWT issuing | Access token short lived, refresh token rotating banao. Claims me user id, tenant/seller id, roles, session id rakho. | Credentials | P0 | Completed |
 | 5 | OTP verification | Email and phone OTP generate, hash, expire, retry limit implement karo. Brute force se bachna zaruri hai. | Notification Service | P1 | Completed |
 | 6 | RBAC middleware | Buyer, Seller, Admin, Superadmin role checks centralize karo. Gateway aur services dono enforce karenge. | JWT | P0 | Completed |
-| 7 | Session link | Login ke time Session Management Service ko session start event bhejo. Analytics and fraud detection possible hoga. | Session Service | P1 | Pending |
+| 7 | Session link | Login ke time Session Management Service ko session start event bhejo. Analytics and fraud detection possible hoga. | Session Service | P1 | Completed |
 | 8 | Security tests | Token expiry, refresh reuse, OTP replay, role bypass test cases likho. Auth bugs high risk hote hain. | Implementation | P1 | Completed |
 
 ## Product Service

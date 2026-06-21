@@ -38,7 +38,7 @@ Local run ke liye minimum services:
 | MySQL 8+ | Yes | Auth accounts, credentials, refresh tokens, OTP, roles, outbox tables |
 | Redis | Yes | OTP send/verify rate limiting |
 | RSA JWT keys | Yes | RS256 access token sign/verify |
-| Notification endpoint | Config required, runtime OTP required | OTP send API HTTP POST karta hai |
+| Notification Service gRPC | Config required, runtime OTP required | OTP send API typed `SendOTP` RPC call karta hai |
 | Session link/outbox | Optional for beginner if disabled | Login/logout events Session Service ko bhejne ke liye |
 | Docker | Optional but recommended | MySQL/Redis easily run karne ke liye |
 
@@ -63,7 +63,7 @@ Local run ke liye minimum services:
 | JWKS | Public key JSON endpoint | Gateway/other services JWT verify kar sakein | Yes | `/.well-known/jwks.json` public keys expose karta hai. |
 | OTP HMAC SHA-256 | OTP hashing method | DB me raw OTP store na ho | Yes for OTP | OTP code ko pepper ke saath hash karke store kiya jata hai. |
 | Outbox pattern | Durable event publishing pattern | Login/logout events reliably publish karne ke liye | Optional local, recommended prod | Event pehle MySQL table me store hota hai, worker baad me publish karta hai. |
-| HTTP Notification Client | Outbound HTTP call | Notification Service ko OTP send request dene ke liye | Config required | Auth OTP generate karta hai, delivery Notification Service karega. |
+| gRPC Notification Client | Typed service-to-service RPC | Notification Service ko OTP send request dene ke liye | Config required | Auth OTP generate karta hai, delivery Notification Service karega. |
 | Docker | Container runtime | MySQL/Redis local setup simple karne ke liye | Optional | Docker se dependencies isolated containers me chalti hain. |
 | OpenSSL | Crypto CLI | Local RSA private/public key generate karne ke liye | Recommended | JWT signing keys banane ke liye useful tool hai. |
 
@@ -75,7 +75,7 @@ Local run ke liye minimum services:
 | `github.com/redis/go-redis/v9` | Not used. Redis client custom TCP RESP implementation hai. |
 | Kafka/RabbitMQ Go client | Not used directly. Current publisher is HTTP-based outbox publisher. |
 | gRPC server | Not implemented in this service yet. `SESSION_GRPC_ADDR` config exists but current `SESSION_LINK_MODE` supports only `outbox` or `disabled`. |
-| Dockerfile/docker-compose | Not present in repo yet. Samples are provided below for local setup. |
+| Dockerfile/docker-compose | Present and wired in the repository root Compose stack. |
 
 ---
 
@@ -532,25 +532,25 @@ Notification Service email/SMS bhejne ke liye responsible service hai. Auth Serv
 
 #### Why used
 
-Auth Service ko email/SMS provider details own nahi karne chahiye. OTP send ke time Auth Service HTTP POST karta hai:
+Auth Service ko email/SMS provider details own nahi karne chahiye. OTP send ke time Auth Service typed gRPC call karta hai:
 
 ```text
-POST http://localhost:8084/internal/v1/notifications/otp
+ecommerce.notification.v1.NotificationService/SendOTP at localhost:9090
 ```
 
 #### Mandatory or optional
 
-- Config mandatory hai because `NOTIFICATION_OTP_ENDPOINT` absolute URL hona chahiye.
+- Config mandatory hai because `NOTIFICATION_GRPC_ADDR` reachable host/port hona chahiye.
 - Server startup endpoint ko ping nahi karta.
-- OTP send API tabhi successfully chalegi jab endpoint `2xx` response dega.
+- OTP send API tabhi successfully chalegi jab Notification Service successful RPC response dega.
 - Login/password/token APIs OTP endpoint ke bina bhi run ho sakte hain.
 
 #### Credentials placement
 
-Current Auth Service client notification auth token nahi bhejta. Production me mTLS, service token, or internal gateway auth add karna recommended hai.
+Current Auth Service client internal plaintext gRPC use karta hai. Production me mTLS or authenticated service mesh use karna recommended hai.
 
 ```env
-NOTIFICATION_OTP_ENDPOINT=http://localhost:8084/internal/v1/notifications/otp
+NOTIFICATION_GRPC_ADDR=localhost:9090
 NOTIFICATION_TIMEOUT=3s
 ```
 
@@ -559,7 +559,7 @@ NOTIFICATION_TIMEOUT=3s
 Notification service available ho to:
 
 ```bash
-curl -i http://localhost:8084/healthz
+grpcurl -plaintext localhost:9090 list ecommerce.notification.v1.NotificationService
 ```
 
 Actual health endpoint Notification Service implementation par depend karega.
@@ -718,7 +718,7 @@ OTP_VERIFY_IP_LIMIT=20
 AUTH_ROLE_REASON_MAX_LENGTH=512
 
 # Notification integration
-NOTIFICATION_OTP_ENDPOINT=http://localhost:8084/internal/v1/notifications/otp
+NOTIFICATION_GRPC_ADDR=localhost:9090
 NOTIFICATION_TIMEOUT=3s
 
 # Session link
@@ -787,8 +787,8 @@ OUTBOX_STALE_LOCK_TIMEOUT=5m
 | `OTP_VERIFY_IP_WINDOW` | Optional | Verify attempt window per source | `5m` | Uses Redis. |
 | `OTP_VERIFY_IP_LIMIT` | Optional | Verify attempts per source/window | `20` | Uses Redis. |
 | `AUTH_ROLE_REASON_MAX_LENGTH` | Optional | Max audit reason length | `512` | Role changes need reason. |
-| `NOTIFICATION_OTP_ENDPOINT` | Optional default, URL required | OTP delivery endpoint | `http://localhost:8084/internal/v1/notifications/otp` | Production should authenticate internal calls. |
-| `NOTIFICATION_TIMEOUT` | Optional | Notification HTTP timeout | `3s` | Keep small. |
+| `NOTIFICATION_GRPC_ADDR` | Optional default, host/port required | OTP delivery gRPC address | `localhost:9090` | Production should use authenticated transport. |
+| `NOTIFICATION_TIMEOUT` | Optional | Notification RPC timeout | `3s` | Keep small. |
 | `SESSION_LINK_MODE` | Optional | `disabled` or `outbox` | `disabled` local | Use `outbox` in integrated env. |
 | `AUTH_EVENTS_TOPIC` | Required for outbox | Event topic name/header | `auth.events` | Must match event ingress/broker mapping. |
 | `AUTH_EVENTS_PUBLISH_ENDPOINT` | Optional | HTTP event publisher endpoint | `http://localhost:8085/internal/v1/events` | Empty means outbox worker disabled. |
@@ -818,7 +818,15 @@ OUTBOX_STALE_LOCK_TIMEOUT=5m
 
 ### Current repo status
 
-No Dockerfile and no docker-compose file were found in the repository. That means:
+The repository now contains the Auth Service Dockerfile and root Compose wiring. For isolated dependency experiments, the commands below remain useful, but the normal path is:
+
+```bash
+docker compose up -d --build auth-service
+```
+
+That Compose service applies Auth migrations and waits for Redis and Notification Service health.
+
+Legacy manual dependency setup:
 
 - You can still run MySQL/Redis in Docker.
 - Run the Go app locally with `go run`.
@@ -1179,7 +1187,7 @@ set +a
 | Auth Service HTTP | `8081` | Main Auth API | `AUTH_HTTP_ADDR=:8081` |
 | MySQL | `3306` | Auth database | `AUTH_MYSQL_DSN` |
 | Redis | `6379` | OTP rate limits | `AUTH_REDIS_ADDR` |
-| Notification Service | `8084` example | OTP delivery | `NOTIFICATION_OTP_ENDPOINT` |
+| Notification Service gRPC | `9090` | OTP delivery | `NOTIFICATION_GRPC_ADDR` |
 | Session Service gRPC | `9090` example | Reserved config/currently not wired | `SESSION_GRPC_ADDR` |
 | Event publish HTTP endpoint | No fixed port | Outbox worker publish target | `AUTH_EVENTS_PUBLISH_ENDPOINT` |
 
@@ -1266,14 +1274,13 @@ AUTH_REDIS_ADDR=redis:6379
 
 | Finding | Risk | Recommendation |
 |---|---|---|
-| No `.env.example` found | Beginners may miss required variables | Add a sanitized `.env.example` based on section 7. |
-| No `.gitignore` found | `.env` and PEM files can be accidentally committed | Add `.env`, `*.pem`, `secrets/`, build outputs to `.gitignore`. |
-| No Dockerfile found | App cannot be containerized directly | Add service Dockerfile before deployment. |
-| No docker-compose found | Local dependency setup manual | Add local compose for MySQL/Redis and optional notification mock. |
-| No migration runner found | Manual migration order can be skipped/misordered | Add `make migrate-up` or use a standard migration tool. |
+| Sanitized `.env.example` | Present | Keep placeholders local-only and never add production secrets. |
+| Repository `.gitignore` | Present | Keep `.env`, PEM material, and generated binaries excluded. |
+| Dockerfile and root Compose service | Present | Keep image and Compose validation in CI. |
+| Compose `migrate-auth` job is present | Ordered migrations run before Auth startup | Keep migrations backward-safe and the job pinned in CI. |
 | `.env` not auto-loaded | User can create `.env` but app still fails | Document `source .env` or add dev-only loader/Makefile. |
-| `/healthz` only returns process health | It does not verify MySQL/Redis | Add readiness endpoint checking DB/Redis for Kubernetes. |
-| Notification client sends no auth header | Internal endpoint can be abused if exposed | Use internal network, mTLS, or service auth token. |
+| `/healthz` is liveness-only; `/readyz` checks MySQL/Redis | Correct split | Use `/readyz` for readiness and `/healthz` for liveness. |
+| Notification gRPC currently uses plaintext transport | Unsafe across untrusted networks | Use internal network plus mTLS/authenticated service mesh in production. |
 | `AUTH_EVENTS_PUBLISH_ENDPOINT` empty with outbox mode | Pending events can accumulate | Set endpoint or monitor pending/dead-letter rows. |
 | `SESSION_GRPC_ADDR` exists but not used | Config confusion | Update docs or implement gRPC mode. |
 | Task docs mention Redis Go client | Current code uses custom Redis TCP client | Keep docs aligned with implementation. |
@@ -1295,20 +1302,20 @@ Production deployment should use:
 
 ---
 
-## 14. Missing or Misconfigured Things
+## 14. Setup Audit and Remaining Gaps
 
 These are not blockers for reading code, but they matter for smooth onboarding.
 
-| Missing/misconfigured item | Impact |
+| Setup item | Current impact/status |
 |---|---|
-| `.env.example` | New developers do not know required env names. |
-| `.gitignore` | High chance of committing secrets or generated binaries. |
-| Dockerfile | Cannot build Auth Service container from repo yet. |
-| `docker-compose.yml` | Developers must manually run MySQL/Redis. |
-| Migration command or Makefile | Migrations are manual and error-prone. |
+| `.env.example` | Present with safe local placeholders; keep production secrets external. |
+| `.gitignore` | Present and covers env files, PEM material, secrets, caches, and binaries. |
+| Dockerfile | Present as a multi-stage Auth Service image build. |
+| `docker-compose.yml` | Present with MySQL, Redis, migrations, Notification, and Auth wiring. |
+| Migration command or Makefile | Compose `migrate-auth` runs golang-migrate before Auth startup. |
 | Seed script | Local login testing requires manual SQL/API bootstrap. |
-| Notification mock | OTP flow cannot be tested unless Notification Service exists. |
-| Readiness endpoint | `/healthz` does not prove DB/Redis connectivity. |
+| Notification dependency | Real Notification gRPC service is required for live OTP delivery. |
+| Readiness endpoint | `/readyz` checks MySQL/Redis; `/healthz` remains liveness-only. |
 | Broker integration | Kafka/RabbitMQ are architectural docs only, not direct code dependency. |
 | gRPC mode | `SESSION_GRPC_ADDR` is configured but current validation allows only `outbox` and `disabled`. |
 

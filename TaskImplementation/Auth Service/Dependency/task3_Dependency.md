@@ -458,7 +458,7 @@ So for Task 3:
 
 | Docker item | Needed for password tests? | Needed for full server? | Explanation |
 |---|---:|---:|---|
-| App container | No | Not available yet | No Dockerfile exists |
+| App container | No | Yes | Auth Service Dockerfile and root Compose service are available |
 | MySQL container | No | Yes/recommended | Full server needs DB |
 | Redis container | No | Yes/recommended | Full server pings Redis |
 | Persistent MySQL volume | No | Recommended | Keeps `credentials` data across restarts |
@@ -691,14 +691,14 @@ Best practice:
 
 | Finding | Risk | Recommendation |
 |---|---|---|
-| No `.gitignore` found in repo scan | `.env` and PEM files can be accidentally committed | Add `.env`, `*.pem`, `secrets/`, and build output patterns |
-| Local `.env` exists in working tree | Local secrets/credentials may leak if committed | Keep it untracked and create sanitized `.env.example` |
-| No Dockerfile/compose found | Repeatable local/prod service container missing | Add Dockerfile and compose later |
+| Repository `.gitignore` covers `.env`, PEM, secrets, and binaries | Accidental secret/build artifact commits are reduced | Keep ignore rules and secret scanning in CI |
+| Sanitized `.env.example` is present | Local configuration has safe placeholders | Keep real local/production credentials untracked |
+| Dockerfile and root Compose are present | Repeatable local deployment is available | Keep container build and smoke checks in CI |
 | Internal password endpoints are registered on same HTTP server | If service is exposed, internal credential APIs can be abused | Protect internal routes using network policy, gateway rules, mTLS, or service auth |
 | Numeric env parse errors can fall back to defaults | Mistyped env values may be hidden | Use strict env parsing or log warnings for invalid values |
 | No dedicated IP/login rate limiter in Task 3 | DB lockout protects account, but attackers can still cause load | Add gateway/Auth middleware rate limiting |
-| `/healthz` only returns process health | It does not prove DB/Redis/schema readiness | Add readiness endpoint for deployment |
-| No migration runner found | Manual SQL order can be skipped | Add `make migrate-up` or a migration tool |
+| `/healthz` is liveness-only and `/readyz` checks MySQL/Redis | Probes distinguish process health from dependency readiness | Use `/readyz` for deployment rollouts |
+| Compose `migrate-auth` job is present | SQL migrations run before Auth startup | Keep the migration job and schema compatibility checks in CI |
 
 ---
 
@@ -708,11 +708,11 @@ Task 3 does not block on all of these for local unit tests, but they matter for 
 
 | Missing/misconfigured item | Impact | Suggested fix |
 |---|---|---|
-| `.env.example` | Beginners do not know safe placeholder values | Add sanitized template based on `task1_Dependency.md` section `7` |
-| `.gitignore` | Local secrets may be committed accidentally | Add ignore rules for `.env`, `secrets/`, `*.pem`, binaries |
-| Dockerfile | Cannot containerize Auth Service app yet | Add `backend/services/auth-service/Dockerfile` |
-| docker-compose file | MySQL/Redis setup remains manual | Add local compose for dependencies |
-| Migration runner/tracking | Manual migration execution is error-prone | Use `golang-migrate`, Goose, or Makefile commands |
+| `.env.example` | Sanitized template is present | Keep it aligned with validated config |
+| `.gitignore` | Env, secrets, PEM, cache, and binaries are ignored | Keep secret scanning enabled |
+| Dockerfile | Multi-stage Auth image is present | Keep build verification in CI |
+| docker-compose file | Root Compose starts dependencies and Auth | Keep health/dependency ordering current |
+| Migration runner/tracking | Compose `migrate-auth` uses `golang-migrate` | Monitor dirty versions and test rollback procedures |
 | Argon2 benchmark guide | Production cost tuning unclear | Add benchmark command/script for signup/login hashing |
 | Internal endpoint auth | Internal APIs rely on deployment/network safety | Add middleware or service-to-service authentication |
 | Strict env parsing | Invalid numeric env can silently fallback | Return config error when env value is malformed |

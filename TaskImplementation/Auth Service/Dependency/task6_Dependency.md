@@ -1002,9 +1002,9 @@ Only Task 6-specific issues are listed here.
 | Assign role persists `reason`, but revoke does not persist `revoked_by` or revoke reason in `role_assignments` | Revoke audit detail incomplete | Add `revoked_by`, `revoke_reason`, or audit log table |
 | Gateway service code is not present | Architecture says Gateway RBAC, but current repo only enforces Auth Service role endpoints | Implement Gateway RBAC before exposing full platform routes |
 | Stale JWT roles after revoke | User may keep revoked role until token expiry | Short access token TTL plus fresh lookup for high-risk actions |
-| No Dockerfile/compose for app | Repeatable deployment not ready | Add Auth Service Dockerfile and local compose before deployment |
-| `/healthz` only returns process health | It does not prove MySQL/Redis/schema readiness | Add readiness endpoint checking DB, Redis, JWT key load, and migration status |
-| Local `secrets/` directory exists in working tree | Private keys may leak if committed | Ensure `.gitignore` covers secrets; use secret manager in production |
+| Dockerfile, Compose, and Kubernetes base are present | Repeatable deployment is available | Keep image, Compose, and Kustomize validation in CI |
+| `/healthz` reports liveness and `/readyz` checks MySQL/Redis | Probes now distinguish process health from dependency readiness | Keep readiness dependency checks fail-closed and free of secret details |
+| JWT secret paths are ignored and runtime-mounted | Private key material stays outside source | Use a secret manager and rotation policy in production |
 
 ---
 
@@ -1012,14 +1012,14 @@ Only Task 6-specific issues are listed here.
 
 | Missing/misconfigured item | Why it matters | Recommendation |
 |---|---|---|
-| Gateway RBAC implementation not present in current backend tree | Task 6 architecture expects Gateway + service checks | Add API Gateway middleware later using the same auth level matrix |
+| API Gateway exists but its downstream bridge remains incomplete | Task 6 architecture expects Gateway + service checks | Complete Gateway forwarding and retain Auth Service authorization checks |
 | gRPC interceptors not implemented in current Auth Service | Task 6 docs mention gRPC metadata propagation | Implement only when gRPC services are added |
 | Internal endpoint protection incomplete | Internal routes can be dangerous if exposed | Add internal auth middleware, mTLS, private network, or API Gateway restrictions |
 | Immutable role audit storage missing | Role changes need compliance-grade history | Add `auth_role_audit_logs` or shared audit service event |
-| No `.env.example` committed | Beginners may copy real `.env` accidentally | Add sanitized example file based on previous dependency docs |
-| No app Dockerfile | Service container deployment not standardized | Add `backend/services/auth-service/Dockerfile` |
-| No docker-compose file | Local MySQL/Redis setup remains manual | Add `docker-compose.local.yml` for dependencies |
-| Migration runner not present | Beginners manually apply SQL files | Add a migration tool or Make target later |
+| Sanitized `.env.example` is committed | Local configuration has a safe template | Keep real secret values out of source control |
+| App Dockerfile is present | Service image deployment is standardized | Keep the multi-stage build current with the Go module |
+| Root Compose stack is present | Local MySQL/Redis and service startup are automated | Keep dependency health ordering current |
+| Compose migration job is present | SQL migrations run before Auth Service startup | Preserve ordered, idempotent migration execution |
 
 ---
 

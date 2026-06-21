@@ -92,7 +92,7 @@ type RBACConfig struct {
 }
 
 type NotificationConfig struct {
-	OTPEndpoint string
+	GRPCAddress string
 	Timeout     time.Duration
 }
 
@@ -186,7 +186,7 @@ func Load() (Config, error) {
 			RoleMutationReasonMaxLength: envInt("AUTH_ROLE_REASON_MAX_LENGTH", 512),
 		},
 		Notification: NotificationConfig{
-			OTPEndpoint: envString("NOTIFICATION_OTP_ENDPOINT", "http://localhost:8084/internal/v1/notifications/otp"),
+			GRPCAddress: envString("NOTIFICATION_GRPC_ADDR", "localhost:9090"),
 			Timeout:     envDuration("NOTIFICATION_TIMEOUT", 3*time.Second),
 		},
 		SessionLink: SessionLinkConfig{
@@ -357,12 +357,8 @@ func (c RBACConfig) Validate() error {
 }
 
 func (c NotificationConfig) Validate() error {
-	if c.OTPEndpoint == "" {
-		return errors.New("NOTIFICATION_OTP_ENDPOINT cannot be empty")
-	}
-	parsed, err := url.ParseRequestURI(c.OTPEndpoint)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return errors.New("NOTIFICATION_OTP_ENDPOINT must be an absolute URL")
+	if strings.TrimSpace(c.GRPCAddress) == "" {
+		return errors.New("NOTIFICATION_GRPC_ADDR cannot be empty")
 	}
 	if c.Timeout <= 0 {
 		return errors.New("NOTIFICATION_TIMEOUT must be greater than zero")

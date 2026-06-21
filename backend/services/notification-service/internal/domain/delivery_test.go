@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 func TestDeliveryValidate(t *testing.T) {
@@ -22,6 +24,25 @@ func TestDeliveryValidateAllowsPreSignupOTPWithoutUser(t *testing.T) {
 	delivery.TemplateKey = string(TemplateOTPVerification)
 	if err := delivery.Validate(); err != nil {
 		t.Fatalf("Validate() returned error for pre-signup OTP delivery: %v", err)
+	}
+}
+
+func TestDeliveryBSONOmitsEmptyPreSignupUser(t *testing.T) {
+	t.Parallel()
+
+	delivery := validDelivery()
+	delivery.UserID = ""
+	delivery.TemplateKey = string(TemplateOTPVerification)
+	raw, err := bson.Marshal(delivery)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	var document bson.M
+	if err := bson.Unmarshal(raw, &document); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if _, exists := document["user_id"]; exists {
+		t.Fatalf("pre-signup OTP document contains empty user_id: %#v", document["user_id"])
 	}
 }
 

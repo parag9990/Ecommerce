@@ -336,7 +336,7 @@ Task 8 introduces no new Redis, queue, broker, or third-party integration.
 Full server startup still initializes:
 
 - Redis client for OTP rate limit repository
-- HTTP Notification client for OTP delivery
+- gRPC Notification client for OTP delivery
 - Session-link outbox mode unless `SESSION_LINK_MODE=disabled`
 
 These are already documented in:

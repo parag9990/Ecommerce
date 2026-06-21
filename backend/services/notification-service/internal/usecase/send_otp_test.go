@@ -64,16 +64,17 @@ type otpAnalytics struct {
 	sentDelivery   string
 	failedDelivery string
 	failureCode    string
+	err            error
 }
 
 func (a *otpAnalytics) RecordSent(_ context.Context, deliveryID, _, _ string, _ time.Time) (domain.DeliveryEventApplyResult, error) {
 	a.sentDelivery = deliveryID
-	return domain.DeliveryEventApplyResult{MilestoneChanged: true}, nil
+	return domain.DeliveryEventApplyResult{MilestoneChanged: true}, a.err
 }
 
 func (a *otpAnalytics) RecordFailed(_ context.Context, deliveryID, _ string, code string, _ time.Time) (domain.DeliveryEventApplyResult, error) {
 	a.failedDelivery, a.failureCode = deliveryID, code
-	return domain.DeliveryEventApplyResult{MilestoneChanged: true}, nil
+	return domain.DeliveryEventApplyResult{MilestoneChanged: true}, a.err
 }
 
 func (r *otpDeliveries) InsertDelivery(_ context.Context, record domain.Delivery) error {
@@ -251,6 +252,30 @@ func TestSendOTPDoesNotAcknowledgeDeliveryWithoutSafeTrace(t *testing.T) {
 	}
 }
 
+func TestSendOTPAcknowledgesDurableDeliveryWhenAnalyticsIsUnavailable(t *testing.T) {
+	t.Parallel()
+
+	deliveries := &otpDeliveries{}
+	sender := &otpSender{channel: domain.ChannelEmail, result: provider.Result{
+		ProviderName: "mailpit", ProviderMessageID: "msg_123", Status: provider.StatusAccepted,
+	}}
+	analytics := &otpAnalytics{err: errors.New("transactions unavailable")}
+	service := newOTPServiceWithAnalytics(t,
+		&otpRenderer{result: domain.RenderedMessage{Subject: "Code", Body: "Code 482991"}},
+		sender,
+		deliveries,
+		analytics,
+	)
+
+	result, err := service.Send(context.Background(), emailOTPRequest())
+	if err != nil || result.Status != string(domain.DeliveryStatusAccepted) {
+		t.Fatalf("Send() = %+v, %v; want durable accepted delivery", result, err)
+	}
+	if deliveries.calls != 1 || analytics.sentDelivery != "delivery_otp_test" {
+		t.Fatalf("delivery calls = %d, analytics delivery = %q", deliveries.calls, analytics.sentDelivery)
+	}
+}
+
 func TestSendOTPPropagatesCancellationWithoutNewPersistenceWork(t *testing.T) {
 	t.Parallel()
 
@@ -271,9 +296,13 @@ func TestSendOTPPropagatesCancellationWithoutNewPersistenceWork(t *testing.T) {
 }
 
 func newOTPService(t *testing.T, renderer usecase.Renderer, sender provider.Provider, deliveries *otpDeliveries) *usecase.SendOTPService {
+	return newOTPServiceWithAnalytics(t, renderer, sender, deliveries, &otpAnalytics{})
+}
+
+func newOTPServiceWithAnalytics(t *testing.T, renderer usecase.Renderer, sender provider.Provider, deliveries *otpDeliveries, analytics usecase.DeliveryAnalyticsRecorder) *usecase.SendOTPService {
 	t.Helper()
 	registry := &otpRegistry{sender: sender}
-	service, err := usecase.NewSendOTPService(renderer, registry, deliveries, &otpAnalytics{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	service, err := usecase.NewSendOTPService(renderer, registry, deliveries, analytics, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("NewSendOTPService() error = %v", err)
 	}

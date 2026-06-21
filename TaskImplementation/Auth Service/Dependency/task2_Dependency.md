@@ -472,7 +472,7 @@ Task 2 Docker requirement:
 |---|---:|---|
 | MySQL container | Optional but recommended | Easiest local DB setup |
 | Redis container | Not for Task 2 migration | Required for full current server startup |
-| App container | Not available yet | No Dockerfile found in repo |
+| App container | Available | `backend/services/auth-service/Dockerfile` and root Compose service are present |
 | Persistent MySQL volume | Recommended | Keeps schema/data after container restart |
 | Docker network | Optional | Useful if app also runs inside Compose later |
 
@@ -673,9 +673,9 @@ Schema-specific audit:
 | `001_create_auth_tables.down.sql` drops all Task 2 tables | Data loss if run accidentally | Restrict production rollback permissions and require backup |
 | `otp_challenges.account_id` has no FK in Task 2 base schema | Optional account link can point to missing account | Apply later migration `003_add_otp_account_fk.up.sql` in full system |
 | `role_assignments.uk_role_active` includes nullable columns | MySQL allows multiple `NULL` values in unique indexes | Apply later migration `004_harden_role_assignments.up.sql` |
-| Manual migration execution | Human can skip order or rerun files | Add migration runner or Makefile in future |
-| `.env` exists locally and no repo `.gitignore` was found | Secrets can be accidentally committed | Add `.gitignore` and sanitized `.env.example` |
-| No Dockerfile/compose found | Local setup remains manual | Add `docker-compose.local.yml` for MySQL/Redis later |
+| Compose `migrate-auth` job | Applies ordered migrations before Auth starts | Keep migration image/version and ordering validated |
+| Repository `.gitignore` and sanitized `.env.example` are present | Local secrets stay outside source control | Never replace placeholders with production values |
+| Dockerfile and root Compose are present | Local setup is repeatable | Keep image build and Compose health checks in CI |
 
 ---
 
@@ -685,12 +685,12 @@ Task 2 specific missing/improvement items:
 
 | Item | Why it matters | Suggested fix |
 |---|---|---|
-| Migration runner | Manual SQL file execution is error-prone | Add `make migrate-up` or use `golang-migrate` |
-| Migration tracking table | MySQL does not know which migrations ran | Use a migration tool that records applied versions |
+| Migration runner | Compose `migrate-auth` runs `golang-migrate` | Keep migration execution in CI and startup dependency checks |
+| Migration tracking table | `golang-migrate` records applied versions | Monitor dirty migration state and test rollback procedures |
 | Dedicated migration user | Root migration is okay locally but not ideal in prod | Create separate migration DB user with DDL permissions |
-| `.env.example` | Beginners need safe template | Add sanitized sample, never real passwords |
-| `.gitignore` | Secrets and PEM files can leak | Ignore `.env`, `secrets/`, `*.pem`, binaries |
-| Readiness check | `/healthz` does not prove DB schema is ready | Add readiness endpoint checking MySQL/Redis/schema version later |
+| `.env.example` | Sanitized template is present | Keep placeholder values only |
+| `.gitignore` | Env, secrets, PEM, and binaries are ignored | Keep secret scanning enabled |
+| Readiness check | `/readyz` verifies MySQL and Redis connectivity | Keep migration completion as a Compose/Kubernetes rollout prerequisite |
 
 Already documented broader missing items:
 

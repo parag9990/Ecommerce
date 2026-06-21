@@ -18,7 +18,7 @@ services:
     <<: *app-defaults
     environment:
       MYSQL_ROOT_PASSWORD: local_password
-    ports: ["3306:3306"]
+    ports: ["${MYSQL_PORT:-3306}:3306"]
     volumes:
       - mysql_data:/var/lib/mysql
       - ./infra/mysql/init:/docker-entrypoint-initdb.d:ro
@@ -194,7 +194,9 @@ services:
         for service in product-service cart-service wishlist-service recommendation-service session-service notification-service; do
           while IFS= read -r file; do
             echo "Applying $$file"
-            mongosh "$$uri" --quiet --file "$$file"
+            mongosh "$$uri" --quiet \
+              --eval 'assert.commandWorked = function(result) { if (result && (result.ok === 1 || result.acknowledged === true)) return result; throw new Error("MongoDB command failed: " + EJSON.stringify(result)); }; void 0;' \
+              --file "$$file"
           done < <(find "/workspace/services/$$service/migrations" -type f \( -name '*.up.js' -o -name '*.mongodb.js' \) ! -name '*.down.*' | sort)
         done
 
@@ -225,8 +227,9 @@ services:
     depends_on:
       migrate-auth: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
+      notification-service: {condition: service_healthy}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/healthz >/dev/null"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/readyz >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 15

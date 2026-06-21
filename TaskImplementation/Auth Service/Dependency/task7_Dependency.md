@@ -531,7 +531,7 @@ Task 7 specific networking notes:
 
 ## 8. Docker & DevOps Setup
 
-No new Dockerfile or docker-compose file was found for Task 7 in the current repo.
+The Auth Service Dockerfile and root Compose service are present. Compose applies migration `005`, waits for Redis and Notification Service readiness, and uses `/readyz` for Auth health.
 
 Existing local dependency Docker setup is reused:
 
@@ -546,7 +546,7 @@ Section: 8. Docker Setup
 |---|---|
 | MySQL container | No new container, but migration `005` must be applied |
 | Redis container | No Task 7 change for Auth Service |
-| Auth Service container | No Dockerfile currently present |
+| Auth Service container | Dockerfile and root Compose service present |
 | Event ingress | Optional new external service if publishing is enabled |
 | Broker | Not direct Auth dependency; can be behind event ingress |
 | Volumes | Existing MySQL volume stores `auth_outbox_events` |

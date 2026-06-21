@@ -84,11 +84,12 @@ func main() {
 		logger.Error("auth.otp.hasher_init_failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
-	notificationClient, err := clients.NewHTTPNotificationClient(cfg.Notification.OTPEndpoint, cfg.Notification.Timeout)
+	notificationClient, notificationConn, err := clients.DialGRPCNotificationClient(cfg.Notification.GRPCAddress, cfg.Notification.Timeout)
 	if err != nil {
 		logger.Error("auth.notification_client.init_failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
+	defer notificationConn.Close()
 
 	credentialRepo, err := repository.NewMySQLCredentialRepository(db)
 	if err != nil {
@@ -230,8 +231,11 @@ func main() {
 	}
 
 	server := &http.Server{
-		Addr:         cfg.HTTP.Address,
-		Handler:      httptransport.NewRouter(handler),
+		Addr: cfg.HTTP.Address,
+		Handler: httptransport.NewRouter(handler,
+			httptransport.ReadinessDependency{Name: "mysql", Check: db.PingContext},
+			httptransport.ReadinessDependency{Name: "redis", Check: redisClient.Ping},
+		),
 		ReadTimeout:  cfg.HTTP.ReadTimeout,
 		WriteTimeout: cfg.HTTP.WriteTimeout,
 		IdleTimeout:  cfg.HTTP.IdleTimeout,

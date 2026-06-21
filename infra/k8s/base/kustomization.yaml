@@ -7,5 +7,6 @@ resources:
   - namespaces/observability.yaml
   - namespaces/jobs.yaml
   - services/api-gateway
+  - services/auth-service
   - services/product-service
   - services/session-service

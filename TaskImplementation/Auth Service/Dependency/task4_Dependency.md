@@ -591,15 +591,15 @@ Security note:
 
 Task 4 does not add a Dockerfile, docker-compose file, or new container.
 
-Current repo status remains:
+Current repository status:
 
 | Item | Status |
 |---|---|
-| Auth Service Dockerfile | Not found |
-| docker-compose.yml | Not found |
+| Auth Service Dockerfile | Present |
+| docker-compose.yml | Present in repository root |
 | MySQL container | Use previous docs |
 | Redis container | Use previous docs |
-| JWT key secret mount | Needed when app is containerized |
+| JWT key secret mount | Compose uses local image keys; Kubernetes mounts a Secret |
 
 Reuse:
 
@@ -628,7 +628,7 @@ JWT_PUBLIC_KEY_PEM_PATH=/run/secrets/auth/jwt-public.pem
 
 No new Task 4 volume is needed for MySQL/Redis.
 
-Future app container should use:
+The app container uses:
 
 | Mount/network | Purpose |
 |---|---|
@@ -901,11 +901,11 @@ These findings are from inspecting Task 4 documentation and current Auth Service
 |---|---|---|
 | `task4.md` mentions `github.com/golang-jwt/jwt/v5`, but current `go.mod` does not include it | Dependency docs and implementation can confuse beginners | Either update Task 4 docs to say standard library JWT implementation, or refactor code to use the library and add it to `go.mod` |
 | No `.gitignore` detected | `.env` and `secrets/*.pem` can be accidentally committed | Add `.gitignore` with `.env`, `secrets/`, `*.pem`, build binaries |
-| `.env` exists in working tree | Local secrets may leak if committed | Keep untracked and create sanitized `.env.example` |
-| `secrets/` exists in working tree | Private JWT key may leak if committed | Keep untracked, add ignore rule, use secret manager in production |
-| No Dockerfile found | Auth Service app cannot be containerized directly yet | Add `backend/services/auth-service/Dockerfile` before deployment |
-| No docker-compose file found | Local dependency setup remains manual | Add `docker-compose.local.yml` for MySQL/Redis and optional notification/event mocks |
-| No migration runner/tracking | Manual SQL order can be skipped or repeated | Add Makefile or migration tool such as Goose/golang-migrate |
+| Sanitized `.env.example` is present | Local configuration has safe placeholders | Keep real secrets out of source control |
+| JWT key files are ignored and injected/mounted at runtime | Private JWT keys remain external to source | Use a secret manager in production |
+| Dockerfile is present | Auth Service can be containerized directly | Keep the image build in CI |
+| Root Compose file is present | Local dependencies and Auth Service startup are automated | Keep health checks and dependency ordering current |
+| Compose `migrate-auth` job uses golang-migrate | Ordered SQL migrations run before Auth startup | Keep migration execution and rollback strategy validated |
 | Single active key model in current config | Smooth production key rotation may need old+new public keys | Add multi-key JWKS/key ring support before complex rotation |
 | Internal token endpoints are on same HTTP server | Risk if public routing exposes `/internal/*` | Protect with gateway rules, network policy, mTLS, or service auth |
 | `/healthz` only returns process health | It does not prove MySQL/Redis/key readiness | Add readiness endpoint checking DB, Redis, and key load status |

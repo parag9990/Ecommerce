@@ -60,7 +60,7 @@ Task 5 runtime dependencies:
 | Go | Yes | Auth Service OTP code build/test/run karne ke liye |
 | MySQL 8+ | Yes for full OTP flow | `otp_challenges` table stores OTP challenge hash, attempts, expiry |
 | Redis | Yes for full OTP flow | Cooldown, send quota, daily limit, verify source throttling |
-| Notification Service endpoint | Yes for real OTP send | Auth Service HTTP POST karke OTP delivery request bhejta hai |
+| Notification Service gRPC | Yes for real OTP send | Auth Service typed `SendOTP` RPC call karta hai |
 | JWT keys and refresh token config | Required for full server startup | Current `main.go` initializes token components even when testing OTP endpoints |
 | Docker | Optional | MySQL/Redis dependencies run karne ke liye easiest local option |
 
@@ -87,12 +87,13 @@ Sections:
 | Technology | What it is | Why Task 5 uses it | Required? | Beginner explanation |
 |---|---|---|---:|---|
 | Go | Backend programming language | OTP generator, hasher, usecase, repositories, HTTP handlers | Yes | Go ek compiled backend language hai. Is service ka OTP code Go me likha gaya hai. |
-| Go standard `net/http` | Built-in HTTP server/client library | OTP APIs expose karne and Notification Service ko HTTP call karne ke liye | Yes | Current service Gin/Fiber/gRPC server nahi use karta. Plain Go HTTP use hota hai. |
+| Go standard `net/http` | Built-in HTTP server library | Public OTP REST APIs expose karne ke liye | Yes | Current public Auth endpoints plain Go HTTP use karte hain. |
+| `google.golang.org/grpc` | Internal RPC client | Notification Service `SendOTP` contract call karne ke liye | Yes | Typed proto request channel, expiry, purpose, and challenge safely map karta hai. |
 | Go `crypto/rand` | Secure random source | OTP and challenge ID predictable na ho | Yes | OTP random hona chahiye. `math/rand` insecure hota hai; `crypto/rand` safer hai. |
 | Go `crypto/hmac` + `sha256` | Keyed hashing | OTP hash and Redis lookup keys protect karne ke liye | Yes | HMAC me secret pepper use hota hai, isliye DB/Redis leak se raw OTP/target easily recover nahi hota. |
 | MySQL 8+ | Relational database | OTP challenge durable state store karne ke liye | Yes | OTP expiry, attempts, verified state reliable table me store hote hain. |
 | Redis | In-memory key-value store | Cooldown and rate limit counters ke liye | Yes for running OTP APIs | Redis fast hai and short-lived counters ke liye perfect hai. |
-| HTTP Notification Client | Outbound HTTP integration | Notification Service ko OTP send request dene ke liye | Yes for real send | Auth Service OTP generate karta hai, but email/SMS send Notification Service karega. |
+| gRPC Notification Client | Typed internal integration | Notification Service ko OTP send request dene ke liye | Yes for real send | Auth Service OTP generate karta hai, but email/SMS send Notification Service karega. |
 | MySQL row lock `FOR UPDATE` | DB locking feature | Same OTP do baar verify na ho | Yes | Verification transaction me row lock hota hai taaki race condition avoid ho. |
 
 ### Current code vs `task5.md` recommended packages
@@ -101,7 +102,7 @@ Sections:
 
 | Item mentioned in `task5.md` | Current repository status | What beginner should do |
 |---|---|---|
-| `google.golang.org/grpc` | Not imported by current Auth Service code | Do not install unless code later adds gRPC handlers |
+| `google.golang.org/grpc` | Imported for the Notification Service client | Keep the pinned module and generated notification contract aligned |
 | `github.com/redis/go-redis/v9` | Not imported | Current repo has custom RESP Redis client in `internal/repository/redis_client.go` |
 | `github.com/go-playground/validator/v10` | Not imported | Current handlers do manual validation through usecases |
 | gRPC Auth handler | Not present | OTP endpoints are HTTP routes in `internal/transport/http/handler.go` |
@@ -190,7 +191,8 @@ Task 5 OTP implementation mostly uses Go standard library packages:
 | `net/mail` | Email validation |
 | `regexp` | E.164 phone validation |
 | `database/sql` | MySQL repositories and transactions |
-| `net/http` | OTP HTTP endpoints and Notification Service HTTP client |
+| `net/http` | Public OTP HTTP endpoints |
+| `google.golang.org/grpc` | Notification Service `SendOTP` client |
 
 ### Commands for Task 5 verification
 
@@ -447,12 +449,12 @@ Note: Actual key me hash value hoti hai, raw email/phone nahi. Isliye direct `ot
 
 ### Notification Service
 
-Current Auth Service OTP delivery uses HTTP, not gRPC.
+Current Auth Service OTP delivery uses Notification Service gRPC.
 
 Config:
 
 ```text
-NOTIFICATION_OTP_ENDPOINT=http://localhost:8084/internal/v1/notifications/otp
+NOTIFICATION_GRPC_ADDR=localhost:9090
 NOTIFICATION_TIMEOUT=3s
 ```
 
@@ -530,8 +532,8 @@ Subsection: Environment variable explanation
 | `OTP_DAILY_LIMIT` | Optional | `10` | Sends allowed per UTC day |
 | `OTP_VERIFY_IP_WINDOW` or `OTP_VERIFY_IP_WINDOW_SECONDS` | Optional | `5m` | Verify source/IP throttle window |
 | `OTP_VERIFY_IP_LIMIT` | Optional | `20` | Verify attempts per source/IP window |
-| `NOTIFICATION_OTP_ENDPOINT` | Optional default, but must be absolute URL | `http://localhost:8084/internal/v1/notifications/otp` | OTP delivery HTTP endpoint |
-| `NOTIFICATION_TIMEOUT` | Optional | `3s` | Outbound notification call timeout |
+| `NOTIFICATION_GRPC_ADDR` | Optional default, but must be non-empty | `localhost:9090` | OTP delivery gRPC address |
+| `NOTIFICATION_TIMEOUT` | Optional | `3s` | Outbound notification RPC timeout |
 
 No separate `.env` block is repeated here because the complete local `.env` already exists in `task1_Dependency.md`.
 
@@ -587,13 +589,13 @@ Task 5 uses the same dependency containers:
 |---|---:|---|
 | MySQL | `3306` | Stores `otp_challenges` |
 | Redis | `6379` | Stores OTP rate limit keys |
-| Notification Service | `8084` example | Receives OTP delivery request |
+| Notification Service | `9090` | Receives OTP delivery RPC |
 
 If running Auth Service itself in Docker later, make sure:
 
 - `AUTH_MYSQL_DSN` uses Docker network host `mysql`, not `127.0.0.1`.
 - `AUTH_REDIS_ADDR` uses `redis:6379`.
-- `NOTIFICATION_OTP_ENDPOINT` uses internal service DNS, for example `http://notification-service:8084/internal/v1/notifications/otp`.
+- `NOTIFICATION_GRPC_ADDR` uses internal service DNS, for example `notification-service:9090`.
 - JWT key files are mounted into the container.
 - Peppers are injected as secrets, not baked into image.
 
@@ -659,22 +661,20 @@ Expected:
 PONG
 ```
 
-### Flow D: Prepare Notification endpoint
+### Flow D: Prepare Notification Service gRPC
 
-For real `/api/v1/auth/otp/send`, `NOTIFICATION_OTP_ENDPOINT` must accept POST and return `2xx`.
+For real `/api/v1/auth/otp/send`, `NOTIFICATION_GRPC_ADDR` must expose `ecommerce.notification.v1.NotificationService/SendOTP`.
 
 If Notification Service is not running:
 
-- Auth Service can still start if the URL is syntactically valid.
+- Auth Service can still start because the gRPC connection is established lazily.
 - OTP send will fail at request time with `OTP_DELIVERY_UNAVAILABLE`.
-- Use the real Notification Service or a local mock endpoint before testing `/otp/send`.
+- Use the real Notification Service or a gRPC test server before testing `/otp/send`.
 
 Verify configured endpoint:
 
 ```bash
-curl -i -X POST "$NOTIFICATION_OTP_ENDPOINT" \
-  -H 'Content-Type: application/json' \
-  -d '{"target":"dev@example.com","channel":"email","purpose":"signup","otp":"123456","challenge_id":"otp_chal_manualtest","expires_in_seconds":300}'
+grpcurl -plaintext localhost:9090 list ecommerce.notification.v1.NotificationService
 ```
 
 Expected for a working mock/service:
@@ -821,8 +821,8 @@ Task 5 specific troubleshooting:
 | `OTP_HASH_PEPPER cannot be empty` | Required secret missing | Set `OTP_HASH_PEPPER` in `.env` and source it |
 | `OTP_RATE_LIMIT_PEPPER cannot be empty` | Both rate pepper and hash pepper missing | Set separate `OTP_RATE_LIMIT_PEPPER`, or at least set `OTP_HASH_PEPPER` |
 | `otp length must be between 6 and 10` | `OTP_LENGTH` invalid | Use `OTP_LENGTH=6` for local |
-| `NOTIFICATION_OTP_ENDPOINT must be an absolute URL` | URL missing scheme/host | Use `http://localhost:8084/internal/v1/notifications/otp` |
-| `/api/v1/auth/otp/send` returns `OTP_DELIVERY_UNAVAILABLE` | Notification Service down or returns non-2xx | Start Notification Service/mock and verify endpoint with curl |
+| `NOTIFICATION_GRPC_ADDR cannot be empty` | Notification address missing | Use `localhost:9090` on host or `notification-service:9090` in Compose |
+| `/api/v1/auth/otp/send` returns `OTP_DELIVERY_UNAVAILABLE` | Notification Service down or RPC fails | Start Notification Service and verify its gRPC health/service contract |
 | `/api/v1/auth/otp/send` returns `OTP_RATE_LIMITED` | Cooldown/window/daily Redis limit hit | Wait for `Retry-After`, or clear local Redis keys only in dev |
 | `/api/v1/auth/otp/verify` returns `INVALID_OTP` | Wrong code, expired code, replay, unknown challenge | Request a new OTP and use latest code |
 | `/api/v1/auth/otp/verify` returns `OTP_RATE_LIMITED` | Too many verify attempts from same source/IP | Wait for throttle window to expire |
@@ -873,18 +873,18 @@ Do this only in local/dev. Never manually delete production rate-limit keys unle
 - Keep OTP TTL short. Default `5m` is fine for local and common production flows.
 - Keep resend cooldown enabled. Default `1m` prevents spam and SMS/email cost spikes.
 - Use `SESSION_LINK_MODE=disabled` for first local beginner run unless outbox/event publishing is configured.
-- For production, authenticate internal Notification Service calls. Current HTTP client sends no auth header.
+- For production, protect internal Notification Service calls with mTLS or an authenticated service mesh.
 
 ### Configuration audit from current implementation
 
 | Finding | Impact | Recommendation |
 |---|---|---|
-| `backend/services/auth-service/.env` exists as untracked local file | Secrets can accidentally be committed | Add/verify `.gitignore` for `.env` and secret files before committing |
-| `backend/services/auth-service/secrets/` contains local JWT PEM files | Private key risk if committed | Keep private key outside git, or ignore `secrets/*.pem` |
-| Notification HTTP client has no auth header | Any reachable endpoint could receive OTP payload if URL is misconfigured | Add service-to-service auth before staging/prod |
+| Sanitized Auth `.env.example` is committed | Developers have a safe local template | Keep real `.env` values untracked |
+| JWT PEM and `secrets/` paths are ignored | Private key material stays outside git | Inject keys through runtime secrets in deployed environments |
+| Notification gRPC uses plaintext transport locally | Untrusted networks could observe OTP delivery traffic | Require mTLS/authenticated service mesh outside local development |
 | Notification request contains plain OTP | Necessary for delivery but sensitive | Ensure Notification Service does not log request body |
 | OTP cleanup job not visible in current repo | Expired/verified OTP rows may accumulate | Add scheduled cleanup or DB retention task |
-| No Dockerfile/docker-compose in repo | Onboarding depends on docs/manual commands | Add compose file later for repeatable local setup |
+| Dockerfile and root Compose wiring | Implemented | Keep Compose config/build verification in CI |
 | Redis rate limiting fails closed | Safer security posture, but Redis outage blocks OTP | Monitor Redis and alert on `OTP_RATE_LIMIT_UNAVAILABLE` |
 
 ---
@@ -895,11 +895,11 @@ Task 5 setup gaps to be aware of:
 
 | Missing/misconfigured item | Why it matters | Suggested fix |
 |---|---|---|
-| No committed `.env.example` | Beginners may not know exact env names | Add sanitized `.env.example` later, with fake values only |
-| No Docker Compose file in repo | MySQL/Redis setup is manual | Add compose for local dependencies |
-| No Notification Service implementation in this repo path | `/otp/send` cannot succeed without endpoint | Run real Notification Service or a local mock |
+| Sanitized `.env.example` | Present | Keep fake/local values only |
+| Root Docker Compose | Present | Use it for MySQL, Redis, Auth, and Notification dependencies |
+| Notification Service gRPC implementation | Present | Start `notification-service` before real OTP smoke tests |
 | No OTP cleanup migration/job | Old rows may grow over time | Add scheduled cleanup for expired/verified rows |
-| No service auth for Notification HTTP call | Internal endpoint security gap | Add mTLS, internal token, or signed service request |
+| No transport authentication for local Notification gRPC | Internal transport security gap outside trusted local networks | Add mTLS or authenticated service mesh |
 | `task5.md` mentions packages not in current `go.mod` | New devs may install unnecessary dependencies | Follow current imports and this dependency guide |
 
 Example cleanup SQL for local/dev or future scheduled job:
@@ -961,8 +961,8 @@ go test ./internal/usecase
 - [ ] `AUTH_MYSQL_DSN` includes `parseTime=true`.
 - [ ] `OTP_HASH_PEPPER` is set.
 - [ ] `OTP_RATE_LIMIT_PEPPER` is set to a separate long secret where possible.
-- [ ] `NOTIFICATION_OTP_ENDPOINT` is an absolute URL.
-- [ ] Notification Service or mock returns `2xx`.
+- [ ] `NOTIFICATION_GRPC_ADDR` points to Notification Service gRPC.
+- [ ] Notification Service `SendOTP` RPC returns an accepted delivery.
 - [ ] JWT key env variables are set for full server startup.
 - [ ] `SESSION_LINK_MODE=disabled` is used for first local run unless outbox is configured.
 - [ ] Auth Service starts successfully.

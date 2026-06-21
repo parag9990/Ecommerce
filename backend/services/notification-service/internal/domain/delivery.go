@@ -24,7 +24,7 @@ const (
 
 type Delivery struct {
 	ID                   string         `bson:"_id" json:"id"`
-	UserID               string         `bson:"user_id" json:"user_id"`
+	UserID               string         `bson:"user_id,omitempty" json:"user_id,omitempty"`
 	Channel              Channel        `bson:"channel" json:"channel"`
 	TemplateKey          string         `bson:"template_key" json:"template_key"`
 	CampaignID           string         `bson:"campaign_id,omitempty" json:"campaign_id,omitempty"`

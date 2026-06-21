@@ -4,7 +4,7 @@ import (
 	"net/http"
 )
 
-func NewRouter(handler *Handler) *http.ServeMux {
+func NewRouter(handler *Handler, readinessDependencies ...ReadinessDependency) *http.ServeMux {
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -14,5 +14,6 @@ func NewRouter(handler *Handler) *http.ServeMux {
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+	mux.HandleFunc("/readyz", readinessHandler(readinessDependencies))
 	return mux
 }
