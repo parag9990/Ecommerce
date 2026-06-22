@@ -24,16 +24,16 @@ func NewRouter(ctx context.Context, cfg config.Config, catalog usecase.RouteCata
 }
 
 type RouterOptions struct {
-	TokenVerifier      TokenVerifier
-	RateLimiter        ratelimit.Limiter
-	RateLimitPolicies  []ratelimit.Policy
-	RequestValidator   RequestValidator
-	Metrics            *observability.Metrics
-	UserClient         clients.UserClient
-	SearchClient       clients.SearchServiceClient
+	TokenVerifier     TokenVerifier
+	RateLimiter       ratelimit.Limiter
+	RateLimitPolicies []ratelimit.Policy
+	RequestValidator  RequestValidator
+	Metrics           *observability.Metrics
+	UserClient        clients.UserClient
+	SearchClient      clients.SearchServiceClient
 	NotificationClient clients.NotificationClient
-	SessionHTTPClient  *http.Client
-	AuthHTTPClient     *http.Client
+	SessionHTTPClient *http.Client
+	AuthHTTPClient    *http.Client
 }
 
 func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecase.RouteCatalog, logger *slog.Logger, downstreamHealth DownstreamHealthChecker, opts RouterOptions) (http.Handler, error) {

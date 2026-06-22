@@ -11,3 +11,4 @@ resources:
   - services/product-service
   - services/session-service
   - services/session-analytics-dashboard
+  - services/notification-service

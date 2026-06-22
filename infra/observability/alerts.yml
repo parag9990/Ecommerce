@@ -22,3 +22,24 @@ groups:
           severity: warning
         annotations:
           summary: "{{ $labels.service }} p95 latency exceeds one second"
+      - alert: NotificationDeliveryFailureRateHigh
+        expr: sum(rate(notification_delivery_events_total{event="failed"}[10m])) / clamp_min(sum(rate(notification_delivery_events_total{event=~"sent|failed"}[10m])), 0.000001) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Notification terminal delivery failures exceed 5%"
+      - alert: NotificationWebhookProcessingFailures
+        expr: sum(rate(notification_provider_webhooks_total{outcome="failed"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Notification provider webhooks cannot be persisted"
+      - alert: NotificationProviderEventLagHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(notification_delivery_event_lag_seconds_bucket[10m]))) > 300
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Notification provider event ingestion p95 lag exceeds five minutes"

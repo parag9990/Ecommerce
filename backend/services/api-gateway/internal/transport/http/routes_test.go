@@ -20,6 +20,7 @@ import (
 	"ecommerce/api-gateway/internal/repository"
 	"ecommerce/api-gateway/internal/usecase"
 	"github.com/golang-jwt/jwt/v5"
+	notificationv1 "github.com/parag/ecommerce/backend/shared/gen/go/ecommerce/notification/v1"
 	userv1 "github.com/parag/ecommerce/backend/shared/gen/go/ecommerce/user/v1"
 	"google.golang.org/grpc/metadata"
 )
@@ -170,6 +171,51 @@ func TestProtectedUserRouteBridgesAuthenticatedIdentityToGRPC(t *testing.T) {
 	data, ok := envelope.Data.(map[string]any)
 	if !ok || data["user_id"] != "user_buyer" {
 		t.Fatalf("unexpected profile response: %#v", envelope.Data)
+	}
+}
+
+func TestProtectedNotificationPreferenceRoutesBridgeAuthenticatedIdentityToGRPC(t *testing.T) {
+	path := writeAuthTestContract(t)
+	cfg := authTestConfig(path)
+	repo := repository.NewJSONRouteRepository(path)
+	catalog := usecase.NewRouteCatalogService(repo, cfg.APIBasePath)
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	client := &routerNotificationClient{
+		get: func(ctx context.Context, _ *notificationv1.GetNotificationPreferenceRequest) (*notificationv1.NotificationPreference, error) {
+			assertNotificationMetadata(t, ctx)
+			return &notificationv1.NotificationPreference{EmailEnabled: true}, nil
+		},
+		update: func(ctx context.Context, request *notificationv1.UpdateNotificationPreferenceRequest) (*notificationv1.NotificationPreference, error) {
+			assertNotificationMetadata(t, ctx)
+			if request.MarketingEnabled == nil || !request.GetMarketingEnabled() {
+				t.Fatalf("marketing_enabled = %#v, want true", request.MarketingEnabled)
+			}
+			return &notificationv1.NotificationPreference{EmailEnabled: true, MarketingEnabled: true}, nil
+		},
+	}
+	router, err := NewRouterWithOptions(context.Background(), cfg, catalog, logger, nil, RouterOptions{
+		TokenVerifier:      stubTokenVerifier{},
+		NotificationClient: client,
+	})
+	if err != nil {
+		t.Fatalf("new router: %v", err)
+	}
+
+	getRequest := httptest.NewRequest(http.MethodGet, "/api/v1/me/notification-preferences", nil)
+	getRequest.Header.Set("Authorization", "Bearer buyer-token")
+	getResponse := httptest.NewRecorder()
+	router.ServeHTTP(getResponse, getRequest)
+	if getResponse.Code != http.StatusOK {
+		t.Fatalf("GET status = %d: %s", getResponse.Code, getResponse.Body.String())
+	}
+
+	patchRequest := httptest.NewRequest(http.MethodPatch, "/api/v1/me/notification-preferences", strings.NewReader(`{"marketing_enabled":true}`))
+	patchRequest.Header.Set("Authorization", "Bearer buyer-token")
+	patchRequest.Header.Set("Content-Type", "application/json")
+	patchResponse := httptest.NewRecorder()
+	router.ServeHTTP(patchResponse, patchRequest)
+	if patchResponse.Code != http.StatusOK {
+		t.Fatalf("PATCH status = %d: %s", patchResponse.Code, patchResponse.Body.String())
 	}
 }
 
@@ -388,6 +434,26 @@ func writeAuthTestContract(t *testing.T) string {
 				"response_schema": "Product"
 			},
 			{
+				"id": "notification.preferences_get",
+				"method": "GET",
+				"path": "/api/v1/me/notification-preferences",
+				"service": "notification-service",
+				"grpc": "NotificationService.GetNotificationPreference",
+				"auth": "buyer",
+				"request_schema": "Empty",
+				"response_schema": "NotificationPreference"
+			},
+			{
+				"id": "notification.preferences_update",
+				"method": "PATCH",
+				"path": "/api/v1/me/notification-preferences",
+				"service": "notification-service",
+				"grpc": "NotificationService.UpdateNotificationPreference",
+				"auth": "buyer",
+				"request_schema": "NotificationPreferenceInput",
+				"response_schema": "NotificationPreference"
+			},
+			{
 				"id": "payment.webhook",
 				"method": "POST",
 				"path": "/api/v1/webhooks/payments/{provider}",
@@ -561,4 +627,28 @@ func (*routerUserClient) GetSellerProfile(context.Context, *userv1.GetSellerProf
 
 func (*routerUserClient) UpdateSellerProfile(context.Context, *userv1.UpdateSellerProfileRequest) (*userv1.SellerProfile, error) {
 	return nil, errors.New("unexpected UpdateSellerProfile call")
+}
+
+type routerNotificationClient struct {
+	get    func(context.Context, *notificationv1.GetNotificationPreferenceRequest) (*notificationv1.NotificationPreference, error)
+	update func(context.Context, *notificationv1.UpdateNotificationPreferenceRequest) (*notificationv1.NotificationPreference, error)
+}
+
+func (c *routerNotificationClient) GetNotificationPreference(ctx context.Context, request *notificationv1.GetNotificationPreferenceRequest) (*notificationv1.NotificationPreference, error) {
+	return c.get(ctx, request)
+}
+
+func (c *routerNotificationClient) UpdateNotificationPreference(ctx context.Context, request *notificationv1.UpdateNotificationPreferenceRequest) (*notificationv1.NotificationPreference, error) {
+	return c.update(ctx, request)
+}
+
+func assertNotificationMetadata(t *testing.T, ctx context.Context) {
+	t.Helper()
+	outgoing, ok := metadata.FromOutgoingContext(ctx)
+	if !ok || len(outgoing.Get("x-user-id")) != 1 || outgoing.Get("x-user-id")[0] != "user_buyer" {
+		t.Fatalf("outgoing x-user-id = %#v", outgoing.Get("x-user-id"))
+	}
+	if roles := outgoing.Get("x-roles"); len(roles) != 1 || roles[0] != "buyer" {
+		t.Fatalf("outgoing x-roles = %#v", roles)
+	}
 }

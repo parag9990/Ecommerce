@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  namespace: core
+  labels:
+    app.kubernetes.io/name: notification-service
+    app.kubernetes.io/part-of: ecommerce-platform
+    app.kubernetes.io/component: backend-service
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: notification-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: notification-service
+        app.kubernetes.io/part-of: ecommerce-platform
+        app.kubernetes.io/component: backend-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+        prometheus.io/path: /metrics
+    spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: notification-service
+          image: registry.example.com/ecommerce/notification-service:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: internal-http, containerPort: 8081, protocol: TCP }
+            - { name: grpc, containerPort: 9090, protocol: TCP }
+          envFrom:
+            - configMapRef: { name: notification-service-config }
+            - secretRef: { name: notification-service-secret }
+          readinessProbe:
+            httpGet: { path: /readyz, port: internal-http }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /healthz, port: internal-http }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 750m, memory: 768Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }

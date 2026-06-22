@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: core
+  labels:
+    app.kubernetes.io/name: notification-service
+    app.kubernetes.io/part-of: ecommerce-platform
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: notification-service
+  ports:
+    - { name: internal-http, port: 8081, targetPort: internal-http, protocol: TCP }
+    - { name: grpc, port: 9090, targetPort: grpc, protocol: TCP }
