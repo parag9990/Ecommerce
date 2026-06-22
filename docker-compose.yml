@@ -390,7 +390,7 @@ services:
     build: {context: ., dockerfile: backend/services/order-service/Dockerfile}
     <<: *app-defaults
     env_file: [backend/services/order-service/.env.example]
-    ports: ["8090:8090"]
+    ports: ["8090:8090", "9094:9094"]
     depends_on:
       migrate-order: {condition: service_completed_successfully}
       cart-service: {condition: service_healthy}

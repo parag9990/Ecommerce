@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	grpc_health_v1 "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
@@ -252,6 +253,13 @@ func TestRegisteredServiceRequiresTrustedCallerMetadata(t *testing.T) {
 	}
 	defer clientConn.Close()
 	client := orderv1.NewOrderServiceClient(clientConn)
+	healthClient := grpc_health_v1.NewHealthClient(clientConn)
+	healthResponse, err := healthClient.Check(context.Background(), &grpc_health_v1.HealthCheckRequest{
+		Service: orderv1.OrderService_ServiceDesc.ServiceName,
+	})
+	if err != nil || healthResponse.GetStatus() != grpc_health_v1.HealthCheckResponse_SERVING {
+		t.Fatalf("Health.Check() response/error = %+v/%v, want SERVING without business credentials", healthResponse, err)
+	}
 
 	_, err = client.GetOrder(context.Background(), &orderv1.GetOrderRequest{OrderId: "ord_1"})
 	if status.Code(err) != codes.Unauthenticated {

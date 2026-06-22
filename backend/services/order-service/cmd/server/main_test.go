@@ -46,3 +46,15 @@ func TestPaymentEventIngressRejectsMissingAuthorization(t *testing.T) {
 		t.Fatalf("status=%d, want %d", response.Code, http.StatusUnauthorized)
 	}
 }
+
+func TestPaymentEventIngressRejectsTrailingJSON(t *testing.T) {
+	handler := serviceMux(nil, &fakePaymentResultExecutor{}, "events-token", slog.Default())
+	body := `{"topic":"payment.events","event":{"event_id":"evt_1","event_type":"PaymentCaptured","payment_id":"pay_1","order_id":"ord_1","amount":1200,"currency":"INR","occurred_at":"2026-06-21T08:00:00Z"}} {}`
+	request := httptest.NewRequest(http.MethodPost, "/internal/v1/payment-events", strings.NewReader(body))
+	request.Header.Set("Authorization", "Bearer events-token")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d, want %d", response.Code, http.StatusBadRequest)
+	}
+}

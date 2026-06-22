@@ -107,13 +107,17 @@ func (u *ApplyPaymentResultUsecase) Execute(ctx context.Context, command ApplyPa
 	}
 
 	toStatus, reason := paymentResultTransition(result)
-	if order.Status == toStatus {
+	if paymentResultAlreadyApplied(order.Status, result) {
 		u.logger.Info("order.payment.result_duplicate",
 			slog.String("order_id", order.OrderID),
 			slog.String("payment_id", order.PaymentID),
 			slog.String("result", string(result)),
 		)
-		return nil
+		// The lifecycle transition and the Product Service action cannot share a
+		// transaction. Retrying the idempotent inventory action here repairs a
+		// prior attempt where the order transition committed but the downstream
+		// commit/release call failed.
+		return u.finalizeInventory(ctx, order, result)
 	}
 	if order.Status != domain.OrderStatusPendingPayment {
 		return domain.ErrInvalidPaymentTransition
@@ -178,6 +182,22 @@ func (u *ApplyPaymentResultUsecase) Execute(ctx context.Context, command ApplyPa
 		)
 	}
 	return u.finalizeInventory(ctx, order, result)
+}
+
+func paymentResultAlreadyApplied(status domain.OrderStatus, result domain.PaymentResult) bool {
+	if result == domain.PaymentResultFailed {
+		return status == domain.OrderStatusPaymentFailed
+	}
+	switch status {
+	case domain.OrderStatusPaid,
+		domain.OrderStatusPacked,
+		domain.OrderStatusShipped,
+		domain.OrderStatusDelivered,
+		domain.OrderStatusRefunded:
+		return true
+	default:
+		return false
+	}
 }
 
 func validatePaymentResultCommand(command *ApplyPaymentResultCommand) (domain.PaymentResult, error) {

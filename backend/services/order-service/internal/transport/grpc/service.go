@@ -13,6 +13,8 @@ import (
 	orderv1 "github.com/example/ecommerce-platform/backend/shared/gen/go/ecommerce/order/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/health"
+	grpc_health_v1 "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 )
 
@@ -39,6 +41,10 @@ func NewGRPCServer(handler *Server, ids usecase.IDGenerator, config RuntimeConfi
 		loggingInterceptor(logger),
 	))
 	orderv1.RegisterOrderServiceServer(server, handler)
+	healthServer := health.NewServer()
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+	healthServer.SetServingStatus(orderv1.OrderService_ServiceDesc.ServiceName, grpc_health_v1.HealthCheckResponse_SERVING)
+	grpc_health_v1.RegisterHealthServer(server, healthServer)
 	return server, nil
 }
 
@@ -77,6 +83,9 @@ func ListenAndServe(ctx context.Context, address string, server *grpc.Server) er
 
 func authInterceptor(trustedToken string, ids usecase.IDGenerator) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, request any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		if info.FullMethod == grpc_health_v1.Health_Check_FullMethodName {
+			return handler(ctx, request)
+		}
 		requestID, err := ids.NewID("req")
 		if err != nil {
 			return nil, status.Error(codes.Internal, "internal order service error")

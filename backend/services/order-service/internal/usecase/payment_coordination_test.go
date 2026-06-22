@@ -188,45 +188,58 @@ func TestApplyPaymentResultFailedMarksPaymentFailedAndReleasesInventory(t *testi
 	}
 }
 
-func TestApplyPaymentResultDoesNotFinalizeDuplicateOrMismatchedPayment(t *testing.T) {
+func TestApplyPaymentResultRetriesInventoryForDuplicateCapturedResult(t *testing.T) {
 	now := paymentTestTime()
-	tests := []struct {
-		name   string
-		order  domain.Order
-		mutate func(*ApplyPaymentResultCommand)
-		want   error
-	}{
-		{
-			name:  "duplicate captured result",
-			order: withPaymentState(payableOrder(now), domain.OrderStatusPaid),
-		},
-		{
-			name:  "captured amount mismatch",
-			order: withPaymentState(payableOrder(now), domain.OrderStatusPendingPayment),
-			mutate: func(command *ApplyPaymentResultCommand) {
-				command.Amount++
-			},
-			want: domain.ErrPaymentAmountMismatch,
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			orders := &fakePaymentRepository{order: test.order}
+	for _, status := range []domain.OrderStatus{
+		domain.OrderStatusPaid,
+		domain.OrderStatusPacked,
+		domain.OrderStatusShipped,
+		domain.OrderStatusDelivered,
+		domain.OrderStatusRefunded,
+	} {
+		t.Run(status.String(), func(t *testing.T) {
+			orders := &fakePaymentRepository{order: withPaymentState(payableOrder(now), status)}
 			inventory := &fakePaymentInventory{}
 			usecase := newApplyPaymentUsecase(t, orders, inventory, now)
-			command := validPaymentResultCommand("captured", now)
-			if test.mutate != nil {
-				test.mutate(&command)
-			}
 
-			err := usecase.Execute(context.Background(), command)
-			if !errors.Is(err, test.want) {
-				t.Fatalf("Execute() error = %v, want %v", err, test.want)
+			if err := usecase.Execute(context.Background(), validPaymentResultCommand("captured", now)); err != nil {
+				t.Fatalf("Execute() error = %v", err)
 			}
-			if orders.transitionCalls != 0 || inventory.commitCalls != 0 || inventory.releaseCalls != 0 {
-				t.Fatal("duplicate or mismatched payment caused a status transition or inventory action")
+			if orders.transitionCalls != 0 || inventory.commitCalls != 1 || inventory.releaseCalls != 0 {
+				t.Fatalf("transitions/commits/releases = %d/%d/%d, want 0/1/0", orders.transitionCalls, inventory.commitCalls, inventory.releaseCalls)
 			}
 		})
+	}
+}
+
+func TestApplyPaymentResultRetriesInventoryForDuplicateFailedResult(t *testing.T) {
+	now := paymentTestTime()
+	orders := &fakePaymentRepository{order: withPaymentState(payableOrder(now), domain.OrderStatusPaymentFailed)}
+	inventory := &fakePaymentInventory{}
+	usecase := newApplyPaymentUsecase(t, orders, inventory, now)
+
+	if err := usecase.Execute(context.Background(), validPaymentResultCommand("failed", now)); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if orders.transitionCalls != 0 || inventory.commitCalls != 0 || inventory.releaseCalls != 1 {
+		t.Fatalf("transitions/commits/releases = %d/%d/%d, want 0/0/1", orders.transitionCalls, inventory.commitCalls, inventory.releaseCalls)
+	}
+}
+
+func TestApplyPaymentResultRejectsMismatchedPaymentWithoutInventoryAction(t *testing.T) {
+	now := paymentTestTime()
+	orders := &fakePaymentRepository{order: withPaymentState(payableOrder(now), domain.OrderStatusPendingPayment)}
+	inventory := &fakePaymentInventory{}
+	usecase := newApplyPaymentUsecase(t, orders, inventory, now)
+	command := validPaymentResultCommand("captured", now)
+	command.Amount++
+
+	err := usecase.Execute(context.Background(), command)
+	if !errors.Is(err, domain.ErrPaymentAmountMismatch) {
+		t.Fatalf("Execute() error = %v, want %v", err, domain.ErrPaymentAmountMismatch)
+	}
+	if orders.transitionCalls != 0 || inventory.commitCalls != 0 || inventory.releaseCalls != 0 {
+		t.Fatal("mismatched payment caused a status transition or inventory action")
 	}
 }
 

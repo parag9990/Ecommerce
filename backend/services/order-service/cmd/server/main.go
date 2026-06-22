@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -179,7 +180,7 @@ func serviceMux(db *sql.DB, paymentResults paymentResultExecutor, paymentEventsT
 		var envelope paymentEventEnvelope
 		decoder := json.NewDecoder(r.Body)
 		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&envelope); err != nil || strings.TrimSpace(envelope.Topic) != "payment.events" {
+		if err := decoder.Decode(&envelope); err != nil || decoder.Decode(&struct{}{}) != io.EOF || strings.TrimSpace(envelope.Topic) != "payment.events" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payment event"})
 			return
 		}
