@@ -9,6 +9,9 @@ images:
   - name: registry.example.com/ecommerce/product-service
     newName: ecommerce/product-service
     newTag: local
+  - name: registry.example.com/ecommerce/recommendation-service
+    newName: ecommerce/recommendation-service
+    newTag: local
 patches:
   - path: patches/api-gateway-replicas.yaml
   - path: patches/product-service-replicas.yaml

@@ -52,11 +52,28 @@ func NewHandler(usecase TypeDefinitionUsecase, storageUsecase StorageUsecase, lo
 }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/readyz", h.handleReadiness)
 	mux.HandleFunc("/internal/v1/recommendation/types", h.handleListTypes)
 	mux.HandleFunc("/internal/v1/recommendation/contexts", h.handleListContexts)
 	mux.HandleFunc("/internal/v1/recommendation/resolve-type", h.handleResolveType)
 	mux.HandleFunc("/internal/v1/recommendation/storage", h.handleStoragePlan)
 	mux.HandleFunc("/internal/v1/recommendation/storage/status", h.handleStorageStatus)
+}
+
+func (h *Handler) handleReadiness(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	status, err := h.storageUsecase.Status(r.Context())
+	if err != nil {
+		h.writeUsecaseError(w, r, err)
+		return
+	}
+	statusCode := http.StatusOK
+	if !status.Ready() {
+		statusCode = http.StatusServiceUnavailable
+	}
+	writeJSON(w, statusCode, storageStatusFromUsecase(status))
 }
 
 func (h *Handler) handleListTypes(w http.ResponseWriter, r *http.Request) {

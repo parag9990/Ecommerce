@@ -16,3 +16,4 @@ resources:
   - services/superadmin-service
   - services/session-analytics-dashboard
   - services/notification-service
+  - services/recommendation-service

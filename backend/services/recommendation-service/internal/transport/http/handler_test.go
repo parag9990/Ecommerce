@@ -137,6 +137,25 @@ func TestHandlerStorageStatus(t *testing.T) {
 	}
 }
 
+func TestHandlerReadiness(t *testing.T) {
+	router := newTestRouter(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	var got storageStatusResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if !got.Ready {
+		t.Fatal("readiness should report ready when external storage is not configured")
+	}
+}
+
 func newTestRouter(t *testing.T) http.Handler {
 	t.Helper()
 
