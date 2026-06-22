@@ -161,6 +161,7 @@ func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecas
 	wrapped = MetricsMiddleware(opts.Metrics, labeler)(wrapped)
 	wrapped = AccessLogMiddlewareWithConfig(cfg.Observability.Normalize(cfg.ServiceName, cfg.Environment), logger, labeler)(wrapped)
 	wrapped = RecoveryMiddleware(logger)(wrapped)
+	wrapped = CORSMiddleware(cfg.CORS)(wrapped)
 	wrapped = RequestIDMiddleware(wrapped)
 	return wrapped, nil
 }

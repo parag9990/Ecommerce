@@ -533,7 +533,7 @@ services:
     build:
       context: .
       dockerfile: frontend/superadmin-panel/Dockerfile
-      args: {VITE_API_BASE_URL: "http://localhost:8080/api/v1"}
+      args: {VITE_API_BASE_URL: "http://localhost:8080"}
     <<: *app-defaults
     ports: ["3003:8080"]
     depends_on: [api-gateway]

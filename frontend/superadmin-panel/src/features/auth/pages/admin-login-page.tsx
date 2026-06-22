@@ -83,7 +83,7 @@ export function AdminLoginPage() {
     setIsSubmitting(true);
 
     try {
-      const response = await apiFetch<LoginResponse>("/auth/login", {
+      const response = await apiFetch<LoginResponse>("/api/v1/auth/login", {
         method: "POST",
         body: JSON.stringify({
           identifier: identifier.trim(),

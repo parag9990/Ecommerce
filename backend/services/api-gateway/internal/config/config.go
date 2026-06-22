@@ -41,6 +41,10 @@ type RequestValidationConfig struct {
 	MaxQueryBytes       int
 }
 
+type CORSConfig struct {
+	AllowedOrigins []string
+}
+
 type GRPCWebConfig struct {
 	Enabled            bool
 	Address            string
@@ -67,6 +71,7 @@ type Config struct {
 	Redis         RedisConfig
 	RateLimit     RateLimitConfig
 	Validation    RequestValidationConfig
+	CORS          CORSConfig
 	GRPCWeb       GRPCWebConfig
 	Observability observability.Config
 
@@ -291,6 +296,15 @@ func Load(ctx context.Context) (Config, error) {
 			MaxHeaderBytes:      maxHeaderBytes,
 			MaxQueryBytes:       maxQueryBytes,
 		},
+		CORS: CORSConfig{
+			AllowedOrigins: getCSV("CORS_ALLOWED_ORIGINS", []string{
+				"http://localhost:3000",
+				"http://localhost:3001",
+				"http://localhost:3002",
+				"http://localhost:3003",
+				"http://localhost:5173",
+			}),
+		},
 		GRPCWeb: GRPCWebConfig{
 			Enabled:            grpcWebEnabled,
 			Address:            getenv("GRPC_ADDR", ":9090"),
@@ -408,6 +422,11 @@ func (c Config) Validate() error {
 		}
 		if c.Validation.MaxQueryBytes <= 0 {
 			errs = append(errs, errors.New("REQUEST_VALIDATION_MAX_QUERY_BYTES must be positive"))
+		}
+	}
+	for _, origin := range c.CORS.AllowedOrigins {
+		if err := validateOrigin(origin); err != nil {
+			errs = append(errs, fmt.Errorf("CORS_ALLOWED_ORIGINS contains invalid origin %q: %w", origin, err))
 		}
 	}
 	if c.GRPCWeb.Enabled {
@@ -666,6 +685,26 @@ func validateHTTPURL(value string) error {
 	default:
 		return fmt.Errorf("scheme must be http or https")
 	}
+}
+
+func validateOrigin(value string) error {
+	if value == "*" {
+		return errors.New("wildcard origin is not allowed")
+	}
+	parsed, err := url.ParseRequestURI(strings.TrimSpace(value))
+	if err != nil {
+		return err
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return errors.New("scheme must be http or https")
+	}
+	if parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return errors.New("origin must contain only scheme and host")
+	}
+	if parsed.Path != "" && parsed.Path != "/" {
+		return errors.New("origin must not contain a path")
+	}
+	return nil
 }
 
 func resolveContractPath(configured string) (string, error) {

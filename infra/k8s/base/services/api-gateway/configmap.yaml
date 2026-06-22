@@ -14,6 +14,7 @@ data:
   API_BASE_PATH: /api/v1
   API_CONTRACT_PATH: /app/config/master-api.json
   LOG_LEVEL: info
+  CORS_ALLOWED_ORIGINS: https://shop.example.com,https://seller.example.com,https://admin.example.com
   METRICS_ENABLED: "true"
   METRICS_ADDR: :9091
   TRACE_ENABLED: "true"
