@@ -9,6 +9,7 @@ resources:
   - services/api-gateway
   - services/auth-service
   - services/product-service
+  - services/payment-service
   - services/wishlist-service
   - services/session-service
   - services/superadmin-service

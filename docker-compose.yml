@@ -416,6 +416,15 @@ services:
       timeout: 5s
       retries: 15
 
+  payment-reconciliation:
+    build: {context: ., dockerfile: backend/services/payment-service/Dockerfile}
+    <<: *app-defaults
+    profiles: ["jobs"]
+    entrypoint: ["/app/reconciliation"]
+    env_file: [backend/services/payment-service/.env.example]
+    depends_on:
+      migrate-payment: {condition: service_completed_successfully}
+
   notification-service:
     build: {context: ., dockerfile: backend/services/notification-service/Dockerfile}
     <<: *app-defaults

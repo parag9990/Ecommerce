@@ -8,10 +8,12 @@ COPY backend/services/payment-service ./backend/services/payment-service
 WORKDIR /src/backend/services/payment-service
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/service ./cmd/server
+RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/reconciliation ./cmd/reconciliation
 FROM alpine:3.21
 RUN addgroup -S app && adduser -S -G app app
 WORKDIR /app
 COPY --from=build /out/service /app/service
+COPY --from=build /out/reconciliation /app/reconciliation
 USER app
 EXPOSE 8080
 ENTRYPOINT ["/app/service"]

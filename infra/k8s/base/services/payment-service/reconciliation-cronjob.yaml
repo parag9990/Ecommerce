@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: payment-reconciliation
+  namespace: core
+  labels:
+    app.kubernetes.io/name: payment-service
+    app.kubernetes.io/part-of: ecommerce-platform
+    app.kubernetes.io/component: reconciliation-job
+spec:
+  schedule: "37 2 * * *"
+  suspend: true
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: payment-service
+            app.kubernetes.io/component: reconciliation-job
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: reconciliation
+              image: registry.example.com/ecommerce/payment-service:dev
+              imagePullPolicy: IfNotPresent
+              command: ["/app/reconciliation"]
+              env:
+                - { name: PAYMENT_RECONCILIATION_ENABLED, value: "true" }
+              envFrom:
+                - configMapRef: { name: payment-service-config }
+                - secretRef: { name: payment-service-secret }
+              resources:
+                requests: { cpu: 50m, memory: 96Mi }
+                limits: { cpu: 500m, memory: 512Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
