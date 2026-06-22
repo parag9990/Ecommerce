@@ -34,6 +34,7 @@ type RouterOptions struct {
 	NotificationClient clients.NotificationClient
 	SessionHTTPClient  *http.Client
 	AuthHTTPClient     *http.Client
+	WishlistHTTPClient *http.Client
 }
 
 func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecase.RouteCatalog, logger *slog.Logger, downstreamHealth DownstreamHealthChecker, opts RouterOptions) (http.Handler, error) {
@@ -97,6 +98,17 @@ func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecas
 			return nil, fmt.Errorf("configure auth HTTP proxy: %w", err)
 		}
 	}
+	var wishlistProxy *SessionProxy
+	if strings.TrimSpace(cfg.WishlistHTTPURL) != "" {
+		client := opts.WishlistHTTPClient
+		if client == nil {
+			client = &http.Client{Timeout: cfg.WishlistHTTPTimeout}
+		}
+		wishlistProxy, err = NewServiceHTTPProxy("wishlist", cfg.WishlistHTTPURL, client, logger)
+		if err != nil {
+			return nil, fmt.Errorf("configure wishlist HTTP proxy: %w", err)
+		}
+	}
 	for _, route := range routes {
 		route := route
 		endpoint := handler.RouteDefined(route)
@@ -114,6 +126,9 @@ func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecas
 		}
 		if authProxy != nil && route.Service == "auth-service" {
 			endpoint = authProxy.ServeHTTP
+		}
+		if wishlistProxy != nil && route.Service == "wishlist-service" {
+			endpoint = wishlistProxy.ServeHTTP
 		}
 		baseHandler := RequestValidationMiddleware(route, requestValidator, logger, opts.Metrics)(http.HandlerFunc(endpoint))
 		routeHandler, err := secureRoute(route, baseHandler, verifier, cfg.WebhookSignatureHeader, logger, rateLimiter, opts.Metrics, cfg.Observability.Normalize(cfg.ServiceName, cfg.Environment).UserHashSalt)

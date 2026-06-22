@@ -19,12 +19,14 @@ import (
 )
 
 const (
+	wishlistPath            = "/api/v1/wishlist"
 	wishlistItemsPath       = "/api/v1/wishlist/items"
 	wishlistItemsPathPrefix = "/api/v1/wishlist/items/"
 	maxWishlistRequestBytes = 1 << 20
 )
 
 type WishlistUsecase interface {
+	GetWishlist(ctx context.Context, input usecase.GetWishlistInput) (*domain.Wishlist, error)
 	AddItem(ctx context.Context, input usecase.AddWishlistItemInput) (*domain.Wishlist, error)
 	RemoveItem(ctx context.Context, input usecase.RemoveWishlistItemInput) (*domain.Wishlist, error)
 	MoveToCart(ctx context.Context, input usecase.MoveToCartInput) (*usecase.Cart, error)
@@ -124,8 +126,34 @@ func NewWishlistHandler(usecase WishlistUsecase, config WishlistHandlerConfig, l
 }
 
 func (h *WishlistHandler) Register(mux *http.ServeMux) {
+	mux.HandleFunc(wishlistPath, h.handleWishlist)
 	mux.HandleFunc(wishlistItemsPath, h.handleItems)
 	mux.HandleFunc(wishlistItemsPathPrefix, h.handleItemByProduct)
+}
+
+func (h *WishlistHandler) handleWishlist(w http.ResponseWriter, r *http.Request) {
+	requestID := h.requestID(r)
+	if r.URL.Path != wishlistPath {
+		h.writeError(w, r, requestID, http.StatusNotFound, "NOT_FOUND", "Resource not found", nil)
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		h.writeError(w, r, requestID, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "Method not allowed", nil)
+		return
+	}
+
+	userID, err := h.userIDFromRequest(r)
+	if err != nil {
+		h.writeMappedError(w, r, requestID, err)
+		return
+	}
+	wishlist, err := h.usecase.GetWishlist(r.Context(), usecase.GetWishlistInput{UserID: userID})
+	if err != nil {
+		h.writeMappedError(w, r, requestID, err)
+		return
+	}
+	h.writeResponse(w, http.StatusOK, requestID, mapWishlist(wishlist))
 }
 
 func (h *WishlistHandler) handleItems(w http.ResponseWriter, r *http.Request) {

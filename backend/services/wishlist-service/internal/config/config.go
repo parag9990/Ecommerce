@@ -43,6 +43,7 @@ const (
 	DefaultWishlistEventPollInterval = 5 * time.Second
 	DefaultWishlistEventBatchSize    = 50
 	DefaultWishlistEventMaxAttempts  = 5
+	DefaultWishlistEventClaimLease   = 30 * time.Second
 )
 
 type Config struct {
@@ -130,6 +131,7 @@ type AnalyticsEventsConfig struct {
 	PollInterval     time.Duration
 	BatchSize        int
 	MaxAttempts      int
+	ClaimLease       time.Duration
 }
 
 func Load() (Config, error) {
@@ -217,6 +219,9 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.Events.Analytics.MaxAttempts, err = intFromEnv("WISHLIST_EVENT_MAX_ATTEMPTS", DefaultWishlistEventMaxAttempts); err != nil {
+		return Config{}, err
+	}
+	if cfg.Events.Analytics.ClaimLease, err = durationFromEnv("WISHLIST_EVENT_CLAIM_LEASE", DefaultWishlistEventClaimLease); err != nil {
 		return Config{}, err
 	}
 	if cfg.Events.ProductEvents.MaxAttempts, err = intFromEnv("WISHLIST_PRODUCT_EVENTS_MAX_ATTEMPTS", DefaultProductEventsMaxAttempts); err != nil {
@@ -307,6 +312,9 @@ func (c Config) Validate() error {
 		}
 		if c.Events.Analytics.MaxAttempts <= 0 {
 			validationErrors = append(validationErrors, "WISHLIST_EVENT_MAX_ATTEMPTS must be positive")
+		}
+		if c.Events.Analytics.ClaimLease <= 0 {
+			validationErrors = append(validationErrors, "WISHLIST_EVENT_CLAIM_LEASE must be positive")
 		}
 	}
 	switch strings.ToLower(strings.TrimSpace(c.Events.Analytics.Publisher)) {

@@ -52,6 +52,10 @@ type AddWishlistItemInput struct {
 	TraceID   string
 }
 
+type GetWishlistInput struct {
+	UserID string
+}
+
 type RemoveWishlistItemInput struct {
 	UserID    string
 	ProductID string
@@ -211,6 +215,24 @@ func NewWishlistService(repository WishlistRepository, productValidator ProductV
 		option(service)
 	}
 	return service, nil
+}
+
+func (s *WishlistService) GetWishlist(ctx context.Context, input GetWishlistInput) (*domain.Wishlist, error) {
+	if s == nil || s.repository == nil {
+		return nil, errors.New("wishlist service is not initialized")
+	}
+	ctx = contextOrBackground(ctx)
+
+	userID := normalizeID(input.UserID)
+	if userID == "" {
+		return nil, ErrUnauthenticated
+	}
+
+	now := s.clock().UTC()
+	if err := s.repository.EnsureWishlist(ctx, userID, now); err != nil {
+		return nil, err
+	}
+	return s.repository.FindByUserID(ctx, userID)
 }
 
 func (s *WishlistService) AddItem(ctx context.Context, input AddWishlistItemInput) (*domain.Wishlist, error) {

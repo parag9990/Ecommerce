@@ -10,6 +10,27 @@ import (
 	"ecommerce/backend/services/wishlist-service/internal/domain"
 )
 
+func TestWishlistServiceGetWishlistCreatesEmptyWishlistForBuyer(t *testing.T) {
+	now := time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)
+	repository := newFakeWishlistRepository(t)
+	service := mustWishlistService(t, repository, &fakeProductValidator{}, now)
+
+	wishlist, err := service.GetWishlist(context.Background(), GetWishlistInput{UserID: " user_123 "})
+	if err != nil {
+		t.Fatalf("GetWishlist returned error: %v", err)
+	}
+	if wishlist.UserID != "user_123" || len(wishlist.Items) != 0 {
+		t.Fatalf("wishlist = %#v, want empty wishlist for user_123", wishlist)
+	}
+}
+
+func TestWishlistServiceGetWishlistRequiresAuthentication(t *testing.T) {
+	service := mustWishlistService(t, newFakeWishlistRepository(t), &fakeProductValidator{}, time.Now().UTC())
+	if _, err := service.GetWishlist(context.Background(), GetWishlistInput{}); !errors.Is(err, ErrUnauthenticated) {
+		t.Fatalf("GetWishlist error = %v, want ErrUnauthenticated", err)
+	}
+}
+
 func TestWishlistServiceAddItemValidatesProductAndBlocksDuplicate(t *testing.T) {
 	now := time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)
 	repository := newFakeWishlistRepository(t)

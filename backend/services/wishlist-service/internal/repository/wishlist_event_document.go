@@ -31,6 +31,8 @@ type WishlistEventDocument struct {
 	LastError   string                           `bson:"last_error,omitempty" json:"last_error,omitempty"`
 	OccurredAt  time.Time                        `bson:"occurred_at" json:"occurred_at"`
 	PublishedAt *time.Time                       `bson:"published_at,omitempty" json:"published_at,omitempty"`
+	LockedBy    string                           `bson:"locked_by,omitempty" json:"locked_by,omitempty"`
+	LockedUntil *time.Time                       `bson:"locked_until,omitempty" json:"locked_until,omitempty"`
 	CreatedAt   time.Time                        `bson:"created_at" json:"created_at"`
 	UpdatedAt   time.Time                        `bson:"updated_at" json:"updated_at"`
 }
@@ -61,6 +63,8 @@ func NewWishlistEventDocument(event domain.WishlistAnalyticsEvent) (WishlistEven
 		LastError:   truncateWishlistEventError(event.LastError),
 		OccurredAt:  event.OccurredAt,
 		PublishedAt: copyTime(event.PublishedAt),
+		LockedBy:    event.LockedBy,
+		LockedUntil: copyTime(event.LockedUntil),
 		CreatedAt:   event.CreatedAt,
 		UpdatedAt:   event.UpdatedAt,
 	}, nil
@@ -88,6 +92,8 @@ func (d WishlistEventDocument) ToDomain() (domain.WishlistAnalyticsEvent, error)
 		LastError:   d.LastError,
 		OccurredAt:  d.OccurredAt,
 		PublishedAt: copyTime(d.PublishedAt),
+		LockedBy:    d.LockedBy,
+		LockedUntil: copyTime(d.LockedUntil),
 		CreatedAt:   d.CreatedAt,
 		UpdatedAt:   d.UpdatedAt,
 	}.Normalized()

@@ -12,15 +12,24 @@ import (
 )
 
 type SessionProxy struct {
-	target *url.URL
-	client *http.Client
-	logger *slog.Logger
+	target  *url.URL
+	client  *http.Client
+	logger  *slog.Logger
+	service string
 }
 
 func NewSessionProxy(rawTarget string, client *http.Client, logger *slog.Logger) (*SessionProxy, error) {
+	return NewServiceHTTPProxy("session", rawTarget, client, logger)
+}
+
+func NewServiceHTTPProxy(service, rawTarget string, client *http.Client, logger *slog.Logger) (*SessionProxy, error) {
 	target, err := url.Parse(strings.TrimSpace(rawTarget))
 	if err != nil || target.Scheme == "" || target.Host == "" {
-		return nil, errors.New("valid session HTTP target is required")
+		return nil, errors.New("valid service HTTP target is required")
+	}
+	service = strings.ToLower(strings.TrimSpace(service))
+	if service == "" {
+		service = "downstream"
 	}
 	if client == nil {
 		client = http.DefaultClient
@@ -28,7 +37,7 @@ func NewSessionProxy(rawTarget string, client *http.Client, logger *slog.Logger)
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &SessionProxy{target: target, client: client, logger: logger}, nil
+	return &SessionProxy{target: target, client: client, logger: logger, service: service}, nil
 }
 
 func (p *SessionProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -38,7 +47,7 @@ func (p *SessionProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	request, err := http.NewRequestWithContext(r.Context(), r.Method, target.String(), r.Body)
 	if err != nil {
-		writeError(w, r, http.StatusBadGateway, "UPSTREAM_REQUEST_FAILED", "Session service request could not be created")
+		writeError(w, r, http.StatusBadGateway, "UPSTREAM_REQUEST_FAILED", "Downstream service request could not be created")
 		return
 	}
 	request.Header = r.Header.Clone()
@@ -54,8 +63,8 @@ func (p *SessionProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	response, err := p.client.Do(request)
 	if err != nil {
-		p.logger.ErrorContext(r.Context(), "session_proxy_failed", "error", err, "request_id", RequestIDFromContext(r.Context()))
-		writeError(w, r, http.StatusBadGateway, "SESSION_UPSTREAM_UNAVAILABLE", "Session service is temporarily unavailable")
+		p.logger.ErrorContext(r.Context(), p.service+"_proxy_failed", "error", err, "request_id", RequestIDFromContext(r.Context()))
+		writeError(w, r, http.StatusBadGateway, strings.ToUpper(p.service)+"_UPSTREAM_UNAVAILABLE", "Downstream service is temporarily unavailable")
 		return
 	}
 	defer response.Body.Close()
@@ -67,7 +76,7 @@ func (p *SessionProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(response.StatusCode)
 	if _, err := io.Copy(w, response.Body); err != nil {
-		p.logger.WarnContext(r.Context(), "session_proxy_response_copy_failed", "error", err, "request_id", RequestIDFromContext(r.Context()))
+		p.logger.WarnContext(r.Context(), p.service+"_proxy_response_copy_failed", "error", err, "request_id", RequestIDFromContext(r.Context()))
 	}
 }
 

@@ -87,6 +87,8 @@ type Config struct {
 	ProductGRPCAddr      string
 	CartGRPCAddr         string
 	WishlistGRPCAddr     string
+	WishlistHTTPURL      string
+	WishlistHTTPTimeout  time.Duration
 	OrderGRPCAddr        string
 	PaymentGRPCAddr      string
 	SearchGRPCAddr       string
@@ -124,6 +126,10 @@ func Load(ctx context.Context) (Config, error) {
 		return Config{}, err
 	}
 	authHTTPTimeout, err := getDuration("AUTH_HTTP_TIMEOUT", 10*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	wishlistHTTPTimeout, err := getDuration("WISHLIST_HTTP_TIMEOUT", 10*time.Second)
 	if err != nil {
 		return Config{}, err
 	}
@@ -303,6 +309,8 @@ func Load(ctx context.Context) (Config, error) {
 		ProductGRPCAddr:        getenv("PRODUCT_GRPC_ADDR", ""),
 		CartGRPCAddr:           getenv("CART_GRPC_ADDR", ""),
 		WishlistGRPCAddr:       getenv("WISHLIST_GRPC_ADDR", ""),
+		WishlistHTTPURL:        getenv("WISHLIST_HTTP_URL", "http://wishlist-service:8084"),
+		WishlistHTTPTimeout:    wishlistHTTPTimeout,
 		OrderGRPCAddr:          getenv("ORDER_GRPC_ADDR", ""),
 		PaymentGRPCAddr:        getenv("PAYMENT_GRPC_ADDR", ""),
 		SearchGRPCAddr:         getenv("SEARCH_GRPC_ADDR", ""),
@@ -468,6 +476,14 @@ func (c Config) Validate() error {
 	if c.AuthHTTPTimeout <= 0 {
 		errs = append(errs, errors.New("AUTH_HTTP_TIMEOUT must be positive"))
 	}
+	if strings.TrimSpace(c.WishlistHTTPURL) != "" {
+		if err := validateHTTPURL(c.WishlistHTTPURL); err != nil {
+			errs = append(errs, fmt.Errorf("WISHLIST_HTTP_URL is invalid: %w", err))
+		}
+		if c.WishlistHTTPTimeout <= 0 {
+			errs = append(errs, errors.New("WISHLIST_HTTP_TIMEOUT must be positive"))
+		}
+	}
 	if c.JWTJWKSCacheTTL <= 0 {
 		errs = append(errs, errors.New("JWT_JWKS_CACHE_TTL must be positive"))
 	}
@@ -492,7 +508,6 @@ func (c Config) Validate() error {
 		"USER_GRPC_ADDR":         c.UserGRPCAddr,
 		"PRODUCT_GRPC_ADDR":      c.ProductGRPCAddr,
 		"CART_GRPC_ADDR":         c.CartGRPCAddr,
-		"WISHLIST_GRPC_ADDR":     c.WishlistGRPCAddr,
 		"ORDER_GRPC_ADDR":        c.OrderGRPCAddr,
 		"PAYMENT_GRPC_ADDR":      c.PaymentGRPCAddr,
 		"SEARCH_GRPC_ADDR":       c.SearchGRPCAddr,

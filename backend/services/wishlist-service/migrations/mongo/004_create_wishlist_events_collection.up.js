@@ -75,6 +75,8 @@ const wishlistEventValidator = {
       last_error: { bsonType: "string" },
       occurred_at: { bsonType: "date" },
       published_at: { bsonType: ["date", "null"] },
+      locked_by: { bsonType: "string" },
+      locked_until: { bsonType: ["date", "null"] },
       created_at: { bsonType: "date" },
       updated_at: { bsonType: "date" },
     },

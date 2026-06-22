@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -20,9 +22,11 @@ const (
 	WishlistEventPendingRetryIndexName = "idx_wishlist_events_pending_retry"
 	WishlistEventTypeTimeIndexName     = "idx_wishlist_events_type_time"
 	WishlistEventPublishedTTLIndexName = "ttl_wishlist_events_published_at"
+	WishlistEventClaimLeaseIndexName   = "idx_wishlist_events_claim_lease"
 	publishedWishlistEventTTLSeconds   = int32(30 * 24 * 60 * 60)
 	defaultWishlistEventClaimBatchSize = 50
 	maxWishlistEventLastErrorLength    = 2048
+	defaultWishlistEventClaimLease     = 30 * time.Second
 )
 
 type MongoWishlistEventRepository struct {
@@ -30,6 +34,8 @@ type MongoWishlistEventRepository struct {
 	collection     *mongo.Collection
 	collectionName string
 	logger         *slog.Logger
+	workerID       string
+	claimLease     time.Duration
 }
 
 func NewMongoWishlistEventRepository(database *mongo.Database, collectionName string, logger *slog.Logger) (*MongoWishlistEventRepository, error) {
@@ -49,7 +55,15 @@ func NewMongoWishlistEventRepository(database *mongo.Database, collectionName st
 		collection:     database.Collection(collectionName),
 		collectionName: collectionName,
 		logger:         logger,
+		workerID:       newWishlistEventWorkerID(),
+		claimLease:     defaultWishlistEventClaimLease,
 	}, nil
+}
+
+func (r *MongoWishlistEventRepository) SetClaimLease(lease time.Duration) {
+	if r != nil && lease > 0 {
+		r.claimLease = lease
+	}
 }
 
 func (r *MongoWishlistEventRepository) CollectionName() string {
@@ -110,62 +124,36 @@ func (r *MongoWishlistEventRepository) ClaimPending(ctx context.Context, limit i
 		limit = defaultWishlistEventClaimBatchSize
 	}
 	now = normalizeTime(now)
-	filter := bson.M{
-		"status": domain.WishlistEventPending,
-		"next_retry_at": bson.M{
-			"$lte": now,
-		},
-	}
-	cursor, err := r.collection.Find(
-		contextOrBackground(ctx),
-		filter,
-		options.Find().
-			SetSort(bson.D{{Key: "created_at", Value: 1}}).
-			SetLimit(int64(limit)),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("find pending wishlist analytics events: %w", err)
-	}
-	defer cursor.Close(contextOrBackground(ctx))
-
+	ctx = contextOrBackground(ctx)
+	lockedUntil := now.Add(r.claimLease)
+	filter := bson.M{"$or": bson.A{
+		bson.M{"status": domain.WishlistEventPending, "next_retry_at": bson.M{"$lte": now}},
+		bson.M{"status": domain.WishlistEventPublishing, "locked_until": bson.M{"$lte": now}},
+		bson.M{"status": domain.WishlistEventPublishing, "locked_until": bson.M{"$exists": false}},
+	}}
+	update := bson.M{"$set": bson.M{
+		"status":       domain.WishlistEventPublishing,
+		"locked_by":    r.workerID,
+		"locked_until": lockedUntil,
+		"updated_at":   now,
+	}}
 	events := make([]domain.WishlistAnalyticsEvent, 0, limit)
-	for cursor.Next(contextOrBackground(ctx)) {
+	for len(events) < limit {
 		var document WishlistEventDocument
-		if err := cursor.Decode(&document); err != nil {
-			return nil, fmt.Errorf("decode pending wishlist analytics event: %w", err)
+		err := r.collection.FindOneAndUpdate(ctx, filter, update, options.FindOneAndUpdate().
+			SetSort(bson.D{{Key: "created_at", Value: 1}}).
+			SetReturnDocument(options.After)).Decode(&document)
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			break
 		}
-
-		result, err := r.collection.UpdateOne(
-			contextOrBackground(ctx),
-			bson.M{
-				"_id":    document.ID,
-				"status": domain.WishlistEventPending,
-				"next_retry_at": bson.M{
-					"$lte": now,
-				},
-			},
-			bson.M{"$set": bson.M{
-				"status":     domain.WishlistEventPublishing,
-				"updated_at": now,
-			}},
-		)
 		if err != nil {
-			return nil, fmt.Errorf("claim wishlist analytics event %q: %w", document.ID, err)
+			return nil, fmt.Errorf("claim wishlist analytics event: %w", err)
 		}
-		if result.ModifiedCount == 0 {
-			continue
-		}
-
-		document.Status = domain.WishlistEventPublishing
-		document.UpdatedAt = now
 		event, err := document.ToDomain()
 		if err != nil {
 			return nil, err
 		}
 		events = append(events, event)
-	}
-	if err := cursor.Err(); err != nil {
-		return nil, fmt.Errorf("iterate pending wishlist analytics events: %w", err)
 	}
 	return events, nil
 }
@@ -181,13 +169,13 @@ func (r *MongoWishlistEventRepository) MarkPublished(ctx context.Context, eventI
 	publishedAt = normalizeTime(publishedAt)
 	result, err := r.collection.UpdateOne(
 		contextOrBackground(ctx),
-		bson.M{"_id": eventID, "status": domain.WishlistEventPublishing},
+		bson.M{"_id": eventID, "status": domain.WishlistEventPublishing, "locked_by": r.workerID},
 		bson.M{"$set": bson.M{
 			"status":       domain.WishlistEventPublished,
 			"published_at": publishedAt,
 			"last_error":   "",
 			"updated_at":   publishedAt,
-		}},
+		}, "$unset": bson.M{"locked_by": "", "locked_until": ""}},
 	)
 	if err != nil {
 		return fmt.Errorf("mark wishlist analytics event %q published: %w", eventID, err)
@@ -212,14 +200,14 @@ func (r *MongoWishlistEventRepository) MarkRetry(ctx context.Context, eventID st
 	nextRetryAt = normalizeTime(nextRetryAt)
 	result, err := r.collection.UpdateOne(
 		contextOrBackground(ctx),
-		bson.M{"_id": eventID, "status": domain.WishlistEventPublishing},
+		bson.M{"_id": eventID, "status": domain.WishlistEventPublishing, "locked_by": r.workerID},
 		bson.M{"$set": bson.M{
 			"status":        domain.WishlistEventPending,
 			"attempts":      int32(attempts),
 			"next_retry_at": nextRetryAt,
 			"last_error":    truncateWishlistEventError(lastError),
 			"updated_at":    time.Now().UTC(),
-		}},
+		}, "$unset": bson.M{"locked_by": "", "locked_until": ""}},
 	)
 	if err != nil {
 		return fmt.Errorf("schedule wishlist analytics event %q retry: %w", eventID, err)
@@ -244,13 +232,13 @@ func (r *MongoWishlistEventRepository) MarkFailed(ctx context.Context, eventID s
 	failedAt = normalizeTime(failedAt)
 	result, err := r.collection.UpdateOne(
 		contextOrBackground(ctx),
-		bson.M{"_id": eventID, "status": domain.WishlistEventPublishing},
+		bson.M{"_id": eventID, "status": domain.WishlistEventPublishing, "locked_by": r.workerID},
 		bson.M{"$set": bson.M{
 			"status":     domain.WishlistEventFailed,
 			"attempts":   int32(attempts),
 			"last_error": truncateWishlistEventError(lastError),
 			"updated_at": failedAt,
-		}},
+		}, "$unset": bson.M{"locked_by": "", "locked_until": ""}},
 	)
 	if err != nil {
 		return fmt.Errorf("mark wishlist analytics event %q failed: %w", eventID, err)
@@ -314,6 +302,15 @@ func (r *MongoWishlistEventRepository) ensureIndexes(ctx context.Context) error 
 
 func WishlistEventIndexModels() []mongo.IndexModel {
 	return []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "status", Value: 1},
+				{Key: "locked_until", Value: 1},
+				{Key: "next_retry_at", Value: 1},
+				{Key: "created_at", Value: 1},
+			},
+			Options: options.Index().SetName(WishlistEventClaimLeaseIndexName),
+		},
 		{
 			Keys: bson.D{
 				{Key: "status", Value: 1},
@@ -410,9 +407,19 @@ func WishlistEventCollectionValidator() bson.D {
 				{Key: "last_error", Value: bson.D{{Key: "bsonType", Value: "string"}}},
 				{Key: "occurred_at", Value: bson.D{{Key: "bsonType", Value: "date"}}},
 				{Key: "published_at", Value: bson.D{{Key: "bsonType", Value: bson.A{"date", "null"}}}},
+				{Key: "locked_by", Value: bson.D{{Key: "bsonType", Value: "string"}}},
+				{Key: "locked_until", Value: bson.D{{Key: "bsonType", Value: bson.A{"date", "null"}}}},
 				{Key: "created_at", Value: bson.D{{Key: "bsonType", Value: "date"}}},
 				{Key: "updated_at", Value: bson.D{{Key: "bsonType", Value: "date"}}},
 			}},
 		}},
 	}
+}
+
+func newWishlistEventWorkerID() string {
+	var value [12]byte
+	if _, err := rand.Read(value[:]); err == nil {
+		return "wishlist-worker-" + hex.EncodeToString(value[:])
+	}
+	return fmt.Sprintf("wishlist-worker-%d", time.Now().UTC().UnixNano())
 }

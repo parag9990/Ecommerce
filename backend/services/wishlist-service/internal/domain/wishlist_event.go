@@ -119,6 +119,8 @@ type WishlistAnalyticsEvent struct {
 	LastError   string
 	OccurredAt  time.Time
 	PublishedAt *time.Time
+	LockedBy    string
+	LockedUntil *time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
@@ -129,11 +131,16 @@ func (e WishlistAnalyticsEvent) Normalized() WishlistAnalyticsEvent {
 	e.Payload = e.Payload.Normalized()
 	e.TraceID = normalizeID(e.TraceID)
 	e.LastError = strings.TrimSpace(e.LastError)
+	e.LockedBy = normalizeID(e.LockedBy)
 	e.NextRetryAt = normalizeTime(e.NextRetryAt)
 	e.OccurredAt = normalizeTime(e.OccurredAt)
 	if e.PublishedAt != nil {
 		publishedAt := normalizeTime(*e.PublishedAt)
 		e.PublishedAt = &publishedAt
+	}
+	if e.LockedUntil != nil {
+		lockedUntil := normalizeTime(*e.LockedUntil)
+		e.LockedUntil = &lockedUntil
 	}
 	e.CreatedAt = normalizeTime(e.CreatedAt)
 	e.UpdatedAt = normalizeTime(e.UpdatedAt)
@@ -183,6 +190,9 @@ func (e WishlistAnalyticsEvent) Validate() error {
 	}
 	if e.Status == WishlistEventPublished && e.PublishedAt == nil {
 		return invalidField("published_at", "is required when status is published")
+	}
+	if e.Status == WishlistEventPublishing && (e.LockedBy == "" || e.LockedUntil == nil || e.LockedUntil.IsZero()) {
+		return invalidField("locked_until", "and locked_by are required when status is publishing")
 	}
 	return nil
 }

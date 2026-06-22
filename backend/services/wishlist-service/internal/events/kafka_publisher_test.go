@@ -69,6 +69,8 @@ func testWishlistAnalyticsEvent(now time.Time) domain.WishlistAnalyticsEvent {
 		},
 		TraceID:     "req_123",
 		Status:      domain.WishlistEventPublishing,
+		LockedBy:    "worker_test",
+		LockedUntil: timePointer(now.Add(time.Minute)),
 		Attempts:    1,
 		NextRetryAt: now,
 		OccurredAt:  now,
@@ -76,3 +78,5 @@ func testWishlistAnalyticsEvent(now time.Time) domain.WishlistAnalyticsEvent {
 		UpdatedAt:   now,
 	}
 }
+
+func timePointer(value time.Time) *time.Time { return &value }

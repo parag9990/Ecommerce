@@ -37,23 +37,32 @@ func TestWishlistEventCollectionValidatorMatchesTask8Contract(t *testing.T) {
 
 func TestWishlistEventIndexModelsMatchTask8Contract(t *testing.T) {
 	models := WishlistEventIndexModels()
-	if len(models) != 3 {
-		t.Fatalf("len(WishlistEventIndexModels()) = %d, want 3", len(models))
+	if len(models) != 4 {
+		t.Fatalf("len(WishlistEventIndexModels()) = %d, want 4", len(models))
 	}
 
-	pendingKeys := mustDocument(t, models[0].Keys)
+	claimKeys := mustDocument(t, models[0].Keys)
+	if got := documentValue(t, claimKeys, "locked_until"); got != 1 {
+		t.Fatalf("claim index locked_until key = %v, want 1", got)
+	}
+	claimOptions := materializeIndexOptions(t, models[0].Options)
+	if claimOptions.Name == nil || *claimOptions.Name != WishlistEventClaimLeaseIndexName {
+		t.Fatalf("claim index name = %v, want %s", claimOptions.Name, WishlistEventClaimLeaseIndexName)
+	}
+
+	pendingKeys := mustDocument(t, models[1].Keys)
 	if got := documentValue(t, pendingKeys, "status"); got != 1 {
 		t.Fatalf("pending index status key = %v, want 1", got)
 	}
 	if got := documentValue(t, pendingKeys, "next_retry_at"); got != 1 {
 		t.Fatalf("pending index next_retry_at key = %v, want 1", got)
 	}
-	pendingOptions := materializeIndexOptions(t, models[0].Options)
+	pendingOptions := materializeIndexOptions(t, models[1].Options)
 	if pendingOptions.Name == nil || *pendingOptions.Name != WishlistEventPendingRetryIndexName {
 		t.Fatalf("pending index name = %v, want %s", pendingOptions.Name, WishlistEventPendingRetryIndexName)
 	}
 
-	typeTimeKeys := mustDocument(t, models[1].Keys)
+	typeTimeKeys := mustDocument(t, models[2].Keys)
 	if got := documentValue(t, typeTimeKeys, "event_type"); got != 1 {
 		t.Fatalf("type index event_type key = %v, want 1", got)
 	}
@@ -61,7 +70,7 @@ func TestWishlistEventIndexModelsMatchTask8Contract(t *testing.T) {
 		t.Fatalf("type index occurred_at key = %v, want -1", got)
 	}
 
-	ttlOptions := materializeIndexOptions(t, models[2].Options)
+	ttlOptions := materializeIndexOptions(t, models[3].Options)
 	if ttlOptions.Name == nil || *ttlOptions.Name != WishlistEventPublishedTTLIndexName {
 		t.Fatalf("ttl index name = %v, want %s", ttlOptions.Name, WishlistEventPublishedTTLIndexName)
 	}

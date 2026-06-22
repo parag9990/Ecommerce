@@ -53,6 +53,24 @@ func TestWishlistHandlerAddItemUsesAuthenticatedHeaderUser(t *testing.T) {
 	}
 }
 
+func TestWishlistHandlerGetWishlistUsesAuthenticatedBuyer(t *testing.T) {
+	fakeUsecase := &fakeWishlistUsecase{wishlist: mustTransportWishlist(t)}
+	handler := mustWishlistHandler(t, fakeUsecase)
+	request := httptest.NewRequest(http.MethodGet, wishlistPath, nil)
+	request.Header.Set("X-User-ID", "user_123")
+	request.Header.Set("X-User-Roles", "buyer")
+	response := httptest.NewRecorder()
+
+	handler.handleWishlist(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", response.Code, response.Body.String())
+	}
+	if fakeUsecase.getInput.UserID != "user_123" {
+		t.Fatalf("get input user_id = %q, want user_123", fakeUsecase.getInput.UserID)
+	}
+}
+
 func TestWishlistHandlerRejectsMissingBuyerRole(t *testing.T) {
 	handler := mustWishlistHandler(t, &fakeWishlistUsecase{wishlist: mustTransportWishlist(t)})
 	request := httptest.NewRequest(http.MethodPost, wishlistItemsPath, bytes.NewBufferString(`{"product_id":"prod_123"}`))
@@ -228,12 +246,21 @@ func mustTransportWishlist(t *testing.T) *domain.Wishlist {
 type fakeWishlistUsecase struct {
 	wishlist    *domain.Wishlist
 	cart        *usecase.Cart
+	getInput    usecase.GetWishlistInput
 	addInput    usecase.AddWishlistItemInput
 	removeInput usecase.RemoveWishlistItemInput
 	moveInput   usecase.MoveToCartInput
 	addErr      error
 	removeErr   error
 	moveErr     error
+}
+
+func (f *fakeWishlistUsecase) GetWishlist(ctx context.Context, input usecase.GetWishlistInput) (*domain.Wishlist, error) {
+	f.getInput = input
+	if f.wishlist == nil {
+		return nil, errors.New("missing wishlist")
+	}
+	return f.wishlist, nil
 }
 
 func (f *fakeWishlistUsecase) AddItem(ctx context.Context, input usecase.AddWishlistItemInput) (*domain.Wishlist, error) {

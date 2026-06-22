@@ -13,6 +13,7 @@ import (
 	"ecommerce/backend/services/wishlist-service/internal/clients"
 	"ecommerce/backend/services/wishlist-service/internal/config"
 	"ecommerce/backend/services/wishlist-service/internal/events"
+	"ecommerce/backend/services/wishlist-service/internal/observability"
 	"ecommerce/backend/services/wishlist-service/internal/repository"
 	httptransport "ecommerce/backend/services/wishlist-service/internal/transport/http"
 	"ecommerce/backend/services/wishlist-service/internal/usecase"
@@ -87,6 +88,7 @@ func run() error {
 		if err != nil {
 			return err
 		}
+		wishlistEventRepository.SetClaimLease(cfg.Events.Analytics.ClaimLease)
 		if err := wishlistEventRepository.EnsureCollection(startupCtx); err != nil {
 			return err
 		}
@@ -118,17 +120,19 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	metrics := observability.NewMetrics()
 
-	productEventRunner, err := newProductEventRunner(cfg, wishlistService, wishlistRepository, logger)
+	productEventRunner, err := newProductEventRunner(cfg, wishlistService, wishlistRepository, metrics, logger)
 	if err != nil {
 		return err
 	}
-	analyticsEventRunner, err := newWishlistAnalyticsRunner(cfg, wishlistEventRepository, logger)
+	analyticsEventRunner, err := newWishlistAnalyticsRunner(cfg, wishlistEventRepository, metrics, logger)
 	if err != nil {
 		return err
 	}
 
 	mux := http.NewServeMux()
+	mux.Handle("/metrics", metrics.Handler())
 	healthHandler := httptransport.NewHealthHandler(cfg.ServiceName, wishlistRepository, logger)
 	healthHandler.Register(mux)
 	wishlistHandler, err := httptransport.NewWishlistHandler(wishlistService, httptransport.WishlistHandlerConfig{
@@ -211,7 +215,7 @@ type backgroundRunner interface {
 	Close(ctx context.Context) error
 }
 
-func newProductEventRunner(cfg config.Config, wishlistService *usecase.WishlistService, priceDropRepository usecase.PriceDropRepository, logger *slog.Logger) (backgroundRunner, error) {
+func newProductEventRunner(cfg config.Config, wishlistService *usecase.WishlistService, priceDropRepository usecase.PriceDropRepository, metrics events.ProductEventMetrics, logger *slog.Logger) (backgroundRunner, error) {
 	switch cfg.Events.Backend {
 	case "", config.EventsBackendDisabled:
 		logger.Info("wishlist product event consumer disabled")
@@ -232,7 +236,7 @@ func newProductEventRunner(cfg config.Config, wishlistService *usecase.WishlistS
 			_ = notificationPublisher.Close(context.Background())
 			return nil, err
 		}
-		productConsumer, err := events.NewProductConsumer(wishlistService, logger, events.WithPriceChangeUsecase(priceDropService))
+		productConsumer, err := events.NewProductConsumer(wishlistService, logger, events.WithPriceChangeUsecase(priceDropService), events.WithProductEventMetrics(metrics))
 		if err != nil {
 			_ = notificationPublisher.Close(context.Background())
 			return nil, err
@@ -258,7 +262,7 @@ func newProductEventRunner(cfg config.Config, wishlistService *usecase.WishlistS
 	}
 }
 
-func newWishlistAnalyticsRunner(cfg config.Config, eventRepository events.WishlistOutboxRepository, logger *slog.Logger) (backgroundRunner, error) {
+func newWishlistAnalyticsRunner(cfg config.Config, eventRepository events.WishlistOutboxRepository, metrics events.WishlistOutboxMetrics, logger *slog.Logger) (backgroundRunner, error) {
 	if !cfg.Events.Analytics.Enabled {
 		logger.Info("wishlist analytics events disabled")
 		return nil, nil
@@ -282,7 +286,7 @@ func newWishlistAnalyticsRunner(cfg config.Config, eventRepository events.Wishli
 			BatchSize:   cfg.Events.Analytics.BatchSize,
 			MaxAttempts: cfg.Events.Analytics.MaxAttempts,
 			PollEvery:   cfg.Events.Analytics.PollInterval,
-		})
+		}, events.WithWishlistOutboxMetrics(metrics))
 		if err != nil {
 			_ = publisher.Close(context.Background())
 			return nil, err

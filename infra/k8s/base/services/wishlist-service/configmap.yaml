@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wishlist-service-config
+  namespace: core
+  labels:
+    app.kubernetes.io/name: wishlist-service
+    app.kubernetes.io/part-of: ecommerce-platform
+data:
+  SERVICE_NAME: wishlist-service
+  APP_ENV: dev
+  WISHLIST_HTTP_ADDR: :8084
+  WISHLIST_MONGO_DATABASE: wishlist_db
+  WISHLIST_MONGO_COLLECTION: wishlists
+  WISHLIST_PRODUCT_SERVICE_BASE_URL: http://product-service.core.svc.cluster.local:8082
+  WISHLIST_CART_SERVICE_BASE_URL: http://cart-service.core.svc.cluster.local:8083
+  WISHLIST_AUTH_REQUIRE_BUYER_ROLE: "true"
+  WISHLIST_EVENTS_BACKEND: kafka
+  WISHLIST_KAFKA_BROKERS: kafka.data.svc.cluster.local:9092
+  WISHLIST_PRODUCT_EVENTS_TOPIC: product.events
+  WISHLIST_PRODUCT_EVENTS_GROUP_ID: wishlist-service
+  WISHLIST_PRODUCT_EVENTS_DLQ_TOPIC: product.events.wishlist.dlq
+  WISHLIST_NOTIFICATION_COMMANDS_TOPIC: notification.commands
+  WISHLIST_ANALYTICS_EVENTS_ENABLED: "true"
+  WISHLIST_EVENT_OUTBOX_COLLECTION: wishlist_events
+  WISHLIST_EVENT_TOPIC: recommendation.events
+  WISHLIST_EVENT_PUBLISHER: kafka
+  WISHLIST_EVENT_CLAIM_LEASE: 30s
+  WISHLIST_LOG_LEVEL: info

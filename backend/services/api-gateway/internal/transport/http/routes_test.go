@@ -174,6 +174,48 @@ func TestProtectedUserRouteBridgesAuthenticatedIdentityToGRPC(t *testing.T) {
 	}
 }
 
+func TestProtectedWishlistRouteProxiesAuthenticatedIdentityToHTTP(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-User-ID"); got != "user_buyer" {
+			t.Fatalf("upstream X-User-ID = %q, want user_buyer", got)
+		}
+		if got := r.Header.Get("X-User-Roles"); got != "buyer" {
+			t.Fatalf("upstream X-User-Roles = %q, want buyer", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"items":[]},"request_id":"req_upstream","error":null}`))
+	}))
+	defer upstream.Close()
+
+	path := filepath.Join(t.TempDir(), "master-api.json")
+	contract := `{"project":"test","version":"1.0.0","rest_endpoints":[{"id":"wishlist.get","method":"GET","path":"/api/v1/wishlist","service":"wishlist-service","grpc":"WishlistService.GetWishlist","auth":"buyer","request_schema":"Empty","response_schema":"Wishlist"}]}`
+	if err := os.WriteFile(path, []byte(contract), 0o600); err != nil {
+		t.Fatalf("write contract: %v", err)
+	}
+	cfg := authTestConfig(path)
+	cfg.WishlistHTTPURL = upstream.URL
+	cfg.WishlistHTTPTimeout = time.Second
+	repo := repository.NewJSONRouteRepository(path)
+	catalog := usecase.NewRouteCatalogService(repo, cfg.APIBasePath)
+	router, err := NewRouterWithOptions(context.Background(), cfg, catalog, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, RouterOptions{
+		TokenVerifier:      stubTokenVerifier{},
+		WishlistHTTPClient: upstream.Client(),
+	})
+	if err != nil {
+		t.Fatalf("new router: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/wishlist", nil)
+	request.Header.Set("Authorization", "Bearer buyer-token")
+	request.Header.Set("X-User-ID", "spoofed")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", response.Code, response.Body.String())
+	}
+}
+
 func TestProtectedNotificationPreferenceRoutesBridgeAuthenticatedIdentityToGRPC(t *testing.T) {
 	path := writeAuthTestContract(t)
 	cfg := authTestConfig(path)
