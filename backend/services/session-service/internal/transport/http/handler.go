@@ -2,6 +2,8 @@ package httptransport
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -79,6 +81,7 @@ type Handler struct {
 	maxEventBodyBytes int64
 	requestContext    RequestContextConfig
 	logger            *slog.Logger
+	adminToken        string
 }
 
 type RequestContextConfig struct {
@@ -179,6 +182,8 @@ func (h *Handler) SetReportsUsecase(reports ReportsUsecase) {
 func (h *Handler) SetSessionReferenceCodec(codec *domain.SessionReferenceCodec) {
 	h.sessionReferences = codec
 }
+
+func (h *Handler) SetAdminToken(token string) { h.adminToken = strings.TrimSpace(token) }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/sessions/events", h.handleIngestEvent)
@@ -284,7 +289,7 @@ func (h *Handler) handleGetJourney(w http.ResponseWriter, r *http.Request) {
 		}
 		sessionID = resolved
 	}
-	if !requireAdminAccess(w, r) {
+	if !h.requireAdminAccess(w, r) {
 		return
 	}
 
@@ -315,6 +320,7 @@ func (h *Handler) handleGetJourney(w http.ResponseWriter, r *http.Request) {
 		h.writePrivacyError(w, r, err)
 		return
 	}
+	settings.Masking = analyticsMaskingForRequest(r, settings.Masking)
 	if err := h.applyJourneyPrivacy(&response, settings.Masking); err != nil {
 		h.writePrivacyError(w, r, err)
 		return
@@ -326,7 +332,7 @@ func (h *Handler) handleGetLiveMetrics(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
-	if !requireAdminAccess(w, r) {
+	if !h.requireAdminAccess(w, r) {
 		return
 	}
 	input, err := parseLiveMetricsInput(r)
@@ -346,7 +352,7 @@ func (h *Handler) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
-	if !requireAdminAccess(w, r) {
+	if !h.requireAdminAccess(w, r) {
 		return
 	}
 	input, err := parseSessionListInput(r)
@@ -365,6 +371,7 @@ func (h *Handler) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		h.writePrivacyError(w, r, err)
 		return
 	}
+	settings.Masking = analyticsMaskingForRequest(r, settings.Masking)
 	if err := h.applySessionListPrivacy(&response, settings.Masking); err != nil {
 		h.writePrivacyError(w, r, err)
 		return
@@ -376,7 +383,7 @@ func (h *Handler) handleGetFunnelReport(w http.ResponseWriter, r *http.Request) 
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
-	if !requireAdminAccess(w, r) {
+	if !h.requireAdminAccess(w, r) {
 		return
 	}
 	input, err := parseFunnelReportInput(r)
@@ -396,7 +403,7 @@ func (h *Handler) handleGetHeatmap(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
-	if !requireAdminAccess(w, r) {
+	if !h.requireAdminAccess(w, r) {
 		return
 	}
 
@@ -414,7 +421,7 @@ func (h *Handler) handleGetHeatmap(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleGetRetentionReport(w http.ResponseWriter, r *http.Request) {
-	if !requireMethod(w, r, http.MethodGet) || !requireAdminAccess(w, r) {
+	if !requireMethod(w, r, http.MethodGet) || !h.requireAdminAccess(w, r) {
 		return
 	}
 	input, err := parseRetentionReportInput(r)
@@ -434,7 +441,7 @@ func (h *Handler) handleDeleteUserSessionData(w http.ResponseWriter, r *http.Req
 	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
-	if !requireAdminAccess(w, r) {
+	if !h.requireAdminAccess(w, r) {
 		return
 	}
 	if h.retention == nil {
@@ -473,7 +480,7 @@ func (h *Handler) handleRunRetentionCleanup(w http.ResponseWriter, r *http.Reque
 	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
-	if !requireAdminAccess(w, r) {
+	if !h.requireAdminAccess(w, r) {
 		return
 	}
 	if h.retention == nil {
@@ -513,7 +520,7 @@ func (h *Handler) handleSetLegalHold(w http.ResponseWriter, r *http.Request, ses
 	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
-	if !requireAdminAccess(w, r) {
+	if !h.requireAdminAccess(w, r) {
 		return
 	}
 	if h.retention == nil {
@@ -1036,7 +1043,11 @@ func parseDayQuery(value string, field string) (time.Time, error) {
 	return parsed, nil
 }
 
-func requireAdminAccess(w http.ResponseWriter, r *http.Request) bool {
+func (h *Handler) requireAdminAccess(w http.ResponseWriter, r *http.Request) bool {
+	if h.adminToken != "" && !secureAdminBearer(r.Header.Get("Authorization"), h.adminToken) {
+		writeAPIError(w, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "Internal admin authorization is required")
+		return false
+	}
 	roles := rolesFromRequest(r)
 	for _, role := range roles {
 		if adminRoleAllowed(role) {
@@ -1049,6 +1060,15 @@ func requireAdminAccess(w http.ResponseWriter, r *http.Request) bool {
 	}
 	writeAPIError(w, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "Authentication required")
 	return false
+}
+
+func secureAdminBearer(header, expected string) bool {
+	provided := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
+	if provided == "" || expected == "" {
+		return false
+	}
+	left, right := sha256.Sum256([]byte(provided)), sha256.Sum256([]byte(expected))
+	return subtle.ConstantTimeCompare(left[:], right[:]) == 1
 }
 
 func rolesFromRequest(r *http.Request) []string {

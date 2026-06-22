@@ -80,24 +80,26 @@ type Config struct {
 
 	WebhookSignatureHeader string
 
-	AuthGRPCAddr         string
-	AuthHTTPURL          string
-	AuthHTTPTimeout      time.Duration
-	UserGRPCAddr         string
-	ProductGRPCAddr      string
-	CartGRPCAddr         string
-	WishlistGRPCAddr     string
-	WishlistHTTPURL      string
-	WishlistHTTPTimeout  time.Duration
-	OrderGRPCAddr        string
-	PaymentGRPCAddr      string
-	SearchGRPCAddr       string
-	CMSGRPCAddr          string
-	SessionGRPCAddr      string
-	SessionHTTPURL       string
-	SessionHTTPTimeout   time.Duration
-	NotificationGRPCAddr string
-	SuperadminGRPCAddr   string
+	AuthGRPCAddr          string
+	AuthHTTPURL           string
+	AuthHTTPTimeout       time.Duration
+	UserGRPCAddr          string
+	ProductGRPCAddr       string
+	CartGRPCAddr          string
+	WishlistGRPCAddr      string
+	WishlistHTTPURL       string
+	WishlistHTTPTimeout   time.Duration
+	OrderGRPCAddr         string
+	PaymentGRPCAddr       string
+	SearchGRPCAddr        string
+	CMSGRPCAddr           string
+	SessionGRPCAddr       string
+	SessionHTTPURL        string
+	SessionHTTPTimeout    time.Duration
+	NotificationGRPCAddr  string
+	SuperadminGRPCAddr    string
+	SuperadminHTTPURL     string
+	SuperadminHTTPTimeout time.Duration
 }
 
 func Load(ctx context.Context) (Config, error) {
@@ -122,6 +124,10 @@ func Load(ctx context.Context) (Config, error) {
 		return Config{}, err
 	}
 	sessionHTTPTimeout, err := getDuration("SESSION_HTTP_TIMEOUT", 30*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	superadminHTTPTimeout, err := getDuration("SUPERADMIN_HTTP_TIMEOUT", 30*time.Second)
 	if err != nil {
 		return Config{}, err
 	}
@@ -320,6 +326,8 @@ func Load(ctx context.Context) (Config, error) {
 		SessionHTTPTimeout:     sessionHTTPTimeout,
 		NotificationGRPCAddr:   getenv("NOTIFICATION_GRPC_ADDR", ""),
 		SuperadminGRPCAddr:     getenv("SUPERADMIN_GRPC_ADDR", ""),
+		SuperadminHTTPURL:      getenv("SUPERADMIN_HTTP_URL", "http://superadmin-service:8088"),
+		SuperadminHTTPTimeout:  superadminHTTPTimeout,
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -467,6 +475,14 @@ func (c Config) Validate() error {
 	}
 	if c.SessionHTTPTimeout <= 0 {
 		errs = append(errs, errors.New("SESSION_HTTP_TIMEOUT must be positive"))
+	}
+	if strings.TrimSpace(c.SuperadminHTTPURL) != "" {
+		if err := validateHTTPURL(c.SuperadminHTTPURL); err != nil {
+			errs = append(errs, fmt.Errorf("SUPERADMIN_HTTP_URL is invalid: %w", err))
+		}
+	}
+	if c.SuperadminHTTPTimeout <= 0 {
+		errs = append(errs, errors.New("SUPERADMIN_HTTP_TIMEOUT must be positive"))
 	}
 	if strings.TrimSpace(c.AuthHTTPURL) != "" {
 		if err := validateHTTPURL(c.AuthHTTPURL); err != nil {

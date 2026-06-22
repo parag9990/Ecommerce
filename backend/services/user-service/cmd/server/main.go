@@ -130,7 +130,7 @@ func run(ctx context.Context) error {
 	if cfg.GRPC.Reflection {
 		reflection.Register(grpcServer)
 	}
-	adminServer := newAdminServer(cfg.HTTP, db, serviceMetrics)
+	adminServer := newAdminServer(cfg.HTTP, db, serviceMetrics, userService, userRepo, sellerRepo)
 
 	serveErr := make(chan error, 1)
 	go func() {

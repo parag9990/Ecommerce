@@ -34,7 +34,7 @@ type deletionRequestsResponse struct {
 }
 
 func (h *Handler) handlePrivacySettings(w http.ResponseWriter, r *http.Request) {
-	if !requireAdminAccess(w, r) {
+	if !h.requireAdminAccess(w, r) {
 		return
 	}
 	if h.privacy == nil {
@@ -76,7 +76,7 @@ func (h *Handler) handlePrivacySettings(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handler) handlePrivacyRetention(w http.ResponseWriter, r *http.Request) {
-	if !requireAdminAccess(w, r) {
+	if !h.requireAdminAccess(w, r) {
 		return
 	}
 	if h.privacy == nil {
@@ -119,7 +119,7 @@ func (h *Handler) handlePrivacyRetention(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *Handler) handleDeletionPreview(w http.ResponseWriter, r *http.Request) {
-	if !requireMethod(w, r, http.MethodPost) || !requireAdminAccess(w, r) {
+	if !requireMethod(w, r, http.MethodPost) || !h.requireAdminAccess(w, r) {
 		return
 	}
 	if h.privacy == nil {
@@ -149,7 +149,7 @@ func (h *Handler) handleDeletionPreview(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handler) handleDeletionRequests(w http.ResponseWriter, r *http.Request) {
-	if !requireAdminAccess(w, r) {
+	if !h.requireAdminAccess(w, r) {
 		return
 	}
 	if h.privacy == nil {

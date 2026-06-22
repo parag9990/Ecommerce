@@ -11,5 +11,6 @@ resources:
   - services/product-service
   - services/wishlist-service
   - services/session-service
+  - services/superadmin-service
   - services/session-analytics-dashboard
   - services/notification-service

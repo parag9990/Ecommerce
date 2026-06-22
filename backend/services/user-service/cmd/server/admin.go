@@ -2,23 +2,56 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
+	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/parag/ecommerce/backend/services/user-service/internal/config"
+	"github.com/parag/ecommerce/backend/services/user-service/internal/domain"
 	"github.com/parag/ecommerce/backend/services/user-service/internal/observability"
+	"github.com/parag/ecommerce/backend/services/user-service/internal/repository"
+	"github.com/parag/ecommerce/backend/services/user-service/internal/usecase"
 	platformhealth "github.com/parag/ecommerce/backend/shared/platform/health"
 	platformmetrics "github.com/parag/ecommerce/backend/shared/platform/metrics"
 )
 
-func newAdminServer(cfg config.HTTPConfig, db *sql.DB, metrics *observability.Metrics) *http.Server {
+type adminControlUsecase interface {
+	UpdateUserStatus(context.Context, usecase.UpdateUserStatusInput) (domain.User, error)
+	UpdateSellerStatus(context.Context, usecase.UpdateSellerStatusInput) (domain.SellerProfile, error)
+}
+
+type adminUserRepository interface {
+	FindUserByID(context.Context, string) (domain.User, error)
+	ListUsersForAdmin(context.Context, string, string, int, int) (repository.AdminUserPage, error)
+}
+
+type adminSellerRepository interface {
+	GetSellerProfileBySellerID(context.Context, string) (domain.SellerProfile, error)
+	ListKYCDocuments(context.Context, string) ([]domain.KYCDocument, error)
+	ListSellersForAdmin(context.Context, string, string, int, int) (repository.AdminSellerPage, error)
+}
+
+func newAdminServer(cfg config.HTTPConfig, db *sql.DB, metrics *observability.Metrics, controls adminControlUsecase, users adminUserRepository, sellers adminSellerRepository) *http.Server {
 	mux := http.NewServeMux()
 	mux.Handle("GET /health/live", platformhealth.LivenessHandler("user-service", ""))
 	mux.Handle("GET /health/ready", platformhealth.ReadinessHandler("user-service", "", map[string]platformhealth.Check{
 		"mysql": db.PingContext,
 	}, 2*time.Second))
 	mux.Handle("GET /metrics", platformmetrics.Handler(metrics.Registry))
+	handler := &adminControlHandler{token: cfg.AdminToken, controls: controls, users: users, sellers: sellers}
+	mux.Handle("GET /internal/admin/users", handler)
+	mux.Handle("GET /internal/admin/users/{user_id}", handler)
+	mux.Handle("PATCH /internal/admin/users/{user_id}/status", handler)
+	mux.Handle("GET /internal/admin/sellers", handler)
+	mux.Handle("GET /internal/admin/sellers/{seller_id}", handler)
+	mux.Handle("PATCH /internal/admin/sellers/{seller_id}/status", handler)
 
 	return &http.Server{
 		Addr:              cfg.Address,
@@ -32,4 +65,262 @@ func shutdownAdminServer(ctx context.Context, server *http.Server, timeout time.
 	shutdownCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	return server.Shutdown(shutdownCtx)
+}
+
+type adminControlHandler struct {
+	token    string
+	controls adminControlUsecase
+	users    adminUserRepository
+	sellers  adminSellerRepository
+}
+
+func (h *adminControlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !secureBearer(r.Header.Get("Authorization"), h.token) {
+		writeAdminError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Internal admin authorization is required")
+		return
+	}
+	switch {
+	case r.Method == http.MethodGet && r.URL.Path == "/internal/admin/users":
+		h.listUsers(w, r)
+	case r.Method == http.MethodGet && r.PathValue("user_id") != "" && !strings.HasSuffix(r.URL.Path, "/status"):
+		h.getUser(w, r)
+	case r.Method == http.MethodPatch && r.PathValue("user_id") != "":
+		h.updateUserStatus(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/internal/admin/sellers":
+		h.listSellers(w, r)
+	case r.Method == http.MethodGet && r.PathValue("seller_id") != "" && !strings.HasSuffix(r.URL.Path, "/status"):
+		h.getSeller(w, r)
+	case r.Method == http.MethodPatch && r.PathValue("seller_id") != "":
+		h.updateSellerStatus(w, r)
+	default:
+		writeAdminError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "Method not allowed")
+	}
+}
+
+func (h *adminControlHandler) listUsers(w http.ResponseWriter, r *http.Request) {
+	page, pageSize, err := adminPagination(r)
+	if err != nil {
+		writeAdminError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+		return
+	}
+	result, err := h.users.ListUsersForAdmin(r.Context(), r.URL.Query().Get("q"), r.URL.Query().Get("status"), pageSize, (page-1)*pageSize)
+	if err != nil {
+		writeAdminDomainError(w, err)
+		return
+	}
+	users := make([]adminUserResponse, 0, len(result.Users))
+	for _, user := range result.Users {
+		users = append(users, mapAdminUser(user))
+	}
+	writeAdminJSON(w, http.StatusOK, map[string]any{"users": users, "page": page, "page_size": pageSize, "total": result.Total})
+}
+
+func (h *adminControlHandler) getUser(w http.ResponseWriter, r *http.Request) {
+	user, err := h.users.FindUserByID(r.Context(), strings.TrimSpace(r.PathValue("user_id")))
+	if err != nil {
+		writeAdminDomainError(w, err)
+		return
+	}
+	writeAdminJSON(w, http.StatusOK, mapAdminUser(user))
+}
+
+func (h *adminControlHandler) updateUserStatus(w http.ResponseWriter, r *http.Request) {
+	var request adminStatusUpdateRequest
+	if err := decodeAdminJSON(r, &request); err != nil {
+		writeAdminError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+		return
+	}
+	_, err := h.controls.UpdateUserStatus(r.Context(), usecase.UpdateUserStatusInput{
+		UserID: r.PathValue("user_id"), Status: request.Status, Caller: adminCaller(r),
+	})
+	if err != nil {
+		writeAdminDomainError(w, err)
+		return
+	}
+	writeAdminJSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+func (h *adminControlHandler) listSellers(w http.ResponseWriter, r *http.Request) {
+	page, pageSize, err := adminPagination(r)
+	if err != nil {
+		writeAdminError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+		return
+	}
+	result, err := h.sellers.ListSellersForAdmin(r.Context(), r.URL.Query().Get("q"), r.URL.Query().Get("status"), pageSize, (page-1)*pageSize)
+	if err != nil {
+		writeAdminDomainError(w, err)
+		return
+	}
+	sellers := make([]adminSellerResponse, 0, len(result.Sellers))
+	for _, seller := range result.Sellers {
+		sellers = append(sellers, mapAdminSeller(seller, result.KYCDocuments[seller.SellerID]))
+	}
+	writeAdminJSON(w, http.StatusOK, map[string]any{"sellers": sellers, "page": page, "page_size": pageSize, "total": result.Total})
+}
+
+func (h *adminControlHandler) getSeller(w http.ResponseWriter, r *http.Request) {
+	sellerID := strings.TrimSpace(r.PathValue("seller_id"))
+	seller, err := h.sellers.GetSellerProfileBySellerID(r.Context(), sellerID)
+	if err != nil {
+		writeAdminDomainError(w, err)
+		return
+	}
+	documents, err := h.sellers.ListKYCDocuments(r.Context(), sellerID)
+	if err != nil {
+		writeAdminDomainError(w, err)
+		return
+	}
+	writeAdminJSON(w, http.StatusOK, mapAdminSeller(seller, documents))
+}
+
+func (h *adminControlHandler) updateSellerStatus(w http.ResponseWriter, r *http.Request) {
+	var request adminStatusUpdateRequest
+	if err := decodeAdminJSON(r, &request); err != nil {
+		writeAdminError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+		return
+	}
+	_, err := h.controls.UpdateSellerStatus(r.Context(), usecase.UpdateSellerStatusInput{
+		SellerID: r.PathValue("seller_id"), Status: request.Status, Reason: request.Reason, Caller: adminCaller(r),
+	})
+	if err != nil {
+		writeAdminDomainError(w, err)
+		return
+	}
+	writeAdminJSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+type adminStatusUpdateRequest struct {
+	Status string `json:"status"`
+	Reason string `json:"reason"`
+}
+
+type adminUserResponse struct {
+	UserID   string   `json:"user_id"`
+	Email    string   `json:"email"`
+	Phone    string   `json:"phone,omitempty"`
+	FullName string   `json:"full_name"`
+	Status   string   `json:"status"`
+	Roles    []string `json:"roles"`
+}
+
+type adminSellerResponse struct {
+	SellerID     string                     `json:"seller_id"`
+	UserID       string                     `json:"user_id"`
+	StoreName    string                     `json:"store_name"`
+	DisplayName  string                     `json:"display_name,omitempty"`
+	GSTNumber    string                     `json:"gst_number,omitempty"`
+	SupportEmail string                     `json:"support_email,omitempty"`
+	Status       string                     `json:"status"`
+	KYCDocuments []adminKYCDocumentResponse `json:"kyc_documents"`
+}
+
+type adminKYCDocumentResponse struct {
+	DocumentID      string `json:"document_id"`
+	SellerID        string `json:"seller_id"`
+	DocumentType    string `json:"document_type"`
+	StorageURL      string `json:"storage_url"`
+	Status          string `json:"status"`
+	RejectionReason string `json:"rejection_reason,omitempty"`
+}
+
+func mapAdminUser(user domain.User) adminUserResponse {
+	response := adminUserResponse{UserID: user.UserID, Email: user.Email, FullName: user.FullName, Status: string(user.Status), Roles: []string{"buyer"}}
+	if user.Phone != nil {
+		response.Phone = *user.Phone
+	}
+	return response
+}
+
+func mapAdminSeller(seller domain.SellerProfile, documents []domain.KYCDocument) adminSellerResponse {
+	response := adminSellerResponse{SellerID: seller.SellerID, UserID: seller.UserID, StoreName: seller.StoreName, Status: string(seller.Status), KYCDocuments: make([]adminKYCDocumentResponse, 0, len(documents))}
+	if seller.DisplayName != nil {
+		response.DisplayName = *seller.DisplayName
+	}
+	if seller.GSTNumber != nil {
+		response.GSTNumber = *seller.GSTNumber
+	}
+	if seller.SupportEmail != nil {
+		response.SupportEmail = *seller.SupportEmail
+	}
+	for _, document := range documents {
+		mapped := adminKYCDocumentResponse{DocumentID: document.DocumentID, SellerID: document.SellerID, DocumentType: string(document.DocumentType), StorageURL: document.StorageURL, Status: string(document.Status)}
+		if document.RejectionReason != nil {
+			mapped.RejectionReason = *document.RejectionReason
+		}
+		response.KYCDocuments = append(response.KYCDocuments, mapped)
+	}
+	return response
+}
+
+func adminCaller(r *http.Request) usecase.Caller {
+	roles := strings.Split(r.Header.Get("X-Admin-Roles"), ",")
+	return usecase.Caller{UserID: strings.TrimSpace(r.Header.Get("X-User-Id")), ActorID: strings.TrimSpace(r.Header.Get("X-Admin-Id")), ActorType: "admin", Roles: roles}
+}
+
+func adminPagination(r *http.Request) (int, int, error) {
+	page, pageSize := 1, 20
+	var err error
+	if raw := strings.TrimSpace(r.URL.Query().Get("page")); raw != "" {
+		page, err = strconv.Atoi(raw)
+		if err != nil || page < 1 {
+			return 0, 0, errors.New("page must be a positive integer")
+		}
+	}
+	rawPageSize := strings.TrimSpace(r.URL.Query().Get("page_size"))
+	if rawPageSize == "" {
+		rawPageSize = strings.TrimSpace(r.URL.Query().Get("limit"))
+	}
+	if rawPageSize != "" {
+		pageSize, err = strconv.Atoi(rawPageSize)
+		if err != nil || pageSize < 1 || pageSize > 100 {
+			return 0, 0, errors.New("page_size must be between 1 and 100")
+		}
+	}
+	return page, pageSize, nil
+}
+
+func decodeAdminJSON(r *http.Request, target any) error {
+	decoder := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return errors.New("invalid JSON request body")
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("request body must contain one JSON object")
+	}
+	return nil
+}
+
+func secureBearer(header, expected string) bool {
+	provided := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
+	expected = strings.TrimSpace(expected)
+	if provided == "" || expected == "" {
+		return false
+	}
+	providedDigest, expectedDigest := sha256.Sum256([]byte(provided)), sha256.Sum256([]byte(expected))
+	return subtle.ConstantTimeCompare(providedDigest[:], expectedDigest[:]) == 1
+}
+
+func writeAdminDomainError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, domain.ErrUserNotFound), errors.Is(err, domain.ErrSellerNotFound), errors.Is(err, domain.ErrKYCDocumentNotFound):
+		writeAdminError(w, http.StatusNotFound, "NOT_FOUND", "Resource not found")
+	case errors.Is(err, domain.ErrForbidden):
+		writeAdminError(w, http.StatusForbidden, "FORBIDDEN", "Permission denied")
+	case errors.Is(err, domain.ErrValidation), errors.Is(err, domain.ErrInvalidArgument):
+		writeAdminError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+	case errors.Is(err, domain.ErrInvalidTransition):
+		writeAdminError(w, http.StatusConflict, "INVALID_STATUS_TRANSITION", err.Error())
+	default:
+		writeAdminError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+	}
+}
+
+func writeAdminError(w http.ResponseWriter, status int, code, message string) {
+	writeAdminJSON(w, status, map[string]string{"code": code, "message": message})
+}
+func writeAdminJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(value)
 }

@@ -24,6 +24,7 @@ type Config struct {
 type HTTPConfig struct {
 	Address           string
 	ReadHeaderTimeout time.Duration
+	AdminToken        string
 }
 
 type GRPCConfig struct {
@@ -87,6 +88,7 @@ func Load() (Config, error) {
 		HTTP: HTTPConfig{
 			Address:           stringEnv("USER_SERVICE_HTTP_ADDRESS", ":9091"),
 			ReadHeaderTimeout: durationEnv("USER_SERVICE_HTTP_READ_HEADER_TIMEOUT", 5*time.Second),
+			AdminToken:        strings.TrimSpace(os.Getenv("USER_SERVICE_ADMIN_TOKEN")),
 		},
 		Database: DatabaseConfig{
 			DSN:             dsn,
@@ -137,6 +139,9 @@ func Load() (Config, error) {
 	}
 	if cfg.HTTP.ReadHeaderTimeout <= 0 {
 		return Config{}, errors.New("USER_SERVICE_HTTP_READ_HEADER_TIMEOUT must be positive")
+	}
+	if len(cfg.HTTP.AdminToken) < 32 {
+		return Config{}, errors.New("USER_SERVICE_ADMIN_TOKEN must be at least 32 characters")
 	}
 	if cfg.Database.PingTimeout <= 0 {
 		return Config{}, errors.New("USER_SERVICE_DB_PING_TIMEOUT must be positive")

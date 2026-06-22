@@ -1,0 +1,358 @@
+package clients
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
+	"ecommerce/superadmin-service/internal/domain"
+	"ecommerce/superadmin-service/internal/logging"
+)
+
+const defaultServiceAdminPath = "/internal/admin"
+
+type HTTPOrderServiceClient struct {
+	baseURL *url.URL
+	client  *http.Client
+	token   string
+	logger  logging.Logger
+}
+
+func NewHTTPOrderServiceClient(baseURL string, token string, timeout time.Duration, logger logging.Logger) (*HTTPOrderServiceClient, error) {
+	parsed, err := parseServiceBaseURL(baseURL, "order")
+	if err != nil {
+		return nil, err
+	}
+	token = strings.TrimSpace(token)
+	if len(token) < 32 {
+		return nil, fmt.Errorf("order service admin token must be at least 32 characters")
+	}
+	return &HTTPOrderServiceClient{
+		baseURL: parsed,
+		client:  &http.Client{Timeout: serviceTimeout(timeout)},
+		token:   token,
+		logger:  loggerOrNop(logger),
+	}, nil
+}
+
+func (c *HTTPOrderServiceClient) ListOrdersForAdmin(ctx context.Context, req domain.AdminOrderListRequest, actor domain.AdminActor) (domain.AdminOrderListResponse, error) {
+	var out domain.AdminOrderListResponse
+	values := listQuery("", string(req.Status), req.Pagination)
+	if req.UserID != "" {
+		values.Set("user_id", req.UserID)
+	}
+	if req.SellerID != "" {
+		values.Set("seller_id", req.SellerID)
+	}
+	if err := c.do(ctx, http.MethodGet, c.endpoint("/orders", values), nil, actor, "", "order", "", &out); err != nil {
+		return domain.AdminOrderListResponse{}, err
+	}
+	return out, nil
+}
+
+func (c *HTTPOrderServiceClient) GetOrderForAdmin(ctx context.Context, orderID string, actor domain.AdminActor) (domain.OrderSnapshot, error) {
+	var out domain.OrderSnapshot
+	path := "/orders/" + url.PathEscape(orderID)
+	if err := c.do(ctx, http.MethodGet, c.endpoint(path, nil), nil, actor, "", "order", orderID, &out); err != nil {
+		return domain.OrderSnapshot{}, err
+	}
+	return out, nil
+}
+
+func (c *HTTPOrderServiceClient) GetOrderStatusHistory(ctx context.Context, orderID string, actor domain.AdminActor) ([]domain.OrderStatusEvent, error) {
+	var out struct {
+		History []domain.OrderStatusEvent `json:"history"`
+	}
+	path := "/orders/" + url.PathEscape(orderID) + "/status-history"
+	if err := c.do(ctx, http.MethodGet, c.endpoint(path, nil), nil, actor, "", "order", orderID, &out); err != nil {
+		return nil, err
+	}
+	return out.History, nil
+}
+
+func (c *HTTPOrderServiceClient) endpoint(path string, values url.Values) string {
+	return serviceEndpoint(c.baseURL, path, values)
+}
+
+func (c *HTTPOrderServiceClient) do(ctx context.Context, method string, endpoint string, body any, actor domain.AdminActor, reason string, resourceType string, resourceID string, out any) error {
+	return doAdminServiceRequest(ctx, c.client, c.logger, c.token, method, endpoint, body, actor, reason, resourceType, resourceID, out)
+}
+
+type HTTPPaymentServiceClient struct {
+	baseURL *url.URL
+	client  *http.Client
+	token   string
+	logger  logging.Logger
+}
+
+func NewHTTPPaymentServiceClient(baseURL string, token string, timeout time.Duration, logger logging.Logger) (*HTTPPaymentServiceClient, error) {
+	parsed, err := parseServiceBaseURL(baseURL, "payment")
+	if err != nil {
+		return nil, err
+	}
+	token = strings.TrimSpace(token)
+	if len(token) < 32 {
+		return nil, fmt.Errorf("payment service admin token must be at least 32 characters")
+	}
+	return &HTTPPaymentServiceClient{
+		baseURL: parsed,
+		client:  &http.Client{Timeout: serviceTimeout(timeout)},
+		token:   token,
+		logger:  loggerOrNop(logger),
+	}, nil
+}
+
+func (c *HTTPPaymentServiceClient) ListPaymentsForAdmin(ctx context.Context, req domain.AdminPaymentListRequest, actor domain.AdminActor) (domain.AdminPaymentListResponse, error) {
+	var out domain.AdminPaymentListResponse
+	values := listQuery("", string(req.Status), req.Pagination)
+	if req.Provider != "" {
+		values.Set("provider", req.Provider)
+	}
+	if req.OrderID != "" {
+		values.Set("order_id", req.OrderID)
+	}
+	if err := c.do(ctx, http.MethodGet, c.endpoint("/payments", values), nil, actor, "", "payment", "", &out); err != nil {
+		return domain.AdminPaymentListResponse{}, err
+	}
+	return out, nil
+}
+
+func (c *HTTPPaymentServiceClient) ListPaymentsForOrder(ctx context.Context, orderID string, actor domain.AdminActor) ([]domain.PaymentSnapshot, error) {
+	values := url.Values{}
+	values.Set("order_id", orderID)
+	var out domain.AdminPaymentListResponse
+	if err := c.do(ctx, http.MethodGet, c.endpoint("/payments", values), nil, actor, "", "payment", "", &out); err != nil {
+		return nil, err
+	}
+	return out.Payments, nil
+}
+
+func (c *HTTPPaymentServiceClient) ListRefundsForPayment(ctx context.Context, paymentID string, actor domain.AdminActor) ([]domain.RefundSnapshot, error) {
+	var out struct {
+		Refunds []domain.RefundSnapshot `json:"refunds"`
+	}
+	path := "/payments/" + url.PathEscape(paymentID) + "/refunds"
+	if err := c.do(ctx, http.MethodGet, c.endpoint(path, nil), nil, actor, "", "payment", paymentID, &out); err != nil {
+		return nil, err
+	}
+	return out.Refunds, nil
+}
+
+func (c *HTTPPaymentServiceClient) GetRefundForAdmin(ctx context.Context, refundID string, actor domain.AdminActor) (domain.RefundSnapshot, error) {
+	var out domain.RefundSnapshot
+	path := "/refunds/" + url.PathEscape(refundID)
+	if err := c.do(ctx, http.MethodGet, c.endpoint(path, nil), nil, actor, "", "refund", refundID, &out); err != nil {
+		return domain.RefundSnapshot{}, err
+	}
+	return out, nil
+}
+
+func (c *HTTPPaymentServiceClient) ApplyRefundReview(ctx context.Context, refundID string, req domain.RefundReviewRequest, mutation domain.AdminMutationContext) (domain.RefundSnapshot, error) {
+	var out domain.RefundSnapshot
+	path := "/refunds/" + url.PathEscape(refundID) + "/review"
+	if err := c.do(ctx, http.MethodPost, c.endpoint(path, nil), req, mutation.Actor, mutation.Reason, "refund", refundID, &out); err != nil {
+		return domain.RefundSnapshot{}, err
+	}
+	return out, nil
+}
+
+func (c *HTTPPaymentServiceClient) endpoint(path string, values url.Values) string {
+	return serviceEndpoint(c.baseURL, path, values)
+}
+
+func (c *HTTPPaymentServiceClient) do(ctx context.Context, method string, endpoint string, body any, actor domain.AdminActor, reason string, resourceType string, resourceID string, out any) error {
+	return doAdminServiceRequest(ctx, c.client, c.logger, c.token, method, endpoint, body, actor, reason, resourceType, resourceID, out)
+}
+
+type UnavailableOrderServiceClient struct {
+	message string
+}
+
+func NewUnavailableOrderServiceClient(message string) *UnavailableOrderServiceClient {
+	if strings.TrimSpace(message) == "" {
+		message = "order service is not configured"
+	}
+	return &UnavailableOrderServiceClient{message: message}
+}
+
+func (c *UnavailableOrderServiceClient) ListOrdersForAdmin(ctx context.Context, req domain.AdminOrderListRequest, actor domain.AdminActor) (domain.AdminOrderListResponse, error) {
+	return domain.AdminOrderListResponse{}, domain.NewDownstreamUnavailable(c.message, nil)
+}
+
+func (c *UnavailableOrderServiceClient) GetOrderForAdmin(ctx context.Context, orderID string, actor domain.AdminActor) (domain.OrderSnapshot, error) {
+	return domain.OrderSnapshot{}, domain.NewDownstreamUnavailable(c.message, nil)
+}
+
+func (c *UnavailableOrderServiceClient) GetOrderStatusHistory(ctx context.Context, orderID string, actor domain.AdminActor) ([]domain.OrderStatusEvent, error) {
+	return nil, domain.NewDownstreamUnavailable(c.message, nil)
+}
+
+type UnavailablePaymentServiceClient struct {
+	message string
+}
+
+func NewUnavailablePaymentServiceClient(message string) *UnavailablePaymentServiceClient {
+	if strings.TrimSpace(message) == "" {
+		message = "payment service is not configured"
+	}
+	return &UnavailablePaymentServiceClient{message: message}
+}
+
+func (c *UnavailablePaymentServiceClient) ListPaymentsForAdmin(ctx context.Context, req domain.AdminPaymentListRequest, actor domain.AdminActor) (domain.AdminPaymentListResponse, error) {
+	return domain.AdminPaymentListResponse{}, domain.NewDownstreamUnavailable(c.message, nil)
+}
+
+func (c *UnavailablePaymentServiceClient) ListPaymentsForOrder(ctx context.Context, orderID string, actor domain.AdminActor) ([]domain.PaymentSnapshot, error) {
+	return nil, domain.NewDownstreamUnavailable(c.message, nil)
+}
+
+func (c *UnavailablePaymentServiceClient) ListRefundsForPayment(ctx context.Context, paymentID string, actor domain.AdminActor) ([]domain.RefundSnapshot, error) {
+	return nil, domain.NewDownstreamUnavailable(c.message, nil)
+}
+
+func (c *UnavailablePaymentServiceClient) GetRefundForAdmin(ctx context.Context, refundID string, actor domain.AdminActor) (domain.RefundSnapshot, error) {
+	return domain.RefundSnapshot{}, domain.NewDownstreamUnavailable(c.message, nil)
+}
+
+func (c *UnavailablePaymentServiceClient) ApplyRefundReview(ctx context.Context, refundID string, req domain.RefundReviewRequest, mutation domain.AdminMutationContext) (domain.RefundSnapshot, error) {
+	return domain.RefundSnapshot{}, domain.NewDownstreamUnavailable(c.message, nil)
+}
+
+func parseServiceBaseURL(baseURL string, serviceName string) (*url.URL, error) {
+	baseURL = strings.TrimSpace(baseURL)
+	if baseURL == "" {
+		return nil, fmt.Errorf("%s service base url is required", serviceName)
+	}
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s service base url: %w", serviceName, err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return nil, fmt.Errorf("%s service base url must use http or https", serviceName)
+	}
+	if parsed.Host == "" {
+		return nil, fmt.Errorf("%s service base url must include a host", serviceName)
+	}
+	return parsed, nil
+}
+
+func serviceTimeout(timeout time.Duration) time.Duration {
+	if timeout <= 0 {
+		return 5 * time.Second
+	}
+	return timeout
+}
+
+func loggerOrNop(logger logging.Logger) logging.Logger {
+	if logger == nil {
+		return logging.NewNop()
+	}
+	return logger
+}
+
+func serviceEndpoint(baseURL *url.URL, path string, values url.Values) string {
+	u := *baseURL
+	basePath := strings.TrimRight(u.Path, "/")
+	if basePath == "" {
+		basePath = defaultServiceAdminPath
+	}
+	u.Path = strings.TrimRight(basePath, "/") + "/" + strings.TrimLeft(path, "/")
+	u.RawQuery = values.Encode()
+	return u.String()
+}
+
+func doAdminServiceRequest(ctx context.Context, client *http.Client, logger logging.Logger, token string, method string, endpoint string, body any, actor domain.AdminActor, reason string, resourceType string, resourceID string, out any) error {
+	var reader io.Reader
+	if body != nil {
+		payload, err := json.Marshal(body)
+		if err != nil {
+			return domain.NewInternal("marshal downstream admin request failed", err)
+		}
+		reader = bytes.NewReader(payload)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, reader)
+	if err != nil {
+		return domain.NewInternal("build downstream admin request failed", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	attachAdminHeaders(req.Header, actor, reason)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		logger.Warn(ctx, "downstream admin request failed",
+			"method", method,
+			"endpoint", endpoint,
+			"resource_type", resourceType,
+			"resource_id", resourceID,
+			"request_id", actor.RequestID,
+			"error", err,
+		)
+		return domain.NewDownstreamUnavailable(resourceType+" service is unavailable", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		if out == nil {
+			io.Copy(io.Discard, resp.Body)
+			return nil
+		}
+		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+			return domain.NewDownstreamUnavailable(resourceType+" service returned an invalid response", err)
+		}
+		return nil
+	}
+
+	return mapAdminServiceError(resp, resourceType, resourceID)
+}
+
+func mapAdminServiceError(resp *http.Response, resourceType string, resourceID string) error {
+	responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	message := strings.TrimSpace(string(responseBody))
+
+	switch resp.StatusCode {
+	case http.StatusNotFound:
+		switch resourceType {
+		case "order":
+			return domain.NewOrderNotFound(resourceID)
+		case "payment":
+			return domain.NewPaymentNotFound(resourceID)
+		case "refund":
+			return domain.NewRefundNotFound(resourceID)
+		default:
+			return domain.NewValidationError("resource was not found")
+		}
+	case http.StatusBadRequest:
+		if message == "" {
+			message = resourceType + " service rejected the request"
+		}
+		return domain.NewValidationError(message)
+	case http.StatusConflict, http.StatusPreconditionFailed:
+		if resourceType == "refund" {
+			return domain.NewRefundNotReviewable("current")
+		}
+		if message == "" {
+			message = resourceType + " service rejected the state transition"
+		}
+		return domain.NewValidationError(message)
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return domain.NewDownstreamUnavailable(resourceType+" service denied the admin request", nil)
+	case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return domain.NewDownstreamUnavailable(resourceType+" service is unavailable", nil)
+	default:
+		if resp.StatusCode >= 500 {
+			return domain.NewDownstreamUnavailable(resourceType+" service is unavailable", nil)
+		}
+		return domain.NewInternal(fmt.Sprintf("%s service returned unexpected status %d", resourceType, resp.StatusCode), nil)
+	}
+}

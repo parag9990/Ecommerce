@@ -34,6 +34,7 @@ type HTTPConfig struct {
 	WriteTimeout    time.Duration
 	IdleTimeout     time.Duration
 	ShutdownTimeout time.Duration
+	AdminToken      string
 }
 
 type SessionModelConfig struct {
@@ -168,6 +169,7 @@ func Load() (Config, error) {
 			WriteTimeout:    envDuration("SESSION_HTTP_WRITE_TIMEOUT", 10*time.Second),
 			IdleTimeout:     envDuration("SESSION_HTTP_IDLE_TIMEOUT", 60*time.Second),
 			ShutdownTimeout: envDuration("SESSION_SHUTDOWN_TIMEOUT", 10*time.Second),
+			AdminToken:      strings.TrimSpace(os.Getenv("SESSION_ADMIN_TOKEN")),
 		},
 		SessionModel: SessionModelConfig{
 			SchemaVersion:           envInt("SESSION_SCHEMA_VERSION", domain.CurrentSessionSchemaVersion),
@@ -474,6 +476,9 @@ func (c HTTPConfig) Validate() error {
 	}
 	if c.ShutdownTimeout <= 0 {
 		return errors.New("SESSION_SHUTDOWN_TIMEOUT must be greater than zero")
+	}
+	if len(c.AdminToken) < 32 {
+		return errors.New("SESSION_ADMIN_TOKEN must be at least 32 characters")
 	}
 	return nil
 }

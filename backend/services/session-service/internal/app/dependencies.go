@@ -289,6 +289,7 @@ func NewDependencies(ctx context.Context, cfg config.Config, logger *slog.Logger
 		return nil, err
 	}
 	handler.SetSessionReferenceCodec(sessionReferenceCodec)
+	handler.SetAdminToken(cfg.HTTP.AdminToken)
 
 	var heatmapWorkerCancel context.CancelFunc
 	if cfg.Heatmap.AggregationEnabled {

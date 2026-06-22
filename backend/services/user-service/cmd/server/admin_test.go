@@ -22,7 +22,7 @@ func TestAdminServerExposesHealthAndMetrics(t *testing.T) {
 	server := newAdminServer(config.HTTPConfig{
 		Address:           ":0",
 		ReadHeaderTimeout: time.Second,
-	}, db, observability.NewMetrics())
+	}, db, observability.NewMetrics(), nil, nil, nil)
 
 	live := httptest.NewRecorder()
 	server.Handler.ServeHTTP(live, httptest.NewRequest(http.MethodGet, "/health/live", nil))

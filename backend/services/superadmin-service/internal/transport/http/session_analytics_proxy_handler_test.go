@@ -1,0 +1,83 @@
+package http
+
+import (
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"ecommerce/superadmin-service/internal/domain"
+	"ecommerce/superadmin-service/internal/logging"
+	"ecommerce/superadmin-service/internal/usecase"
+)
+
+type proxyVisibility struct {
+	request usecase.AuthorizeSessionAnalyticsRequest
+	err     error
+}
+
+func (p *proxyVisibility) AuthorizeSessionAnalytics(_ context.Context, request usecase.AuthorizeSessionAnalyticsRequest) (*usecase.AuthorizeSessionAnalyticsResult, error) {
+	p.request = request
+	if p.err != nil {
+		return nil, p.err
+	}
+	return &usecase.AuthorizeSessionAnalyticsResult{Allowed: true, Route: request.Route, Permission: domain.PermissionSessionsRead, MaskPII: true, DownstreamHeaders: map[string]string{"x-admin-mask-pii": "true"}}, nil
+}
+func (*proxyVisibility) DashboardAccess(context.Context, domain.AdminActor) (*usecase.SessionDashboardAccess, error) {
+	return nil, nil
+}
+
+type proxyForwarder struct {
+	called  bool
+	headers map[string]string
+}
+
+func (p *proxyForwarder) ForwardAnalytics(_ context.Context, _ *http.Request, _ domain.AdminActor, headers map[string]string) (*http.Response, error) {
+	p.called = true
+	p.headers = headers
+	return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"active_sessions":3}`))}, nil
+}
+
+func TestSessionAnalyticsProxyAuthorizesThenForwards(t *testing.T) {
+	visibility, forwarder := &proxyVisibility{}, &proxyForwarder{}
+	handler := NewSessionAnalyticsProxyHandler(visibility, forwarder, logging.NewNop())
+	mux := http.NewServeMux()
+	handler.Register(mux)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/sessions/sess_123/journey?from=2026-06-01&to=2026-06-02&include_risk=true", nil)
+	setAdminHeaders(request)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !forwarder.called {
+		t.Fatalf("response=%d called=%t body=%s", response.Code, forwarder.called, response.Body.String())
+	}
+	if visibility.request.Route != domain.SessionAnalyticsRouteJourney || visibility.request.Filters.SessionID != "sess_123" || !visibility.request.IncludeRisk {
+		t.Fatalf("request=%+v", visibility.request)
+	}
+	if forwarder.headers["x-admin-mask-pii"] != "true" {
+		t.Fatalf("headers=%v", forwarder.headers)
+	}
+}
+
+func TestSessionAnalyticsProxyDoesNotForwardDeniedRequest(t *testing.T) {
+	visibility, forwarder := &proxyVisibility{err: domain.NewForbidden(domain.PermissionSessionsRead)}, &proxyForwarder{}
+	handler := NewSessionAnalyticsProxyHandler(visibility, forwarder, logging.NewNop())
+	mux := http.NewServeMux()
+	handler.Register(mux)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/live", nil)
+	setAdminHeaders(request)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden || forwarder.called {
+		t.Fatalf("response=%d called=%t", response.Code, forwarder.called)
+	}
+}
+
+func setAdminHeaders(request *http.Request) {
+	request.Header.Set("X-Admin-Id", "admin_1")
+	request.Header.Set("X-User-Id", "user_1")
+	request.Header.Set("X-Admin-Roles", "superadmin")
+	request.Header.Set("X-Session-Id", "sess_1")
+	request.Header.Set("X-Request-Id", "req_test_1")
+}

@@ -13,8 +13,22 @@ type AccessClaims struct {
 	Roles     []string `json:"roles"`
 	SellerID  string   `json:"seller_id,omitempty"`
 	TokenType string   `json:"token_type"`
+	MFA       bool     `json:"mfa_verified,omitempty"`
+	AMR       []string `json:"amr,omitempty"`
 
 	jwt.RegisteredClaims
+}
+
+func (c AccessClaims) MFAVerified() bool {
+	if c.MFA {
+		return true
+	}
+	for _, method := range c.AMR {
+		if strings.EqualFold(strings.TrimSpace(method), "mfa") {
+			return true
+		}
+	}
+	return false
 }
 
 func (c AccessClaims) UserID() string {

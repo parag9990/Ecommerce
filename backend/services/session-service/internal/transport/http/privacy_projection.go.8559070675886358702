@@ -1,0 +1,149 @@
+package httptransport
+
+import (
+	"net/http"
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/example/ecommerce-platform/backend/services/session-service/internal/domain"
+)
+
+func analyticsMaskingForRequest(r *http.Request, masking domain.PrivacyMaskingSettings) domain.PrivacyMaskingSettings {
+	if !strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Admin-Mask-PII")), "true") { return masking }
+	if masking.UserIDMode == domain.MaskingModeFull { masking.UserIDMode = domain.MaskingModeMasked }
+	if masking.AnonymousIDMode == domain.MaskingModeFull { masking.AnonymousIDMode = domain.MaskingModeMasked }
+	if masking.SessionIDMode == domain.MaskingModeFull { masking.SessionIDMode = domain.MaskingModeMasked }
+	if masking.LocationGranularity == domain.LocationGranularityCity { masking.LocationGranularity = domain.LocationGranularityCountry }
+	masking.ShowSearchQueries = false
+	masking.ShowIPHash = false
+	return masking
+}
+
+func (h *Handler) analyticsPrivacySettings(r *http.Request) (domain.PrivacySettings, error) {
+	if h.privacy == nil {
+		settings := domain.DefaultPrivacySettings(time.Now().UTC(), "system")
+		settings.Masking.SessionIDMode = domain.MaskingModeFull
+		return settings, nil
+	}
+	return h.privacy.GetPrivacySettings(r.Context(), actorFromRequest(r))
+}
+
+func (h *Handler) applySessionListPrivacy(response *SessionListResponse, masking domain.PrivacyMaskingSettings) error {
+	for i := range response.Sessions {
+		session := &response.Sessions[i]
+		value, err := h.projectSessionID(session.SessionID, masking.SessionIDMode)
+		if err != nil {
+			return err
+		}
+		session.SessionID = value
+		session.AnonymousID = projectRequiredIdentifier(session.AnonymousID, masking.AnonymousIDMode)
+		session.UserID = projectOptionalIdentifier(session.UserID, masking.UserIDMode)
+		projectGeo(&session.Geo, masking.LocationGranularity)
+	}
+	return nil
+}
+
+func (h *Handler) applyJourneyPrivacy(response *JourneyResponse, masking domain.PrivacyMaskingSettings) error {
+	sessionID, err := h.projectSessionID(response.Session.SessionID, masking.SessionIDMode)
+	if err != nil {
+		return err
+	}
+	response.Session.SessionID = sessionID
+	response.Session.AnonymousID = projectRequiredIdentifier(response.Session.AnonymousID, masking.AnonymousIDMode)
+	response.Session.UserID = projectOptionalIdentifier(response.Session.UserID, masking.UserIDMode)
+	for i := range response.Events {
+		event := &response.Events[i]
+		event.SessionID = sessionID
+		event.AnonymousID = projectRequiredIdentifier(event.AnonymousID, masking.AnonymousIDMode)
+		event.UserID = projectOptionalIdentifier(event.UserID, masking.UserIDMode)
+		if event.Geo != nil {
+			projectGeo(event.Geo, masking.LocationGranularity)
+		}
+		event.Properties = projectEventProperties(event.Properties, masking)
+	}
+	return nil
+}
+
+func (h *Handler) projectSessionID(value string, mode domain.MaskingMode) (string, error) {
+	switch mode {
+	case domain.MaskingModeFull:
+		return value, nil
+	case domain.MaskingModeHidden:
+		return "hidden", nil
+	default:
+		if h.sessionReferences == nil {
+			return domain.MaskIdentifier(value), nil
+		}
+		reference, err := h.sessionReferences.Protect(value)
+		if err != nil {
+			return "", fmt.Errorf("protect session reference: %w", err)
+		}
+		return reference, nil
+	}
+}
+
+func projectRequiredIdentifier(value string, mode domain.MaskingMode) string {
+	switch mode {
+	case domain.MaskingModeFull:
+		return value
+	case domain.MaskingModeHidden:
+		return "hidden"
+	default:
+		return domain.MaskIdentifier(value)
+	}
+}
+
+func projectOptionalIdentifier(value *string, mode domain.MaskingMode) *string {
+	if value == nil || mode == domain.MaskingModeHidden {
+		return nil
+	}
+	projected := projectRequiredIdentifier(*value, mode)
+	return &projected
+}
+
+func projectGeo(geo *GeoResponse, granularity domain.LocationGranularity) {
+	switch granularity {
+	case domain.LocationGranularityNone:
+		geo.Country, geo.Region, geo.City, geo.Timezone = nil, nil, nil, nil
+	case domain.LocationGranularityCountry:
+		geo.Region, geo.City, geo.Timezone = nil, nil, nil
+	}
+}
+
+func projectEventProperties(properties map[string]any, masking domain.PrivacyMaskingSettings) map[string]any {
+	if len(properties) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(properties))
+	for key, value := range properties {
+		normalized := strings.ToLower(strings.NewReplacer("-", "_", " ", "_", ".", "_").Replace(strings.TrimSpace(key)))
+		if !masking.ShowSearchQueries && (normalized == "query" || strings.Contains(normalized, "search_query")) {
+			continue
+		}
+		if !masking.ShowIPHash && strings.Contains(normalized, "ip_hash") {
+			continue
+		}
+		switch typed := value.(type) {
+		case map[string]any:
+			out[key] = projectEventProperties(typed, masking)
+		case []any:
+			items := make([]any, 0, len(typed))
+			for _, item := range typed {
+				if nested, ok := item.(map[string]any); ok {
+					items = append(items, projectEventProperties(nested, masking))
+				} else {
+					items = append(items, item)
+				}
+			}
+			out[key] = items
+		default:
+			out[key] = value
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}

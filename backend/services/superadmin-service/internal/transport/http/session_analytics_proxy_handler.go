@@ -1,0 +1,137 @@
+package http
+
+import (
+	"context"
+	"io"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"ecommerce/superadmin-service/internal/domain"
+	"ecommerce/superadmin-service/internal/logging"
+	"ecommerce/superadmin-service/internal/usecase"
+)
+
+type SessionAnalyticsForwarder interface {
+	ForwardAnalytics(context.Context, *http.Request, domain.AdminActor, map[string]string) (*http.Response, error)
+}
+
+type SessionAnalyticsProxyHandler struct {
+	visibility SessionVisibilityUsecase
+	forwarder  SessionAnalyticsForwarder
+	logger     logging.Logger
+}
+
+func NewSessionAnalyticsProxyHandler(visibility SessionVisibilityUsecase, forwarder SessionAnalyticsForwarder, logger logging.Logger) *SessionAnalyticsProxyHandler {
+	if logger == nil {
+		logger = logging.NewNop()
+	}
+	return &SessionAnalyticsProxyHandler{visibility: visibility, forwarder: forwarder, logger: logger}
+}
+
+func (h *SessionAnalyticsProxyHandler) Register(mux *http.ServeMux) {
+	protected := ActorMiddleware
+	mux.Handle("/api/v1/analytics/live", protected(http.HandlerFunc(h.proxy)))
+	mux.Handle("/api/v1/analytics/sessions", protected(http.HandlerFunc(h.proxy)))
+	mux.Handle("/api/v1/analytics/sessions/", protected(http.HandlerFunc(h.proxy)))
+	mux.Handle("/api/v1/analytics/funnels", protected(http.HandlerFunc(h.proxy)))
+	mux.Handle("/api/v1/analytics/heatmaps", protected(http.HandlerFunc(h.proxy)))
+}
+
+func (h *SessionAnalyticsProxyHandler) proxy(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		writeJSON(w, http.StatusMethodNotAllowed, errorResponse{Code: "METHOD_NOT_ALLOWED", Message: "method not allowed"})
+		return
+	}
+	actor, ok := domain.ActorFromContext(r.Context())
+	if !ok {
+		writeError(w, r, domain.NewAdminContextMissing("admin actor is missing from request context"))
+		return
+	}
+	request, err := sessionAuthorizationRequest(r, actor)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	decision, err := h.visibility.AuthorizeSessionAnalytics(r.Context(), request)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	response, err := h.forwarder.ForwardAnalytics(r.Context(), r, actor, decision.DownstreamHeaders)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	defer response.Body.Close()
+	removeProxyHopHeaders(response.Header)
+	for key, values := range response.Header {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+	w.WriteHeader(response.StatusCode)
+	if _, err := io.Copy(w, response.Body); err != nil {
+		h.logger.Warn(r.Context(), "session analytics response copy failed", "request_id", actor.RequestID, "error", err)
+	}
+}
+
+func sessionAuthorizationRequest(r *http.Request, actor domain.AdminActor) (usecase.AuthorizeSessionAnalyticsRequest, error) {
+	route, sessionID, ok := sessionRouteFromPath(r.URL.Path)
+	if !ok {
+		return usecase.AuthorizeSessionAnalyticsRequest{}, domain.NewValidationError("unsupported session analytics route")
+	}
+	from, err := parseAnalyticsTime(r.URL.Query().Get("from"), "from")
+	if err != nil {
+		return usecase.AuthorizeSessionAnalyticsRequest{}, err
+	}
+	to, err := parseAnalyticsTime(r.URL.Query().Get("to"), "to")
+	if err != nil {
+		return usecase.AuthorizeSessionAnalyticsRequest{}, err
+	}
+	page, err := positiveIntQuery(r.URL.Query().Get("page"), "page")
+	if err != nil {
+		return usecase.AuthorizeSessionAnalyticsRequest{}, err
+	}
+	pageSizeRaw := r.URL.Query().Get("page_size")
+	if strings.TrimSpace(pageSizeRaw) == "" {
+		pageSizeRaw = r.URL.Query().Get("limit")
+	}
+	pageSize, err := positiveIntQuery(pageSizeRaw, "page_size")
+	if err != nil {
+		return usecase.AuthorizeSessionAnalyticsRequest{}, err
+	}
+	return usecase.AuthorizeSessionAnalyticsRequest{Actor: actor, Route: route, IncludeRisk: parseAnalyticsBool(r.URL.Query().Get("include_risk")), Filters: domain.SessionAnalyticsFilters{From: from, To: to, Page: page, PageSize: pageSize, SessionID: sessionID, Path: strings.TrimSpace(r.URL.Query().Get("path")), DeviceType: domain.SessionAnalyticsDeviceType(strings.ToLower(strings.TrimSpace(r.URL.Query().Get("device_type"))))}}, nil
+}
+
+func sessionRouteFromPath(path string) (domain.SessionAnalyticsRoute, string, bool) {
+	switch path {
+	case "/api/v1/analytics/live":
+		return domain.SessionAnalyticsRouteLive, "", true
+	case "/api/v1/analytics/sessions":
+		return domain.SessionAnalyticsRouteSessions, "", true
+	case "/api/v1/analytics/funnels":
+		return domain.SessionAnalyticsRouteFunnels, "", true
+	case "/api/v1/analytics/heatmaps":
+		return domain.SessionAnalyticsRouteHeatmaps, "", true
+	}
+	const prefix = "/api/v1/analytics/sessions/"
+	const suffix = "/journey"
+	if strings.HasPrefix(path, prefix) && strings.HasSuffix(path, suffix) {
+		id := strings.TrimSuffix(strings.TrimPrefix(path, prefix), suffix)
+		if id != "" && !strings.Contains(id, "/") {
+			return domain.SessionAnalyticsRouteJourney, id, true
+		}
+	}
+	return "", "", false
+}
+func parseAnalyticsBool(raw string) bool {
+	value, err := strconv.ParseBool(strings.TrimSpace(raw))
+	return err == nil && value
+}
+func removeProxyHopHeaders(header http.Header) {
+	for _, name := range []string{"Connection", "Proxy-Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "Te", "Trailer", "Transfer-Encoding", "Upgrade"} {
+		header.Del(name)
+	}
+}

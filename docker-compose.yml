@@ -440,6 +440,10 @@ services:
     ports: ["8093:8088"]
     depends_on:
       migrate-superadmin: {condition: service_completed_successfully}
+      user-service: {condition: service_healthy}
+      order-service: {condition: service_healthy}
+      payment-service: {condition: service_healthy}
+      session-service: {condition: service_healthy}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8088/readyz >/dev/null"]
       interval: 10s

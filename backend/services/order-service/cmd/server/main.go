@@ -124,7 +124,7 @@ func run(logger *slog.Logger) error {
 	}
 
 	healthServer := &http.Server{
-		Addr: cfg.HTTP.Address, Handler: serviceMux(db, paymentResults, cfg.Downstream.PaymentEventsToken, logger),
+		Addr: cfg.HTTP.Address, Handler: serviceMux(db, paymentResults, orders, cfg.HTTP.AdminToken, cfg.Downstream.PaymentEventsToken, logger),
 		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second,
 	}
 	errCh := make(chan error, 2)
@@ -156,7 +156,7 @@ type paymentResultExecutor interface {
 	Execute(context.Context, usecase.ApplyPaymentResultCommand) error
 }
 
-func serviceMux(db *sql.DB, paymentResults paymentResultExecutor, paymentEventsToken string, logger *slog.Logger) http.Handler {
+func serviceMux(db *sql.DB, paymentResults paymentResultExecutor, orders adminOrderRepository, adminToken string, paymentEventsToken string, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -206,6 +206,7 @@ func serviceMux(db *sql.DB, paymentResults paymentResultExecutor, paymentEventsT
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "applied"})
 	})
+	(&adminOrderHandler{token: adminToken, orders: orders}).register(mux)
 	return mux
 }
 

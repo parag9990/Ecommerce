@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: superadmin-service-config
+  namespace: core
+  labels:
+    app.kubernetes.io/name: superadmin-service
+    app.kubernetes.io/part-of: ecommerce-platform
+data:
+  SERVICE_NAME: superadmin-service
+  APP_ENV: dev
+  HTTP_ADDR: :8088
+  SUPERADMIN_REQUIRE_DATABASE: "true"
+  SUPERADMIN_REQUIRE_USER_SERVICE: "true"
+  SUPERADMIN_REQUIRE_ORDER_SERVICE: "true"
+  SUPERADMIN_REQUIRE_PAYMENT_SERVICE: "true"
+  SUPERADMIN_REQUIRE_SESSION_SERVICE: "true"
+  SUPERADMIN_DB_MAX_OPEN_CONNS: "25"
+  SUPERADMIN_DB_MAX_IDLE_CONNS: "25"
+  SUPERADMIN_DB_CONN_MAX_LIFETIME: 5m
+  SUPERADMIN_DB_PING_TIMEOUT: 5s
+  USER_SERVICE_ADMIN_BASE_URL: http://user-service.core.svc.cluster.local:9091
+  USER_SERVICE_TIMEOUT: 5s
+  ORDER_SERVICE_ADMIN_BASE_URL: http://order-service.core.svc.cluster.local:8090
+  ORDER_SERVICE_TIMEOUT: 5s
+  PAYMENT_SERVICE_ADMIN_BASE_URL: http://payment-service.core.svc.cluster.local:8080
+  PAYMENT_SERVICE_TIMEOUT: 5s
+  SESSION_SERVICE_ADMIN_BASE_URL: http://session-service.core.svc.cluster.local:8086
+  SESSION_SERVICE_TIMEOUT: 5s
+  SUPERADMIN_PLATFORM_SETTINGS_CACHE_TTL: 5m
+  SUPERADMIN_PLATFORM_SETTINGS_EVENT_TOPIC: platform.settings.events
+  SUPERADMIN_SESSION_ANALYTICS_MAX_RANGE: 720h
+  SUPERADMIN_SESSION_ANALYTICS_MAX_PAGE_SIZE: "100"
+  SUPERADMIN_LOG_LEVEL: info
+  HTTP_READ_HEADER_TIMEOUT: 5s
+  HTTP_SHUTDOWN_TIMEOUT: 10s

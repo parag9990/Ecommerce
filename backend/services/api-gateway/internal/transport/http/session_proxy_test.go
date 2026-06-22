@@ -37,3 +37,26 @@ func TestSessionProxyReplacesSpoofedIdentityHeaders(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
+
+func TestSuperadminProxyBuildsTrustedAdminContext(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Admin-ID") != "admin_1" || r.Header.Get("X-Session-ID") != "sess_1" || r.Header.Get("X-MFA-Verified") != "true" {
+			t.Errorf("headers=%v", r.Header)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer upstream.Close()
+	proxy, err := NewServiceHTTPProxy("superadmin", upstream.URL, upstream.Client(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users", nil)
+	request.Header.Set("X-Admin-ID", "attacker")
+	request.Header.Set("X-MFA-Verified", "true")
+	request = request.WithContext(gatewayauth.WithClaims(request.Context(), gatewayauth.AccessClaims{SessionID: "sess_1", Roles: []string{"superadmin"}, AMR: []string{"pwd", "mfa"}, RegisteredClaims: jwt.RegisteredClaims{Subject: "admin_1"}}))
+	response := httptest.NewRecorder()
+	proxy.ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status=%d", response.Code)
+	}
+}

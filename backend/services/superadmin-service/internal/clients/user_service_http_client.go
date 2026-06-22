@@ -22,10 +22,11 @@ const defaultUserServiceAdminPath = "/internal/admin"
 type HTTPUserServiceClient struct {
 	baseURL *url.URL
 	client  *http.Client
+	token   string
 	logger  logging.Logger
 }
 
-func NewHTTPUserServiceClient(baseURL string, timeout time.Duration, logger logging.Logger) (*HTTPUserServiceClient, error) {
+func NewHTTPUserServiceClient(baseURL string, token string, timeout time.Duration, logger logging.Logger) (*HTTPUserServiceClient, error) {
 	baseURL = strings.TrimSpace(baseURL)
 	if baseURL == "" {
 		return nil, errors.New("user service base url is required")
@@ -40,6 +41,10 @@ func NewHTTPUserServiceClient(baseURL string, timeout time.Duration, logger logg
 	if parsed.Host == "" {
 		return nil, errors.New("user service base url must include a host")
 	}
+	token = strings.TrimSpace(token)
+	if len(token) < 32 {
+		return nil, errors.New("user service admin token must be at least 32 characters")
+	}
 	if timeout <= 0 {
 		timeout = 5 * time.Second
 	}
@@ -49,6 +54,7 @@ func NewHTTPUserServiceClient(baseURL string, timeout time.Duration, logger logg
 	return &HTTPUserServiceClient{
 		baseURL: parsed,
 		client:  &http.Client{Timeout: timeout},
+		token:   token,
 		logger:  logger,
 	}, nil
 }
@@ -131,6 +137,7 @@ func (c *HTTPUserServiceClient) do(ctx context.Context, method string, endpoint 
 		req.Header.Set("Content-Type", "application/json")
 	}
 	attachAdminHeaders(req.Header, actor, reason)
+	req.Header.Set("Authorization", "Bearer "+c.token)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -204,8 +211,12 @@ func listQuery(query string, status string, pagination domain.Pagination) url.Va
 
 func attachAdminHeaders(header http.Header, actor domain.AdminActor, reason string) {
 	header.Set("X-Admin-Id", actor.AdminID)
+	header.Set("X-Actor-Id", actor.AdminID)
 	header.Set("X-User-Id", actor.UserID)
 	header.Set("X-Admin-Roles", strings.Join(domain.RolesToStrings(actor.Roles), ","))
+	if len(actor.Roles) > 0 {
+		header.Set("X-Actor-Role", string(actor.Roles[0]))
+	}
 	header.Set("X-Session-Id", actor.SessionID)
 	header.Set("X-Request-Id", actor.RequestID)
 	if actor.IPHash != "" {

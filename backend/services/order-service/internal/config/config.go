@@ -19,8 +19,8 @@ const (
 	defaultIdempotencyTTL                = 24 * time.Hour
 	defaultReleaseTimeout                = 3 * time.Second
 	defaultPaymentInventoryActionTimeout = 3 * time.Second
-	defaultDownstreamRequestTimeout       = 5 * time.Second
-	defaultPaymentActionTTL               = 10 * time.Minute
+	defaultDownstreamRequestTimeout      = 5 * time.Second
+	defaultPaymentActionTTL              = 10 * time.Minute
 	defaultPaymentAllowedCurrencies      = "INR,USD"
 	defaultGRPCAddress                   = ":9094"
 	defaultHTTPAddress                   = ":8090"
@@ -35,17 +35,18 @@ const (
 )
 
 type Config struct {
-	Database DatabaseConfig
-	Checkout CheckoutConfig
-	Payment  PaymentConfig
+	Database   DatabaseConfig
+	Checkout   CheckoutConfig
+	Payment    PaymentConfig
 	Downstream DownstreamConfig
-	HTTP     HTTPConfig
-	GRPC     GRPCConfig
-	Events   EventConfig
+	HTTP       HTTPConfig
+	GRPC       GRPCConfig
+	Events     EventConfig
 }
 
 type HTTPConfig struct {
-	Address string
+	Address    string
+	AdminToken string
 }
 
 type DownstreamConfig struct {
@@ -160,16 +161,16 @@ func Load() (Config, error) {
 			InventoryActionTimeout: actionTimeout,
 		},
 		Downstream: DownstreamConfig{
-			CartBaseURL:           envValue("ORDER_CART_BASE_URL", "http://cart-service:8083"),
-			ProductBaseURL:        envValue("ORDER_PRODUCT_BASE_URL", "http://product-service:8082"),
-			ProductServiceToken:   strings.TrimSpace(os.Getenv("ORDER_PRODUCT_SERVICE_TOKEN")),
-			PaymentBaseURL:        envValue("ORDER_PAYMENT_BASE_URL", "http://payment-service:8080"),
+			CartBaseURL:          envValue("ORDER_CART_BASE_URL", "http://cart-service:8083"),
+			ProductBaseURL:       envValue("ORDER_PRODUCT_BASE_URL", "http://product-service:8082"),
+			ProductServiceToken:  strings.TrimSpace(os.Getenv("ORDER_PRODUCT_SERVICE_TOKEN")),
+			PaymentBaseURL:       envValue("ORDER_PAYMENT_BASE_URL", "http://payment-service:8080"),
 			PaymentInternalToken: strings.TrimSpace(os.Getenv("ORDER_PAYMENT_INTERNAL_TOKEN")),
 			PaymentEventsToken:   strings.TrimSpace(os.Getenv("ORDER_PAYMENT_EVENTS_TOKEN")),
-			RequestTimeout:        requestTimeout,
-			PaymentActionTTL:      paymentActionTTL,
+			RequestTimeout:       requestTimeout,
+			PaymentActionTTL:     paymentActionTTL,
 		},
-		HTTP: HTTPConfig{Address: envValue("ORDER_HTTP_ADDR", defaultHTTPAddress)},
+		HTTP: HTTPConfig{Address: envValue("ORDER_HTTP_ADDR", defaultHTTPAddress), AdminToken: strings.TrimSpace(os.Getenv("ORDER_ADMIN_TOKEN"))},
 		GRPC: GRPCConfig{
 			Address:             envValue("ORDER_GRPC_ADDR", defaultGRPCAddress),
 			TrustedCallerToken:  strings.TrimSpace(os.Getenv("ORDER_GRPC_TRUSTED_CALLER_TOKEN")),
@@ -225,7 +226,7 @@ func (c Config) Validate() error {
 		return errors.New("ORDER_PAYMENT_INVENTORY_ACTION_TIMEOUT must be greater than zero")
 	}
 	for name, value := range map[string]string{
-		"ORDER_CART_BASE_URL": c.Downstream.CartBaseURL,
+		"ORDER_CART_BASE_URL":    c.Downstream.CartBaseURL,
 		"ORDER_PRODUCT_BASE_URL": c.Downstream.ProductBaseURL,
 		"ORDER_PAYMENT_BASE_URL": c.Downstream.PaymentBaseURL,
 	} {
@@ -251,6 +252,9 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.HTTP.Address) == "" {
 		return errors.New("ORDER_HTTP_ADDR is required")
+	}
+	if len(c.HTTP.AdminToken) < 32 {
+		return errors.New("ORDER_ADMIN_TOKEN must be at least 32 characters")
 	}
 	if strings.TrimSpace(c.GRPC.Address) == "" {
 		return errors.New("ORDER_GRPC_ADDR is required")

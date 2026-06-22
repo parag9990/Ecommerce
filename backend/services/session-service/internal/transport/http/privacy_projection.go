@@ -9,6 +9,27 @@ import (
 	"github.com/example/ecommerce-platform/backend/services/session-service/internal/domain"
 )
 
+func analyticsMaskingForRequest(r *http.Request, masking domain.PrivacyMaskingSettings) domain.PrivacyMaskingSettings {
+	if !strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Admin-Mask-PII")), "true") {
+		return masking
+	}
+	if masking.UserIDMode == domain.MaskingModeFull {
+		masking.UserIDMode = domain.MaskingModeMasked
+	}
+	if masking.AnonymousIDMode == domain.MaskingModeFull {
+		masking.AnonymousIDMode = domain.MaskingModeMasked
+	}
+	if masking.SessionIDMode == domain.MaskingModeFull {
+		masking.SessionIDMode = domain.MaskingModeMasked
+	}
+	if masking.LocationGranularity == domain.LocationGranularityCity {
+		masking.LocationGranularity = domain.LocationGranularityCountry
+	}
+	masking.ShowSearchQueries = false
+	masking.ShowIPHash = false
+	return masking
+}
+
 func (h *Handler) analyticsPrivacySettings(r *http.Request) (domain.PrivacySettings, error) {
 	if h.privacy == nil {
 		settings := domain.DefaultPrivacySettings(time.Now().UTC(), "system")

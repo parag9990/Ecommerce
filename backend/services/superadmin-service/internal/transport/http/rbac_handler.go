@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"net/http"
+	"reflect"
 	"strings"
 
 	"ecommerce/superadmin-service/internal/domain"
@@ -29,7 +30,22 @@ func NewRBACHandler(authz AuthorizationUsecase, ready ReadinessChecker, logger l
 	if logger == nil {
 		logger = logging.NewNop()
 	}
-	return &RBACHandler{authz: authz, ready: ready, logger: logger}
+	return &RBACHandler{authz: authz, ready: normalizeReadinessChecker(ready), logger: logger}
+}
+
+func normalizeReadinessChecker(ready ReadinessChecker) ReadinessChecker {
+	if ready == nil {
+		return nil
+	}
+
+	value := reflect.ValueOf(ready)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		if value.IsNil() {
+			return nil
+		}
+	}
+	return ready
 }
 
 func (h *RBACHandler) Register(mux *http.ServeMux) {

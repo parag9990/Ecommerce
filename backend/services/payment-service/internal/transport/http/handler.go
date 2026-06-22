@@ -9,10 +9,13 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/example/ecommerce-platform/backend/services/payment-service/internal/domain"
 	"github.com/example/ecommerce-platform/backend/services/payment-service/internal/provider"
+	"github.com/example/ecommerce-platform/backend/services/payment-service/internal/repository"
 	"github.com/example/ecommerce-platform/backend/services/payment-service/internal/usecase"
 )
 
@@ -47,6 +50,96 @@ type RefundUsecase interface {
 	Review(ctx context.Context, input usecase.ReviewRefundInput) (usecase.RefundPaymentOutput, error)
 }
 
+type AdminPaymentQuery interface {
+	ListPaymentsForAdmin(context.Context, string, string, string, int, int) (repository.AdminPaymentPage, error)
+	ListRefundsForPaymentAdmin(context.Context, string) ([]domain.Refund, error)
+}
+
+func (h *Handler) handleAdminPayments(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	if !h.authorizeRefundRequest(r) {
+		writeAPIError(w, http.StatusForbidden, "FORBIDDEN", "Finance admin authorization is required")
+		return
+	}
+	if h.adminQuery == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "PAYMENT_QUERY_UNAVAILABLE", "Payment query is not configured")
+		return
+	}
+	page, pageSize, err := paymentAdminPagination(r)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+		return
+	}
+	result, err := h.adminQuery.ListPaymentsForAdmin(r.Context(), r.URL.Query().Get("status"), r.URL.Query().Get("provider"), r.URL.Query().Get("order_id"), pageSize, (page-1)*pageSize)
+	if err != nil {
+		h.writeUsecaseError(w, r, err)
+		return
+	}
+	payments := make([]adminPaymentResponse, 0, len(result.Payments))
+	for _, payment := range result.Payments {
+		payments = append(payments, adminPaymentResponseFromDomain(payment))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"payments": payments, "page": page, "page_size": pageSize, "total": result.Total})
+}
+
+func (h *Handler) handleAdminPaymentRefunds(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	if !h.authorizeRefundRequest(r) {
+		writeAPIError(w, http.StatusForbidden, "FORBIDDEN", "Finance admin authorization is required")
+		return
+	}
+	if h.adminQuery == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "PAYMENT_QUERY_UNAVAILABLE", "Payment query is not configured")
+		return
+	}
+	refunds, err := h.adminQuery.ListRefundsForPaymentAdmin(r.Context(), r.PathValue("payment_id"))
+	if err != nil {
+		h.writeUsecaseError(w, r, err)
+		return
+	}
+	responses := make([]refundResponse, 0, len(refunds))
+	for _, refund := range refunds {
+		responses = append(responses, refundResponseFromDomain(refund, false))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"refunds": responses})
+}
+
+type adminPaymentResponse struct {
+	PaymentID string       `json:"payment_id"`
+	OrderID   string       `json:"order_id"`
+	Provider  string       `json:"provider"`
+	Status    string       `json:"status"`
+	Amount    moneyRequest `json:"amount"`
+	CreatedAt *time.Time   `json:"created_at,omitempty"`
+	UpdatedAt *time.Time   `json:"updated_at,omitempty"`
+}
+
+func adminPaymentResponseFromDomain(payment domain.Payment) adminPaymentResponse {
+	created, updated := payment.CreatedAt, payment.UpdatedAt
+	return adminPaymentResponse{PaymentID: payment.PaymentID, OrderID: payment.OrderID, Provider: payment.Provider, Status: string(payment.Status), Amount: moneyRequest{Amount: payment.Amount.Amount, Currency: payment.Amount.Currency}, CreatedAt: &created, UpdatedAt: &updated}
+}
+func paymentAdminPagination(r *http.Request) (int, int, error) {
+	page, pageSize := 1, 20
+	var err error
+	if raw := strings.TrimSpace(r.URL.Query().Get("page")); raw != "" {
+		page, err = strconv.Atoi(raw)
+		if err != nil || page < 1 {
+			return 0, 0, errors.New("page must be a positive integer")
+		}
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("page_size")); raw != "" {
+		pageSize, err = strconv.Atoi(raw)
+		if err != nil || pageSize < 1 || pageSize > 100 {
+			return 0, 0, errors.New("page_size must be between 1 and 100")
+		}
+	}
+	return page, pageSize, nil
+}
+
 type Handler struct {
 	stateUsecase         PaymentStateUsecase
 	schemaUsecase        PaymentSchemaUsecase
@@ -54,6 +147,7 @@ type Handler struct {
 	retryPaymentUsecase  RetryPaymentUsecase
 	webhookUsecase       WebhookUsecase
 	refundUsecase        RefundUsecase
+	adminQuery           AdminPaymentQuery
 	paymentIntentToken   string
 	maxWebhookBodyBytes  int64
 	logger               *slog.Logger
@@ -95,6 +189,10 @@ func WithRefundUsecase(refundUsecase RefundUsecase) HandlerOption {
 	return func(h *Handler) {
 		h.refundUsecase = refundUsecase
 	}
+}
+
+func WithAdminPaymentQuery(query AdminPaymentQuery) HandlerOption {
+	return func(h *Handler) { h.adminQuery = query }
 }
 
 func WithWebhookMaxBodyBytes(maxBodyBytes int64) HandlerOption {
@@ -139,6 +237,10 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/payments/{payment_id}/refund", h.handleRefundPayment)
 	mux.HandleFunc("/api/v1/refunds/{refund_id}", h.handleGetRefund)
 	mux.HandleFunc("/internal/v1/refunds/{refund_id}/review", h.handleReviewRefund)
+	mux.HandleFunc("/internal/admin/payments", h.handleAdminPayments)
+	mux.HandleFunc("/internal/admin/payments/{payment_id}/refunds", h.handleAdminPaymentRefunds)
+	mux.HandleFunc("/internal/admin/refunds/{refund_id}", h.handleGetRefund)
+	mux.HandleFunc("/internal/admin/refunds/{refund_id}/review", h.handleReviewRefund)
 }
 
 func (h *Handler) handleStateMachine(w http.ResponseWriter, r *http.Request) {
@@ -458,15 +560,29 @@ func (h *Handler) authorizePaymentIntentRequest(r *http.Request) bool {
 }
 
 func (h *Handler) authorizeRefundRequest(r *http.Request) bool {
-	if !h.authorizePaymentIntentRequest(r) || strings.TrimSpace(r.Header.Get("X-Actor-ID")) == "" {
+	actorID := firstNonEmptyHeader(r.Header, "X-Actor-ID", "X-Admin-ID")
+	if !h.authorizePaymentIntentRequest(r) || actorID == "" {
 		return false
 	}
-	switch strings.ToLower(strings.TrimSpace(r.Header.Get("X-Actor-Role"))) {
-	case "admin", "finance_admin", "superadmin":
-		return true
-	default:
-		return false
+	roles := []string{r.Header.Get("X-Actor-Role"), r.Header.Get("X-Admin-Roles")}
+	for _, raw := range roles {
+		for _, role := range strings.Split(raw, ",") {
+			switch strings.ToLower(strings.TrimSpace(role)) {
+			case "admin", "finance_admin", "superadmin":
+				return true
+			}
+		}
 	}
+	return false
+}
+
+func firstNonEmptyHeader(header http.Header, names ...string) string {
+	for _, name := range names {
+		if value := strings.TrimSpace(header.Get(name)); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (h *Handler) authorizeBuyerRequest(r *http.Request) bool {

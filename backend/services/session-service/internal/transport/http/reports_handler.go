@@ -43,7 +43,7 @@ type reportSchedulesResponse struct {
 }
 
 func (h *Handler) handleExportReport(w http.ResponseWriter, r *http.Request) {
-	if !requireMethod(w, r, http.MethodGet) || !requireAdminAccess(w, r) {
+	if !requireMethod(w, r, http.MethodGet) || !h.requireAdminAccess(w, r) {
 		return
 	}
 	if h.reports == nil {
@@ -82,7 +82,7 @@ func (h *Handler) handleExportReport(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleReportSchedules(w http.ResponseWriter, r *http.Request) {
-	if !requireAdminAccess(w, r) {
+	if !h.requireAdminAccess(w, r) {
 		return
 	}
 	if h.reports == nil {
@@ -119,7 +119,7 @@ func (h *Handler) handleReportSchedules(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handler) handleReportSchedule(w http.ResponseWriter, r *http.Request) {
-	if !requireAdminAccess(w, r) {
+	if !h.requireAdminAccess(w, r) {
 		return
 	}
 	if h.reports == nil {

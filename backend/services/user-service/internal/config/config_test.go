@@ -8,6 +8,7 @@ import (
 
 func TestLoadIncludesAdminHTTPAndSafeWorkerDefaults(t *testing.T) {
 	t.Setenv("USER_SERVICE_DATABASE_DSN", "user:password@tcp(localhost:3306)/user_db?parseTime=true")
+	t.Setenv("USER_SERVICE_ADMIN_TOKEN", "test_user_admin_token_at_least_32_chars")
 	t.Setenv("USER_SERVICE_HTTP_ADDRESS", "")
 	t.Setenv("OUTBOX_WORKER_ENABLED", "false")
 
@@ -31,6 +32,7 @@ func TestLoadIncludesAdminHTTPAndSafeWorkerDefaults(t *testing.T) {
 
 func TestLoadRejectsWorkerWithoutBrokerConfiguration(t *testing.T) {
 	t.Setenv("USER_SERVICE_DATABASE_DSN", "user:password@tcp(localhost:3306)/user_db?parseTime=true")
+	t.Setenv("USER_SERVICE_ADMIN_TOKEN", "test_user_admin_token_at_least_32_chars")
 	t.Setenv("OUTBOX_WORKER_ENABLED", "true")
 	t.Setenv("USER_EVENTS_ENABLED", "true")
 	t.Setenv("USER_EVENTS_PROVIDER", "rabbitmq")

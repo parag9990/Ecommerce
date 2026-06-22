@@ -24,17 +24,18 @@ func NewRouter(ctx context.Context, cfg config.Config, catalog usecase.RouteCata
 }
 
 type RouterOptions struct {
-	TokenVerifier      TokenVerifier
-	RateLimiter        ratelimit.Limiter
-	RateLimitPolicies  []ratelimit.Policy
-	RequestValidator   RequestValidator
-	Metrics            *observability.Metrics
-	UserClient         clients.UserClient
-	SearchClient       clients.SearchServiceClient
-	NotificationClient clients.NotificationClient
-	SessionHTTPClient  *http.Client
-	AuthHTTPClient     *http.Client
-	WishlistHTTPClient *http.Client
+	TokenVerifier        TokenVerifier
+	RateLimiter          ratelimit.Limiter
+	RateLimitPolicies    []ratelimit.Policy
+	RequestValidator     RequestValidator
+	Metrics              *observability.Metrics
+	UserClient           clients.UserClient
+	SearchClient         clients.SearchServiceClient
+	NotificationClient   clients.NotificationClient
+	SessionHTTPClient    *http.Client
+	AuthHTTPClient       *http.Client
+	WishlistHTTPClient   *http.Client
+	SuperadminHTTPClient *http.Client
 }
 
 func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecase.RouteCatalog, logger *slog.Logger, downstreamHealth DownstreamHealthChecker, opts RouterOptions) (http.Handler, error) {
@@ -109,6 +110,17 @@ func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecas
 			return nil, fmt.Errorf("configure wishlist HTTP proxy: %w", err)
 		}
 	}
+	var superadminProxy *SessionProxy
+	if strings.TrimSpace(cfg.SuperadminHTTPURL) != "" {
+		client := opts.SuperadminHTTPClient
+		if client == nil {
+			client = &http.Client{Timeout: cfg.SuperadminHTTPTimeout}
+		}
+		superadminProxy, err = NewServiceHTTPProxy("superadmin", cfg.SuperadminHTTPURL, client, logger)
+		if err != nil {
+			return nil, fmt.Errorf("configure superadmin HTTP proxy: %w", err)
+		}
+	}
 	for _, route := range routes {
 		route := route
 		endpoint := handler.RouteDefined(route)
@@ -129,6 +141,9 @@ func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecas
 		}
 		if wishlistProxy != nil && route.Service == "wishlist-service" {
 			endpoint = wishlistProxy.ServeHTTP
+		}
+		if superadminProxy != nil && route.Service == "superadmin-service" {
+			endpoint = superadminProxy.ServeHTTP
 		}
 		baseHandler := RequestValidationMiddleware(route, requestValidator, logger, opts.Metrics)(http.HandlerFunc(endpoint))
 		routeHandler, err := secureRoute(route, baseHandler, verifier, cfg.WebhookSignatureHeader, logger, rateLimiter, opts.Metrics, cfg.Observability.Normalize(cfg.ServiceName, cfg.Environment).UserHashSalt)

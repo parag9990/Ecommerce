@@ -20,17 +20,23 @@ const defaultServiceAdminPath = "/internal/admin"
 type HTTPOrderServiceClient struct {
 	baseURL *url.URL
 	client  *http.Client
+	token   string
 	logger  logging.Logger
 }
 
-func NewHTTPOrderServiceClient(baseURL string, timeout time.Duration, logger logging.Logger) (*HTTPOrderServiceClient, error) {
+func NewHTTPOrderServiceClient(baseURL string, token string, timeout time.Duration, logger logging.Logger) (*HTTPOrderServiceClient, error) {
 	parsed, err := parseServiceBaseURL(baseURL, "order")
 	if err != nil {
 		return nil, err
 	}
+	token = strings.TrimSpace(token)
+	if len(token) < 32 {
+		return nil, fmt.Errorf("order service admin token must be at least 32 characters")
+	}
 	return &HTTPOrderServiceClient{
 		baseURL: parsed,
 		client:  &http.Client{Timeout: serviceTimeout(timeout)},
+		token:   token,
 		logger:  loggerOrNop(logger),
 	}, nil
 }
@@ -75,23 +81,29 @@ func (c *HTTPOrderServiceClient) endpoint(path string, values url.Values) string
 }
 
 func (c *HTTPOrderServiceClient) do(ctx context.Context, method string, endpoint string, body any, actor domain.AdminActor, reason string, resourceType string, resourceID string, out any) error {
-	return doAdminServiceRequest(ctx, c.client, c.logger, method, endpoint, body, actor, reason, resourceType, resourceID, out)
+	return doAdminServiceRequest(ctx, c.client, c.logger, c.token, method, endpoint, body, actor, reason, resourceType, resourceID, out)
 }
 
 type HTTPPaymentServiceClient struct {
 	baseURL *url.URL
 	client  *http.Client
+	token   string
 	logger  logging.Logger
 }
 
-func NewHTTPPaymentServiceClient(baseURL string, timeout time.Duration, logger logging.Logger) (*HTTPPaymentServiceClient, error) {
+func NewHTTPPaymentServiceClient(baseURL string, token string, timeout time.Duration, logger logging.Logger) (*HTTPPaymentServiceClient, error) {
 	parsed, err := parseServiceBaseURL(baseURL, "payment")
 	if err != nil {
 		return nil, err
 	}
+	token = strings.TrimSpace(token)
+	if len(token) < 32 {
+		return nil, fmt.Errorf("payment service admin token must be at least 32 characters")
+	}
 	return &HTTPPaymentServiceClient{
 		baseURL: parsed,
 		client:  &http.Client{Timeout: serviceTimeout(timeout)},
+		token:   token,
 		logger:  loggerOrNop(logger),
 	}, nil
 }
@@ -144,7 +156,11 @@ func (c *HTTPPaymentServiceClient) GetRefundForAdmin(ctx context.Context, refund
 func (c *HTTPPaymentServiceClient) ApplyRefundReview(ctx context.Context, refundID string, req domain.RefundReviewRequest, mutation domain.AdminMutationContext) (domain.RefundSnapshot, error) {
 	var out domain.RefundSnapshot
 	path := "/refunds/" + url.PathEscape(refundID) + "/review"
-	if err := c.do(ctx, http.MethodPost, c.endpoint(path, nil), req, mutation.Actor, mutation.Reason, "refund", refundID, &out); err != nil {
+	body := struct {
+		Decision string `json:"decision"`
+		Reason   string `json:"reason"`
+	}{Decision: req.Decision, Reason: req.Reason}
+	if err := c.do(ctx, http.MethodPost, c.endpoint(path, nil), body, mutation.Actor, mutation.Reason, "refund", refundID, &out); err != nil {
 		return domain.RefundSnapshot{}, err
 	}
 	return out, nil
@@ -155,7 +171,7 @@ func (c *HTTPPaymentServiceClient) endpoint(path string, values url.Values) stri
 }
 
 func (c *HTTPPaymentServiceClient) do(ctx context.Context, method string, endpoint string, body any, actor domain.AdminActor, reason string, resourceType string, resourceID string, out any) error {
-	return doAdminServiceRequest(ctx, c.client, c.logger, method, endpoint, body, actor, reason, resourceType, resourceID, out)
+	return doAdminServiceRequest(ctx, c.client, c.logger, c.token, method, endpoint, body, actor, reason, resourceType, resourceID, out)
 }
 
 type UnavailableOrderServiceClient struct {
@@ -255,7 +271,7 @@ func serviceEndpoint(baseURL *url.URL, path string, values url.Values) string {
 	return u.String()
 }
 
-func doAdminServiceRequest(ctx context.Context, client *http.Client, logger logging.Logger, method string, endpoint string, body any, actor domain.AdminActor, reason string, resourceType string, resourceID string, out any) error {
+func doAdminServiceRequest(ctx context.Context, client *http.Client, logger logging.Logger, token string, method string, endpoint string, body any, actor domain.AdminActor, reason string, resourceType string, resourceID string, out any) error {
 	var reader io.Reader
 	if body != nil {
 		payload, err := json.Marshal(body)
@@ -274,6 +290,7 @@ func doAdminServiceRequest(ctx context.Context, client *http.Client, logger logg
 		req.Header.Set("Content-Type", "application/json")
 	}
 	attachAdminHeaders(req.Header, actor, reason)
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err := client.Do(req)
 	if err != nil {

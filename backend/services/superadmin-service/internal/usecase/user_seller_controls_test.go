@@ -98,7 +98,7 @@ func TestUpdateUserStatusReturnsAuditFailure(t *testing.T) {
 func TestUpdateSellerStatusApprovesPendingReviewAndClosesTask(t *testing.T) {
 	userClient := &controlUserClient{
 		sellers: map[string]domain.SellerProfile{
-			"seller_1": {SellerID: "seller_1", Status: domain.SellerStatusPendingReview},
+			"seller_1": {SellerID: "seller_1", Status: domain.SellerStatusPendingReview, KYCDocuments: []domain.KYCDocument{{DocumentID: "kyc_1", Status: domain.KYCStatusApproved}}},
 		},
 	}
 	reviewTasks := &recordingReviewTasks{}
@@ -123,6 +123,21 @@ func TestUpdateSellerStatusApprovesPendingReviewAndClosesTask(t *testing.T) {
 	}
 	if len(audit.records) != 1 || audit.records[0].Action != "seller.status.active" {
 		t.Fatalf("audit records = %+v", audit.records)
+	}
+}
+
+func TestUpdateSellerStatusRequiresApprovedKYCDocuments(t *testing.T) {
+	userClient := &controlUserClient{sellers: map[string]domain.SellerProfile{
+		"seller_1": {SellerID: "seller_1", Status: domain.SellerStatusPendingReview, KYCDocuments: []domain.KYCDocument{{DocumentID: "kyc_1", Status: domain.KYCStatusPending}}},
+	}}
+	service := newControlService(t, userClient, &recordingReviewTasks{}, &recordingAudit{})
+
+	_, err := service.UpdateSellerStatus(actorContext(), "seller_1", domain.StatusUpdateRequest{Status: string(domain.SellerStatusActive), Reason: "documents require final review"})
+	if appErr, ok := domain.AsAppError(err); !ok || appErr.Code != domain.CodeValidationFailed {
+		t.Fatalf("error = %v, want VALIDATION_FAILED", err)
+	}
+	if userClient.updatedSellerStatus != "" {
+		t.Fatalf("seller status updated to %q before KYC approval", userClient.updatedSellerStatus)
 	}
 }
 

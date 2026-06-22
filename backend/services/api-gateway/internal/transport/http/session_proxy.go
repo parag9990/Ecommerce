@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	gatewayauth "ecommerce/api-gateway/internal/auth"
@@ -58,6 +59,13 @@ func (p *SessionProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		request.Header.Set("X-Actor-ID", claims.UserID())
 		request.Header.Set("X-User-Roles", strings.Join(claims.Roles, ","))
 		request.Header.Set("X-Roles", strings.Join(claims.Roles, ","))
+		request.Header.Set("X-Session-ID", claims.SessionID)
+		request.Header.Set("X-Request-ID", RequestIDFromContext(r.Context()))
+		if p.service == "superadmin" {
+			request.Header.Set("X-Admin-ID", claims.UserID())
+			request.Header.Set("X-Admin-Roles", strings.Join(claims.Roles, ","))
+			request.Header.Set("X-MFA-Verified", strconv.FormatBool(claims.MFAVerified()))
+		}
 	}
 	request.Host = p.target.Host
 
@@ -81,7 +89,7 @@ func (p *SessionProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func removeIdentityHeaders(header http.Header) {
-	for _, name := range []string{"X-User-ID", "X-Authenticated-User-ID", "X-Auth-User-ID", "X-Actor-ID", "X-Admin-ID", "X-User-Roles", "X-User-Role", "X-Authenticated-Roles", "X-Auth-Roles", "X-Roles", "X-Actor-Roles"} {
+	for _, name := range []string{"X-User-ID", "X-Authenticated-User-ID", "X-Auth-User-ID", "X-Actor-ID", "X-Admin-ID", "X-User-Roles", "X-User-Role", "X-Authenticated-Roles", "X-Auth-Roles", "X-Roles", "X-Actor-Roles", "X-Admin-Roles", "X-MFA-Verified", "X-Session-ID"} {
 		header.Del(name)
 	}
 }
