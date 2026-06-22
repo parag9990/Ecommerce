@@ -299,6 +299,16 @@ services:
       timeout: 5s
       retries: 15
 
+  cart-expiry-worker:
+    build: {context: ., dockerfile: backend/services/cart-service/Dockerfile}
+    <<: *app-defaults
+    profiles: ["jobs"]
+    entrypoint: ["/app/cart-expiry-worker"]
+    env_file: [backend/services/cart-service/.env.example]
+    depends_on:
+      migrate-mongodb: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+
   wishlist-service:
     build: {context: ., dockerfile: backend/services/wishlist-service/Dockerfile}
     <<: *app-defaults

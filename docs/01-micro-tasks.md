@@ -92,7 +92,7 @@ Priority values:
 | 1 | Define cart rules | Guest cart, logged-in cart, merge, quantity limit, price refresh rules define karo. | Platform foundation | P0 | Completed |
 | 2 | Choose MongoDB plus Redis | Active cart fast mutable hot data hai. Redis cache, Mongo durable snapshot ke liye use karo. | Cart rules | P0 | Completed |
 | 3 | Cart collections | `carts`, `cart_items`, embedded item snapshots design karo. | DB choice | P0 | Completed |
-| 4 | Add item flow | Product validate karo, stock check karo, item add/update karo. | Product Service | P0 | Pending |
+| 4 | Add item flow | Product validate karo, stock check karo, item add/update karo. | Product Service | P0 | Completed |
 | 5 | Remove item flow | Item remove, quantity zero cleanup, totals recalculate karo. | Add item | P1 | Completed |
 | 6 | Coupon preview | CMS coupon rules validate karke cart discount preview karo. Final apply Order Service karega. | CMS Service | P1 | Completed |
 | 7 | Cart merge | Guest session cart ko login user cart me merge karo. Duplicate variants quantity combine hongi. | Auth and Session | P1 | Completed |
