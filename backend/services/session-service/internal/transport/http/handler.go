@@ -39,12 +39,31 @@ type AnalyticsUsecase interface {
 	GetLiveMetrics(ctx context.Context, input usecase.GetLiveMetricsInput) (domain.LiveMetrics, error)
 	ListSessions(ctx context.Context, input usecase.ListSessionsInput) (usecase.SessionListOutput, error)
 	GetFunnelReport(ctx context.Context, input usecase.GetFunnelReportInput) (usecase.FunnelReportOutput, error)
+	GetRetentionReport(ctx context.Context, input usecase.GetRetentionReportInput) (domain.RetentionReport, error)
 }
 
 type RetentionUsecase interface {
 	DeleteUserSessionData(ctx context.Context, input usecase.DeleteUserSessionDataInput) (domain.DeleteUserSessionDataResult, error)
 	RunRetentionCleanup(ctx context.Context, input usecase.RunRetentionCleanupInput) (domain.RetentionCleanupResult, error)
 	SetLegalHold(ctx context.Context, input usecase.SetLegalHoldInput) (domain.SetLegalHoldResult, error)
+}
+
+type PrivacyUsecase interface {
+	GetPrivacySettings(ctx context.Context, actor domain.Actor) (domain.PrivacySettings, error)
+	UpdatePrivacySettings(ctx context.Context, input usecase.UpdatePrivacySettingsInput) (domain.PrivacySettings, error)
+	GetRetentionSettings(ctx context.Context, actor domain.Actor) (domain.RetentionSettings, error)
+	UpdateRetentionSettings(ctx context.Context, input usecase.UpdateRetentionSettingsInput) (domain.RetentionSettings, error)
+	PreviewDeletion(ctx context.Context, input usecase.PreviewDeletionInput) (domain.DeletionPreview, error)
+	CreateDeletionRequest(ctx context.Context, input usecase.CreateDeletionRequestInput) (domain.DeletionRequest, error)
+	ListDeletionRequests(ctx context.Context, actor domain.Actor) ([]domain.DeletionRequest, error)
+}
+
+type ReportsUsecase interface {
+	Export(ctx context.Context, input usecase.ExportReportInput) (domain.ReportExport, error)
+	ListSchedules(ctx context.Context, actor domain.Actor) ([]domain.ReportSchedule, error)
+	CreateSchedule(ctx context.Context, actor domain.Actor, input domain.CreateReportSchedule, requestID string) (domain.ReportSchedule, error)
+	UpdateScheduleStatus(ctx context.Context, input usecase.UpdateReportScheduleStatusInput) (domain.ReportSchedule, error)
+	DeleteSchedule(ctx context.Context, actor domain.Actor, id string, requestID string) error
 }
 
 type Handler struct {
@@ -54,6 +73,9 @@ type Handler struct {
 	heatmap           SessionHeatmapUsecase
 	analytics         AnalyticsUsecase
 	retention         RetentionUsecase
+	privacy           PrivacyUsecase
+	reports           ReportsUsecase
+	sessionReferences *domain.SessionReferenceCodec
 	maxEventBodyBytes int64
 	requestContext    RequestContextConfig
 	logger            *slog.Logger
@@ -146,6 +168,18 @@ func (h *Handler) SetRetentionUsecase(retention RetentionUsecase) {
 	h.retention = retention
 }
 
+func (h *Handler) SetPrivacyUsecase(privacy PrivacyUsecase) {
+	h.privacy = privacy
+}
+
+func (h *Handler) SetReportsUsecase(reports ReportsUsecase) {
+	h.reports = reports
+}
+
+func (h *Handler) SetSessionReferenceCodec(codec *domain.SessionReferenceCodec) {
+	h.sessionReferences = codec
+}
+
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/sessions/events", h.handleIngestEvent)
 	mux.HandleFunc("/api/v1/analytics/live", h.handleGetLiveMetrics)
@@ -153,6 +187,14 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/analytics/sessions/", h.handleGetJourney)
 	mux.HandleFunc("/api/v1/analytics/funnels", h.handleGetFunnelReport)
 	mux.HandleFunc("/api/v1/analytics/heatmaps", h.handleGetHeatmap)
+	mux.HandleFunc("/api/v1/analytics/retention", h.handleGetRetentionReport)
+	mux.HandleFunc("/api/v1/analytics/reports/export", h.handleExportReport)
+	mux.HandleFunc("/api/v1/analytics/reports/schedules", h.handleReportSchedules)
+	mux.HandleFunc("/api/v1/analytics/reports/schedules/", h.handleReportSchedule)
+	mux.HandleFunc("/api/v1/analytics/privacy/settings", h.handlePrivacySettings)
+	mux.HandleFunc("/api/v1/analytics/privacy/retention", h.handlePrivacyRetention)
+	mux.HandleFunc("/api/v1/analytics/privacy/deletion-preview", h.handleDeletionPreview)
+	mux.HandleFunc("/api/v1/analytics/privacy/deletion-requests", h.handleDeletionRequests)
 	mux.HandleFunc("/api/v1/admin/sessions/delete-user-data", h.handleDeleteUserSessionData)
 	mux.HandleFunc("/api/v1/admin/sessions/retention/run", h.handleRunRetentionCleanup)
 	mux.HandleFunc("/api/v1/admin/sessions/", h.handleAdminSessionPath)
@@ -230,6 +272,18 @@ func (h *Handler) handleGetJourney(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "NOT_FOUND", "Journey endpoint not found")
 		return
 	}
+	if domain.IsSessionReference(sessionID) {
+		if h.sessionReferences == nil {
+			writeAPIError(w, http.StatusBadRequest, "INVALID_SESSION_REFERENCE", "Session reference is invalid")
+			return
+		}
+		resolved, err := h.sessionReferences.Unprotect(sessionID)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, "INVALID_SESSION_REFERENCE", "Session reference is invalid")
+			return
+		}
+		sessionID = resolved
+	}
 	if !requireAdminAccess(w, r) {
 		return
 	}
@@ -255,7 +309,17 @@ func (h *Handler) handleGetJourney(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, JourneyResponseFromDomain(out.Session, out.Events, out.Summary))
+	response := JourneyResponseFromDomain(out.Session, out.Events, out.Summary)
+	settings, err := h.analyticsPrivacySettings(r)
+	if err != nil {
+		h.writePrivacyError(w, r, err)
+		return
+	}
+	if err := h.applyJourneyPrivacy(&response, settings.Masking); err != nil {
+		h.writePrivacyError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h *Handler) handleGetLiveMetrics(w http.ResponseWriter, r *http.Request) {
@@ -295,7 +359,17 @@ func (h *Handler) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		h.writeAnalyticsError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, SessionListResponseFromOutput(out))
+	response := SessionListResponseFromOutput(out)
+	settings, err := h.analyticsPrivacySettings(r)
+	if err != nil {
+		h.writePrivacyError(w, r, err)
+		return
+	}
+	if err := h.applySessionListPrivacy(&response, settings.Masking); err != nil {
+		h.writePrivacyError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h *Handler) handleGetFunnelReport(w http.ResponseWriter, r *http.Request) {
@@ -337,6 +411,23 @@ func (h *Handler) handleGetHeatmap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, HeatmapResponseFromOutput(out))
+}
+
+func (h *Handler) handleGetRetentionReport(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) || !requireAdminAccess(w, r) {
+		return
+	}
+	input, err := parseRetentionReportInput(r)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+		return
+	}
+	out, err := h.analytics.GetRetentionReport(r.Context(), input)
+	if err != nil {
+		h.writeAnalyticsError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (h *Handler) handleDeleteUserSessionData(w http.ResponseWriter, r *http.Request) {
@@ -854,6 +945,32 @@ func parseFunnelReportInput(r *http.Request) (usecase.GetFunnelReportInput, erro
 	}, nil
 }
 
+func parseRetentionReportInput(r *http.Request) (usecase.GetRetentionReportInput, error) {
+	query := r.URL.Query()
+	from, err := parseRequiredTimeQuery(query.Get("from"), "from")
+	if err != nil {
+		return usecase.GetRetentionReportInput{}, err
+	}
+	to, err := parseRequiredTimeQuery(query.Get("to"), "to")
+	if err != nil {
+		return usecase.GetRetentionReportInput{}, err
+	}
+	window, err := parseOptionalPositiveInt(query.Get("window"), "window")
+	if err != nil {
+		return usecase.GetRetentionReportInput{}, err
+	}
+	return usecase.GetRetentionReportInput{
+		From:       from,
+		To:         to,
+		Interval:   query.Get("interval"),
+		Window:     window,
+		DeviceType: query.Get("device_type"),
+		Channel:    query.Get("channel"),
+		Source:     query.Get("source"),
+		UserType:   query.Get("user_type"),
+	}, nil
+}
+
 func parseRequiredTimeQuery(value string, field string) (time.Time, error) {
 	parsed, err := parseOptionalTimeQuery(value, field)
 	if err != nil {
@@ -935,7 +1052,7 @@ func requireAdminAccess(w http.ResponseWriter, r *http.Request) bool {
 }
 
 func rolesFromRequest(r *http.Request) []string {
-	headers := []string{"X-User-Roles", "X-User-Role", "X-Authenticated-Roles", "X-Auth-Roles"}
+	headers := []string{"X-User-Roles", "X-User-Role", "X-Authenticated-Roles", "X-Auth-Roles", "X-Roles", "X-Actor-Roles"}
 	roles := make([]string, 0)
 	for _, header := range headers {
 		value := strings.TrimSpace(r.Header.Get(header))
@@ -965,7 +1082,7 @@ func adminRoleAllowed(role string) bool {
 }
 
 func hasAuthContext(r *http.Request) bool {
-	return trustedUserIDFromRequest(r) != nil
+	return strings.TrimSpace(authenticatedActorID(r)) != ""
 }
 
 func (h *Handler) buildRequestContext(r *http.Request) RequestContext {

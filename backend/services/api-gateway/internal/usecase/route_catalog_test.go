@@ -18,7 +18,7 @@ func TestRouteCatalogLoadsMasterAPIContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list routes: %v", err)
 	}
-	if got, want := len(routes), 73; got != want {
+	if got, want := len(routes), 86; got != want {
 		t.Fatalf("expected %d routes from master-api.json, got %d", want, got)
 	}
 
@@ -27,6 +27,9 @@ func TestRouteCatalogLoadsMasterAPIContract(t *testing.T) {
 	assertRoute(t, catalog, "payment.webhook", domain.MethodPost, "/api/v1/webhooks/payments/{provider}", "payment-service", "PaymentService.HandleWebhook", domain.AuthWebhook)
 	assertRoute(t, catalog, "admin.setting_update", domain.MethodPatch, "/api/v1/admin/settings/{key}", "superadmin-service", "SuperadminService.UpdatePlatformSetting", domain.AuthSuperadmin)
 	assertRoute(t, catalog, "admin.search_synonyms", domain.MethodGet, "/api/v1/admin/search/synonyms", "search-service", "SearchService.ListSynonyms", domain.AuthAdmin)
+	assertRoute(t, catalog, "analytics.retention", domain.MethodGet, "/api/v1/analytics/retention", "session-service", "SessionService.GetRetentionReport", domain.AuthAdmin)
+	assertRoute(t, catalog, "analytics.report_schedules_create", domain.MethodPost, "/api/v1/analytics/reports/schedules", "session-service", "SessionService.CreateReportSchedule", domain.AuthAdmin)
+	assertRoute(t, catalog, "analytics.privacy_retention_update", domain.MethodPatch, "/api/v1/analytics/privacy/retention", "session-service", "SessionService.UpdateRetentionPolicy", domain.AuthSuperadmin)
 
 	groups, err := catalog.Groups(context.Background())
 	if err != nil {

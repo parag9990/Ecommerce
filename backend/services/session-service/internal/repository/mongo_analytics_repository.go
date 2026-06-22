@@ -5,12 +5,47 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/example/ecommerce-platform/backend/services/session-service/internal/domain"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
+
+func (r *MongoAnalyticsRepository) GetRetentionAggregates(ctx context.Context, filter domain.RetentionReportFilter) ([]domain.RetentionAggregate, error) {
+	metric := domain.AnalyticsMetricRetentionUsers
+	if strings.EqualFold(strings.TrimSpace(filter.UserType), "anonymous") {
+		metric = domain.AnalyticsMetricRetentionGuests
+	}
+	query := bson.D{
+		{Key: "metric", Value: metric},
+		{Key: "cohort_start", Value: bson.D{{Key: "$gte", Value: filter.From.UTC()}, {Key: "$lte", Value: filter.To.UTC()}}},
+	}
+	if filter.DeviceType != "" && filter.DeviceType != "all" {
+		query = append(query, bson.E{Key: "segment.device_type", Value: string(filter.DeviceType)})
+	}
+	if filter.Channel != "" && filter.Channel != "all" {
+		query = append(query, bson.E{Key: "segment.channel", Value: string(filter.Channel)})
+	}
+	if value := strings.TrimSpace(filter.Source); value != "" && !strings.EqualFold(value, "all") {
+		query = append(query, bson.E{Key: "segment.source", Value: value})
+	}
+
+	cursor, err := r.aggregates.Find(ctx, query, options.Find().
+		SetSort(bson.D{{Key: "cohort_start", Value: 1}}).
+		SetLimit(512))
+	if err != nil {
+		return nil, fmt.Errorf("find retention aggregates: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var aggregates []domain.RetentionAggregate
+	if err := cursor.All(ctx, &aggregates); err != nil {
+		return nil, fmt.Errorf("decode retention aggregates: %w", err)
+	}
+	return aggregates, nil
+}
 
 const analyticsAggregatesCollectionName = "analytics_aggregates"
 

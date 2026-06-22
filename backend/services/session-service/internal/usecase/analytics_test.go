@@ -175,6 +175,8 @@ type analyticsAggregateRepoFake struct {
 	aggregateErr   error
 	rawErr         error
 	rawCalled      bool
+	retention      []domain.RetentionAggregate
+	retentionErr   error
 }
 
 func (r *analyticsAggregateRepoFake) GetFunnelAggregate(ctx context.Context, filter domain.FunnelReportFilter) ([]domain.FunnelStep, error) {
@@ -191,6 +193,39 @@ func (r *analyticsAggregateRepoFake) BuildFunnelFromRawEvents(ctx context.Contex
 		return nil, r.rawErr
 	}
 	return append([]domain.FunnelStep(nil), r.rawSteps...), nil
+}
+
+func (r *analyticsAggregateRepoFake) GetRetentionAggregates(context.Context, domain.RetentionReportFilter) ([]domain.RetentionAggregate, error) {
+	if r.retentionErr != nil {
+		return nil, r.retentionErr
+	}
+	return append([]domain.RetentionAggregate(nil), r.retention...), nil
+}
+
+func TestAnalyticsUsecaseRetentionSuppressesSmallCohorts(t *testing.T) {
+	now := time.Date(2026, 5, 29, 0, 0, 0, 0, time.UTC)
+	agg := &analyticsAggregateRepoFake{retention: []domain.RetentionAggregate{{
+		Metric:      domain.AnalyticsMetricRetentionUsers,
+		CohortStart: time.Date(2026, 5, 4, 0, 0, 0, 0, time.UTC),
+		CohortEnd:   time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC),
+		CohortSize:  4,
+		Retention:   map[string]int64{"0": 4, "1": 2},
+		Rates:       map[string]float64{"0": 100, "1": 50},
+	}}}
+	service, err := NewAnalyticsUsecase(&analyticsLiveRepoFake{}, &analyticsSessionRepoFake{}, agg, AnalyticsConfig{SmallCountThreshold: 5}, nil)
+	if err != nil {
+		t.Fatalf("new analytics usecase: %v", err)
+	}
+	service.WithClock(fixedClock{now: now})
+	out, err := service.GetRetentionReport(context.Background(), GetRetentionReportInput{
+		From: time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC), To: time.Date(2026, 5, 28, 0, 0, 0, 0, time.UTC), Interval: "week", Window: 4,
+	})
+	if err != nil {
+		t.Fatalf("get retention: %v", err)
+	}
+	if len(out.Cohorts) != 1 || !out.Cohorts[0].Suppressed || out.Cohorts[0].Buckets[1].Users != 0 || !out.Meta.Suppressed {
+		t.Fatalf("small cohort was not suppressed: %+v", out)
+	}
 }
 
 func analyticsTestSession(now time.Time) domain.Session {

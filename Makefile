@@ -1,8 +1,8 @@
-.PHONY: setup env infra-up infra-down backend-up frontend-up docker-up docker-down docker-reset docker-logs session-retention-once test-go test-frontend test k8s-check k8s-up k8s-down tilt-up tilt-down
+.PHONY: setup env infra-up infra-down backend-up frontend-up analytics-up analytics-build analytics-test docker-up docker-down docker-reset docker-logs session-retention-once test-go test-frontend test k8s-check k8s-up k8s-down tilt-up tilt-down
 
 INFRA = mysql mongodb redis rabbitmq kafka typesense mailpit jaeger prometheus
 BACKEND = auth-service user-service product-service cart-service wishlist-service search-service session-service session-retention-worker cms-service recommendation-service order-service payment-service notification-service superadmin-service api-gateway
-FRONTEND = user-app seller-dashboard superadmin-panel
+FRONTEND = user-app seller-dashboard session-analytics-dashboard superadmin-panel
 
 setup:
 	docker compose config
@@ -21,6 +21,15 @@ backend-up:
 
 frontend-up:
 	docker compose up -d --build $(FRONTEND)
+
+analytics-up:
+	docker compose up -d --build session-analytics-dashboard
+
+analytics-build:
+	cd frontend && corepack pnpm --filter @ecommerce/session-analytics-dashboard build
+
+analytics-test:
+	cd frontend && corepack pnpm --filter @ecommerce/session-analytics-dashboard test
 
 docker-up:
 	docker compose up -d --build

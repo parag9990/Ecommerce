@@ -5,11 +5,13 @@ import {
   Filter,
   Gauge,
   MousePointerClick,
+  LogOut,
   Repeat,
   Route,
   ShieldCheck
 } from "lucide-react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { clearAdminSession } from "../lib/auth-session";
 
 const navItems = [
   {
@@ -55,6 +57,11 @@ const navItems = [
 ];
 
 export function AnalyticsLayout() {
+  const navigate = useNavigate();
+  const signOut = () => {
+    clearAdminSession();
+    navigate("/login", { replace: true });
+  };
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-950">
       <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-zinc-200 bg-white lg:block">
@@ -96,6 +103,14 @@ export function AnalyticsLayout() {
             );
           })}
         </nav>
+        <button
+          className="absolute bottom-4 left-4 right-4 flex h-10 items-center justify-center gap-2 rounded-md border border-zinc-200 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+          onClick={signOut}
+          type="button"
+        >
+          <LogOut className="h-4 w-4" aria-hidden="true" />
+          Sign out
+        </button>
       </aside>
 
       <div className="border-b border-zinc-200 bg-white px-4 py-3 lg:hidden">

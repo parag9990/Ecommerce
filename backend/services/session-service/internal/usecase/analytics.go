@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,22 +29,26 @@ const (
 	defaultAnalyticsLiveCacheTTL        = 10 * time.Second
 	defaultAnalyticsSessionsCacheTTL    = 30 * time.Second
 	defaultAnalyticsFunnelsCacheTTL     = 2 * time.Minute
+	defaultAnalyticsMaxRetentionDays    = 366
+	defaultAnalyticsSmallCountThreshold = int64(5)
 )
 
 type AnalyticsConfig struct {
-	LiveWindow          time.Duration
-	SessionLookback     time.Duration
-	MaxSessionRangeDays int
-	DefaultPageSize     int
-	MaxPageSize         int
-	MaxFunnelRangeDays  int
-	RawFallbackRange    time.Duration
-	MinFunnelSteps      int
-	MaxFunnelSteps      int
-	DefaultFunnelMetric domain.AnalyticsMetric
-	LiveCacheTTL        time.Duration
-	SessionsCacheTTL    time.Duration
-	FunnelsCacheTTL     time.Duration
+	LiveWindow            time.Duration
+	SessionLookback       time.Duration
+	MaxSessionRangeDays   int
+	DefaultPageSize       int
+	MaxPageSize           int
+	MaxFunnelRangeDays    int
+	RawFallbackRange      time.Duration
+	MinFunnelSteps        int
+	MaxFunnelSteps        int
+	DefaultFunnelMetric   domain.AnalyticsMetric
+	LiveCacheTTL          time.Duration
+	SessionsCacheTTL      time.Duration
+	FunnelsCacheTTL       time.Duration
+	MaxRetentionRangeDays int
+	SmallCountThreshold   int64
 }
 
 type GetLiveMetricsInput struct {
@@ -79,6 +85,17 @@ type GetFunnelReportInput struct {
 	Channel    string
 	Country    string
 	Campaign   string
+}
+
+type GetRetentionReportInput struct {
+	From       time.Time
+	To         time.Time
+	Interval   string
+	Window     int
+	DeviceType string
+	Channel    string
+	Source     string
+	UserType   string
 }
 
 type FunnelReportOutput struct {
@@ -274,6 +291,21 @@ func (u *AnalyticsUsecase) GetFunnelReport(ctx context.Context, input GetFunnelR
 	return out, nil
 }
 
+func (u *AnalyticsUsecase) GetRetentionReport(ctx context.Context, input GetRetentionReportInput) (domain.RetentionReport, error) {
+	if err := ctx.Err(); err != nil {
+		return domain.RetentionReport{}, err
+	}
+	filter, err := u.normalizeRetentionInput(input)
+	if err != nil {
+		return domain.RetentionReport{}, err
+	}
+	aggregates, err := u.aggregates.GetRetentionAggregates(ctx, filter)
+	if err != nil {
+		return domain.RetentionReport{}, fmt.Errorf("%w: get retention aggregates: %w", ErrAnalyticsStorageUnavailable, err)
+	}
+	return buildRetentionReport(aggregates, filter, u.cfg.SmallCountThreshold, u.clock.Now().UTC()), nil
+}
+
 func (u *AnalyticsUsecase) normalizeSessionListInput(input ListSessionsInput, now time.Time) (domain.SessionListFilter, error) {
 	page := input.Page
 	if page == 0 {
@@ -369,6 +401,196 @@ func (u *AnalyticsUsecase) normalizeFunnelInput(input GetFunnelReportInput) (dom
 		return domain.FunnelReportFilter{}, fmt.Errorf("%w: channel must be supported", ErrInvalidSessionInput)
 	}
 	return filter, nil
+}
+
+func (u *AnalyticsUsecase) normalizeRetentionInput(input GetRetentionReportInput) (domain.RetentionReportFilter, error) {
+	from := input.From.UTC()
+	to := input.To.UTC()
+	if err := validateRequiredDateRange(from, to, daysDuration(u.cfg.MaxRetentionRangeDays)); err != nil {
+		return domain.RetentionReportFilter{}, err
+	}
+	interval := domain.RetentionInterval(strings.ToLower(strings.TrimSpace(input.Interval)))
+	if !interval.Valid() {
+		return domain.RetentionReportFilter{}, fmt.Errorf("%w: interval must be day, week, or month", ErrInvalidSessionInput)
+	}
+	if !validRetentionWindow(interval, input.Window) {
+		return domain.RetentionReportFilter{}, fmt.Errorf("%w: window is not supported for interval %s", ErrInvalidSessionInput, interval)
+	}
+	deviceType := domain.DeviceType(strings.TrimSpace(input.DeviceType))
+	if deviceType != "" && deviceType != "all" && !deviceType.Valid() {
+		return domain.RetentionReportFilter{}, fmt.Errorf("%w: device_type must be desktop, mobile, tablet, bot, unknown, or all", ErrInvalidSessionInput)
+	}
+	channel := domain.Channel(strings.TrimSpace(input.Channel))
+	if channel != "" && channel != "all" && !channel.Valid() {
+		return domain.RetentionReportFilter{}, fmt.Errorf("%w: channel must be supported", ErrInvalidSessionInput)
+	}
+	userType := strings.ToLower(strings.TrimSpace(input.UserType))
+	if userType != "" && userType != "all" && userType != "anonymous" && userType != "logged_in" {
+		return domain.RetentionReportFilter{}, fmt.Errorf("%w: user_type must be all, anonymous, or logged_in", ErrInvalidSessionInput)
+	}
+	return domain.RetentionReportFilter{
+		From:       from,
+		To:         to,
+		Interval:   interval,
+		Window:     input.Window,
+		DeviceType: deviceType,
+		Channel:    channel,
+		Source:     strings.TrimSpace(input.Source),
+		UserType:   userType,
+	}, nil
+}
+
+func validRetentionWindow(interval domain.RetentionInterval, window int) bool {
+	allowed := map[domain.RetentionInterval][]int{
+		domain.RetentionIntervalDay:   {7, 14, 30},
+		domain.RetentionIntervalWeek:  {4, 8, 12},
+		domain.RetentionIntervalMonth: {3, 6, 12},
+	}
+	return slices.Contains(allowed[interval], window)
+}
+
+func buildRetentionReport(aggregates []domain.RetentionAggregate, filter domain.RetentionReportFilter, threshold int64, generatedAt time.Time) domain.RetentionReport {
+	if threshold <= 0 {
+		threshold = defaultAnalyticsSmallCountThreshold
+	}
+	report := domain.RetentionReport{
+		NewVsReturning: []domain.NewReturningBucket{},
+		Cohorts:        []domain.RetentionCohort{},
+		Meta: domain.RetentionReportMeta{
+			Interval:            filter.Interval,
+			Window:              filter.Window,
+			From:                filter.From.Format("2006-01-02"),
+			To:                  filter.To.Format("2006-01-02"),
+			GeneratedAt:         generatedAt,
+			SmallCountThreshold: threshold,
+		},
+	}
+	var retentionRateSum float64
+	var measuredCohorts int64
+	bestRate := -1.0
+	worstRate := 101.0
+
+	for _, aggregate := range aggregates {
+		if value := strings.TrimSpace(aggregate.Segment["interval"]); value != "" && value != string(filter.Interval) {
+			continue
+		}
+		cohortKey, cohortLabel := retentionCohortLabels(aggregate.CohortStart, aggregate.CohortEnd, filter.Interval)
+		suppressed := aggregate.CohortSize > 0 && aggregate.CohortSize < threshold
+		cohort := domain.RetentionCohort{
+			CohortKey:   cohortKey,
+			CohortLabel: cohortLabel,
+			CohortSize:  aggregate.CohortSize,
+			Buckets:     make([]domain.RetentionBucket, 0, filter.Window),
+			Suppressed:  suppressed,
+		}
+		for offset := 0; offset < filter.Window; offset++ {
+			users, rate := retentionValue(aggregate, filter.Interval, offset)
+			if offset == 0 {
+				users = aggregate.CohortSize
+				if users > 0 {
+					rate = 100
+				}
+			}
+			bucketSuppressed := suppressed || (users > 0 && users < threshold)
+			if bucketSuppressed {
+				users, rate = 0, 0
+			}
+			cohort.Buckets = append(cohort.Buckets, domain.RetentionBucket{
+				Offset:     offset,
+				Label:      retentionOffsetLabel(filter.Interval, offset),
+				Users:      users,
+				Rate:       roundRetentionRate(rate),
+				Suppressed: bucketSuppressed,
+			})
+		}
+
+		returning := int64(0)
+		firstRetentionRate := 0.0
+		if len(cohort.Buckets) > 1 && !cohort.Buckets[1].Suppressed {
+			returning = cohort.Buckets[1].Users
+			firstRetentionRate = cohort.Buckets[1].Rate
+			retentionRateSum += firstRetentionRate
+			measuredCohorts++
+			if firstRetentionRate > bestRate {
+				bestRate, report.Summary.BestCohort = firstRetentionRate, cohortKey
+			}
+			if firstRetentionRate < worstRate {
+				worstRate, report.Summary.WorstCohort = firstRetentionRate, cohortKey
+			}
+		}
+		newUsers := aggregate.CohortSize
+		if suppressed {
+			newUsers = 0
+		}
+		report.NewVsReturning = append(report.NewVsReturning, domain.NewReturningBucket{
+			Bucket:         cohortKey,
+			Label:          cohortLabel,
+			NewUsers:       newUsers,
+			ReturningUsers: returning,
+			TotalUsers:     newUsers + returning,
+		})
+		report.Cohorts = append(report.Cohorts, cohort)
+		report.Summary.NewUsers += newUsers
+		report.Summary.ReturningUsers += returning
+		report.Meta.Suppressed = report.Meta.Suppressed || suppressed
+	}
+
+	denominator := report.Summary.NewUsers + report.Summary.ReturningUsers
+	if denominator > 0 {
+		report.Summary.ReturningRate = roundRetentionRate(float64(report.Summary.ReturningUsers) * 100 / float64(denominator))
+	}
+	if measuredCohorts > 0 {
+		report.Summary.AverageRetention = roundRetentionRate(retentionRateSum / float64(measuredCohorts))
+	}
+	return report
+}
+
+func retentionValue(aggregate domain.RetentionAggregate, interval domain.RetentionInterval, offset int) (int64, float64) {
+	prefix := map[domain.RetentionInterval]string{
+		domain.RetentionIntervalDay:   "D",
+		domain.RetentionIntervalWeek:  "W",
+		domain.RetentionIntervalMonth: "M",
+	}[interval]
+	keys := []string{strconv.Itoa(offset), prefix + strconv.Itoa(offset), "+" + strconv.Itoa(offset)}
+	for _, key := range keys {
+		if users, ok := aggregate.Retention[key]; ok {
+			rate := aggregate.Rates[key]
+			if rate == 0 && aggregate.CohortSize > 0 {
+				rate = float64(users) * 100 / float64(aggregate.CohortSize)
+			}
+			return users, rate
+		}
+	}
+	return 0, 0
+}
+
+func retentionCohortLabels(start time.Time, end time.Time, interval domain.RetentionInterval) (string, string) {
+	start = start.UTC()
+	if end.IsZero() {
+		end = start
+	}
+	switch interval {
+	case domain.RetentionIntervalWeek:
+		year, week := start.ISOWeek()
+		return fmt.Sprintf("%04d-W%02d", year, week), start.Format("Jan 2") + " - " + end.UTC().Format("Jan 2")
+	case domain.RetentionIntervalMonth:
+		return start.Format("2006-01"), start.Format("Jan 2006")
+	default:
+		return start.Format("2006-01-02"), start.Format("Jan 2, 2006")
+	}
+}
+
+func retentionOffsetLabel(interval domain.RetentionInterval, offset int) string {
+	prefix := map[domain.RetentionInterval]string{
+		domain.RetentionIntervalDay:   "D",
+		domain.RetentionIntervalWeek:  "W",
+		domain.RetentionIntervalMonth: "M",
+	}[interval]
+	return prefix + strconv.Itoa(offset)
+}
+
+func roundRetentionRate(value float64) float64 {
+	return math.Round(value*100) / 100
 }
 
 func validateOptionalDateRange(from time.Time, to time.Time, maxRange time.Duration) error {
@@ -524,6 +746,12 @@ func (c AnalyticsConfig) Validate() error {
 	if c.LiveCacheTTL < 0 || c.SessionsCacheTTL < 0 || c.FunnelsCacheTTL < 0 {
 		return errors.New("SESSION_ANALYTICS_CACHE_TTL values cannot be negative")
 	}
+	if c.MaxRetentionRangeDays <= 0 {
+		return errors.New("SESSION_RETENTION_MAX_RANGE_DAYS must be greater than zero")
+	}
+	if c.SmallCountThreshold <= 0 {
+		return errors.New("SESSION_SMALL_COHORT_THRESHOLD must be greater than zero")
+	}
 	return nil
 }
 
@@ -566,6 +794,12 @@ func (c AnalyticsConfig) withDefaults() AnalyticsConfig {
 	}
 	if c.FunnelsCacheTTL == 0 {
 		c.FunnelsCacheTTL = defaultAnalyticsFunnelsCacheTTL
+	}
+	if c.MaxRetentionRangeDays == 0 {
+		c.MaxRetentionRangeDays = defaultAnalyticsMaxRetentionDays
+	}
+	if c.SmallCountThreshold == 0 {
+		c.SmallCountThreshold = defaultAnalyticsSmallCountThreshold
 	}
 	return c
 }

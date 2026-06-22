@@ -1,0 +1,24 @@
+package httptransport
+
+import (
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	gatewayauth "ecommerce/api-gateway/internal/auth"
+	"github.com/golang-jwt/jwt/v5"
+)
+
+func TestSessionProxyReplacesSpoofedIdentityHeaders(t *testing.T) {
+	upstream:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+		if r.Header.Get("X-User-ID")!="admin_1" || r.Header.Get("X-User-Roles")!="admin" { t.Errorf("unexpected identity headers: %#v",r.Header) }
+		if r.URL.Path!="/api/v1/analytics/live" || r.URL.Query().Get("from")!="2026-05-01" { t.Errorf("request target not preserved: %s",r.URL.String()) }
+		w.Header().Set("Content-Type","application/json"); _,_=io.WriteString(w,`{"ok":true}`)
+	})); defer upstream.Close()
+	proxy,err:=NewSessionProxy(upstream.URL,upstream.Client(),nil); if err!=nil { t.Fatalf("new proxy: %v",err) }
+	req:=httptest.NewRequest(http.MethodGet,"/api/v1/analytics/live?from=2026-05-01",nil); req.Header.Set("X-User-ID","attacker"); req.Header.Set("X-Roles","superadmin")
+	claims:=gatewayauth.AccessClaims{Roles:[]string{"admin"},RegisteredClaims:jwt.RegisteredClaims{Subject:"admin_1"}}
+	req=req.WithContext(gatewayauth.WithClaims(req.Context(),claims)); rr:=httptest.NewRecorder(); proxy.ServeHTTP(rr,req)
+	if rr.Code!=http.StatusOK { t.Fatalf("expected 200, got %d: %s",rr.Code,rr.Body.String()) }
+}

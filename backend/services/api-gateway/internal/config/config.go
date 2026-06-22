@@ -81,6 +81,8 @@ type Config struct {
 	WebhookSignatureHeader string
 
 	AuthGRPCAddr         string
+	AuthHTTPURL          string
+	AuthHTTPTimeout      time.Duration
 	UserGRPCAddr         string
 	ProductGRPCAddr      string
 	CartGRPCAddr         string
@@ -90,6 +92,8 @@ type Config struct {
 	SearchGRPCAddr       string
 	CMSGRPCAddr          string
 	SessionGRPCAddr      string
+	SessionHTTPURL       string
+	SessionHTTPTimeout   time.Duration
 	NotificationGRPCAddr string
 	SuperadminGRPCAddr   string
 }
@@ -112,6 +116,14 @@ func Load(ctx context.Context) (Config, error) {
 		return Config{}, err
 	}
 	grpcDialTimeout, err := getDuration("GRPC_DIAL_TIMEOUT", 3*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	sessionHTTPTimeout, err := getDuration("SESSION_HTTP_TIMEOUT", 30*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	authHTTPTimeout, err := getDuration("AUTH_HTTP_TIMEOUT", 10*time.Second)
 	if err != nil {
 		return Config{}, err
 	}
@@ -285,6 +297,8 @@ func Load(ctx context.Context) (Config, error) {
 		JWTClockSkew:           jwtClockSkew,
 		WebhookSignatureHeader: getenv("WEBHOOK_SIGNATURE_HEADER", "X-Provider-Signature"),
 		AuthGRPCAddr:           getenv("AUTH_GRPC_ADDR", ""),
+		AuthHTTPURL:            getenv("AUTH_HTTP_URL", "http://auth-service:8081"),
+		AuthHTTPTimeout:        authHTTPTimeout,
 		UserGRPCAddr:           getenv("USER_GRPC_ADDR", ""),
 		ProductGRPCAddr:        getenv("PRODUCT_GRPC_ADDR", ""),
 		CartGRPCAddr:           getenv("CART_GRPC_ADDR", ""),
@@ -294,6 +308,8 @@ func Load(ctx context.Context) (Config, error) {
 		SearchGRPCAddr:         getenv("SEARCH_GRPC_ADDR", ""),
 		CMSGRPCAddr:            getenv("CMS_GRPC_ADDR", ""),
 		SessionGRPCAddr:        getenv("SESSION_GRPC_ADDR", ""),
+		SessionHTTPURL:         getenv("SESSION_HTTP_URL", "http://session-service:8086"),
+		SessionHTTPTimeout:     sessionHTTPTimeout,
 		NotificationGRPCAddr:   getenv("NOTIFICATION_GRPC_ADDR", ""),
 		SuperadminGRPCAddr:     getenv("SUPERADMIN_GRPC_ADDR", ""),
 	}
@@ -435,6 +451,22 @@ func (c Config) Validate() error {
 		if err := validateHTTPURL(c.JWTJWKSURL); err != nil {
 			errs = append(errs, fmt.Errorf("JWT_JWKS_URL is invalid: %w", err))
 		}
+	}
+	if strings.TrimSpace(c.SessionHTTPURL) != "" {
+		if err := validateHTTPURL(c.SessionHTTPURL); err != nil {
+			errs = append(errs, fmt.Errorf("SESSION_HTTP_URL is invalid: %w", err))
+		}
+	}
+	if c.SessionHTTPTimeout <= 0 {
+		errs = append(errs, errors.New("SESSION_HTTP_TIMEOUT must be positive"))
+	}
+	if strings.TrimSpace(c.AuthHTTPURL) != "" {
+		if err := validateHTTPURL(c.AuthHTTPURL); err != nil {
+			errs = append(errs, fmt.Errorf("AUTH_HTTP_URL is invalid: %w", err))
+		}
+	}
+	if c.AuthHTTPTimeout <= 0 {
+		errs = append(errs, errors.New("AUTH_HTTP_TIMEOUT must be positive"))
 	}
 	if c.JWTJWKSCacheTTL <= 0 {
 		errs = append(errs, errors.New("JWT_JWKS_CACHE_TTL must be positive"))

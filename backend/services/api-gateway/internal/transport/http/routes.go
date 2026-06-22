@@ -31,6 +31,8 @@ type RouterOptions struct {
 	Metrics           *observability.Metrics
 	UserClient        clients.UserClient
 	SearchClient      clients.SearchServiceClient
+	SessionHTTPClient *http.Client
+	AuthHTTPClient    *http.Client
 }
 
 func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecase.RouteCatalog, logger *slog.Logger, downstreamHealth DownstreamHealthChecker, opts RouterOptions) (http.Handler, error) {
@@ -68,6 +70,28 @@ func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecas
 	if opts.SearchClient != nil {
 		searchHandler = handlers.NewSearchHandler(opts.SearchClient, logger)
 	}
+	var sessionProxy *SessionProxy
+	if strings.TrimSpace(cfg.SessionHTTPURL) != "" {
+		client := opts.SessionHTTPClient
+		if client == nil {
+			client = &http.Client{Timeout: cfg.SessionHTTPTimeout}
+		}
+		sessionProxy, err = NewSessionProxy(cfg.SessionHTTPURL, client, logger)
+		if err != nil {
+			return nil, fmt.Errorf("configure session HTTP proxy: %w", err)
+		}
+	}
+	var authProxy *SessionProxy
+	if strings.TrimSpace(cfg.AuthHTTPURL) != "" {
+		client := opts.AuthHTTPClient
+		if client == nil {
+			client = &http.Client{Timeout: cfg.AuthHTTPTimeout}
+		}
+		authProxy, err = NewSessionProxy(cfg.AuthHTTPURL, client, logger)
+		if err != nil {
+			return nil, fmt.Errorf("configure auth HTTP proxy: %w", err)
+		}
+	}
 	for _, route := range routes {
 		route := route
 		endpoint := handler.RouteDefined(route)
@@ -76,6 +100,12 @@ func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecas
 		}
 		if searchHandler != nil {
 			endpoint = searchRouteEndpoint(route, searchHandler, endpoint)
+		}
+		if sessionProxy != nil && route.Service == "session-service" {
+			endpoint = sessionProxy.ServeHTTP
+		}
+		if authProxy != nil && route.Service == "auth-service" {
+			endpoint = authProxy.ServeHTTP
 		}
 		baseHandler := RequestValidationMiddleware(route, requestValidator, logger, opts.Metrics)(http.HandlerFunc(endpoint))
 		routeHandler, err := secureRoute(route, baseHandler, verifier, cfg.WebhookSignatureHeader, logger, rateLimiter, opts.Metrics, cfg.Observability.Normalize(cfg.ServiceName, cfg.Environment).UserHashSalt)

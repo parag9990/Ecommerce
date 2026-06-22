@@ -210,6 +210,10 @@ func (r *fakePrivacyRepo) CreateAuditEvent(_ context.Context, event domain.Audit
 	return nil
 }
 
+func (r *fakePrivacyRepo) ApplyRetentionSettings(context.Context, domain.RetentionSettings) error {
+	return nil
+}
+
 type fakeActiveSessionRepo struct {
 	matched int64
 	deleted int64
@@ -222,3 +226,5 @@ func (r *fakeActiveSessionRepo) PreviewDeletion(context.Context, domain.Deletion
 func (r *fakeActiveSessionRepo) DeleteMatching(context.Context, domain.DeletionTarget) (int64, error) {
 	return r.deleted, nil
 }
+
+func (r *fakeActiveSessionRepo) ApplyRetentionTTL(context.Context, time.Duration) error { return nil }

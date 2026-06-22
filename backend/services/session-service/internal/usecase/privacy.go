@@ -22,11 +22,13 @@ type PrivacyRepository interface {
 	UpdateDeletionRequestStatus(ctx context.Context, requestID string, status domain.DeletionRequestStatus, completedAt *time.Time, message string) error
 	ListDeletionRequests(ctx context.Context, limit int) ([]domain.DeletionRequest, error)
 	CreateAuditEvent(ctx context.Context, event domain.AuditEvent) error
+	ApplyRetentionSettings(ctx context.Context, settings domain.RetentionSettings) error
 }
 
 type ActiveSessionRepository interface {
 	PreviewDeletion(ctx context.Context, target domain.DeletionTarget) (int64, error)
 	DeleteMatching(ctx context.Context, target domain.DeletionTarget) (int64, error)
+	ApplyRetentionTTL(ctx context.Context, ttl time.Duration) error
 }
 
 type PrivacyClock interface {
@@ -182,6 +184,14 @@ func (uc *PrivacyUsecase) UpdateRetentionSettings(ctx context.Context, input Upd
 	settings.Retention = input.Retention
 	settings.UpdatedAt = uc.clock.Now().UTC()
 	settings.UpdatedBy = input.Actor.ID
+	if err := uc.repo.ApplyRetentionSettings(ctx, input.Retention); err != nil {
+		return domain.RetentionSettings{}, err
+	}
+	if uc.active != nil {
+		if err := uc.active.ApplyRetentionTTL(ctx, time.Duration(input.Retention.ActiveSessionTTLMinutes)*time.Minute); err != nil {
+			return domain.RetentionSettings{}, err
+		}
+	}
 
 	if err := uc.repo.CreateAuditEvent(ctx, domain.AuditEvent{
 		EventID:      newID("audit"),

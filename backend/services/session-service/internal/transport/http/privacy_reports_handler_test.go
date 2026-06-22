@@ -1,0 +1,91 @@
+package httptransport
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/example/ecommerce-platform/backend/services/session-service/internal/domain"
+	"github.com/example/ecommerce-platform/backend/services/session-service/internal/usecase"
+)
+
+func TestPrivacySettingsRouteAcceptsCanonicalGatewayHeaders(t *testing.T) {
+	handler := newTestHandler(t, &fakeEventIngestUsecase{}, 64<<10)
+	privacy := &fakePrivacyUsecase{settings: domain.DefaultPrivacySettings(testTime(), "system")}
+	handler.SetPrivacyUsecase(privacy)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/privacy/settings", nil)
+	req.Header.Set("X-Actor-ID", "admin_1")
+	req.Header.Set("X-Roles", "admin")
+	rr := httptest.NewRecorder()
+	NewRouter(handler).ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if privacy.actor.ID != "admin_1" {
+		t.Fatalf("actor not propagated: %+v", privacy.actor)
+	}
+}
+
+func TestReportExportRouteReturnsDownloadHeaders(t *testing.T) {
+	handler := newTestHandler(t, &fakeEventIngestUsecase{}, 64<<10)
+	reports := &fakeReportsUsecase{export: domain.ReportExport{Filename: "overview.csv", ContentType: "text/csv; charset=utf-8", Data: []byte("metric,value\n")}}
+	handler.SetReportsUsecase(reports)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/reports/export?report_type=overview&format=csv&from=2026-05-01&to=2026-05-02&timezone=UTC", nil)
+	req.Header.Set("X-User-ID", "admin_1")
+	req.Header.Set("X-User-Roles", "admin")
+	rr := httptest.NewRecorder()
+	NewRouter(handler).ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK || rr.Header().Get("Cache-Control") != "no-store" || rr.Header().Get("Content-Disposition") == "" {
+		t.Fatalf("unexpected export response: %d %#v", rr.Code, rr.Header())
+	}
+}
+
+func testTime() time.Time { return time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC) }
+
+type fakePrivacyUsecase struct {
+	actor    domain.Actor
+	settings domain.PrivacySettings
+}
+
+func (f *fakePrivacyUsecase) GetPrivacySettings(_ context.Context, a domain.Actor) (domain.PrivacySettings, error) {
+	f.actor = a
+	return f.settings, nil
+}
+func (f *fakePrivacyUsecase) UpdatePrivacySettings(context.Context, usecase.UpdatePrivacySettingsInput) (domain.PrivacySettings, error) {
+	return f.settings, nil
+}
+func (f *fakePrivacyUsecase) GetRetentionSettings(context.Context, domain.Actor) (domain.RetentionSettings, error) {
+	return domain.DefaultRetentionSettings(), nil
+}
+func (f *fakePrivacyUsecase) UpdateRetentionSettings(context.Context, usecase.UpdateRetentionSettingsInput) (domain.RetentionSettings, error) {
+	return domain.DefaultRetentionSettings(), nil
+}
+func (f *fakePrivacyUsecase) PreviewDeletion(context.Context, usecase.PreviewDeletionInput) (domain.DeletionPreview, error) {
+	return domain.DeletionPreview{}, nil
+}
+func (f *fakePrivacyUsecase) CreateDeletionRequest(context.Context, usecase.CreateDeletionRequestInput) (domain.DeletionRequest, error) {
+	return domain.DeletionRequest{}, nil
+}
+func (f *fakePrivacyUsecase) ListDeletionRequests(context.Context, domain.Actor) ([]domain.DeletionRequest, error) {
+	return []domain.DeletionRequest{}, nil
+}
+
+type fakeReportsUsecase struct{ export domain.ReportExport }
+
+func (f *fakeReportsUsecase) Export(context.Context, usecase.ExportReportInput) (domain.ReportExport, error) {
+	return f.export, nil
+}
+func (f *fakeReportsUsecase) ListSchedules(context.Context, domain.Actor) ([]domain.ReportSchedule, error) {
+	return []domain.ReportSchedule{}, nil
+}
+func (f *fakeReportsUsecase) CreateSchedule(context.Context, domain.Actor, domain.CreateReportSchedule, string) (domain.ReportSchedule, error) {
+	return domain.ReportSchedule{}, nil
+}
+func (f *fakeReportsUsecase) UpdateScheduleStatus(context.Context, usecase.UpdateReportScheduleStatusInput) (domain.ReportSchedule, error) {
+	return domain.ReportSchedule{}, nil
+}
+func (f *fakeReportsUsecase) DeleteSchedule(context.Context, domain.Actor, string, string) error {
+	return nil
+}

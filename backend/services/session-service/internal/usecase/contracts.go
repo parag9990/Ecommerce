@@ -67,6 +67,7 @@ type LiveMetricsRepository interface {
 type AnalyticsAggregateRepository interface {
 	GetFunnelAggregate(ctx context.Context, filter domain.FunnelReportFilter) ([]domain.FunnelStep, error)
 	BuildFunnelFromRawEvents(ctx context.Context, filter domain.FunnelReportFilter) ([]domain.FunnelStep, error)
+	GetRetentionAggregates(ctx context.Context, filter domain.RetentionReportFilter) ([]domain.RetentionAggregate, error)
 }
 
 type SessionTouchRepository interface {

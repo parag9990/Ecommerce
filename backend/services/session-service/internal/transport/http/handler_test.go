@@ -499,15 +499,18 @@ func (f *fakeSessionHeatmapUsecase) GetHeatmap(ctx context.Context, input usecas
 }
 
 type fakeAnalyticsUsecase struct {
-	liveInput      usecase.GetLiveMetricsInput
-	liveOutput     domain.LiveMetrics
-	liveErr        error
-	sessionsInput  usecase.ListSessionsInput
-	sessionsOutput usecase.SessionListOutput
-	sessionsErr    error
-	funnelInput    usecase.GetFunnelReportInput
-	funnelOutput   usecase.FunnelReportOutput
-	funnelErr      error
+	liveInput       usecase.GetLiveMetricsInput
+	liveOutput      domain.LiveMetrics
+	liveErr         error
+	sessionsInput   usecase.ListSessionsInput
+	sessionsOutput  usecase.SessionListOutput
+	sessionsErr     error
+	funnelInput     usecase.GetFunnelReportInput
+	funnelOutput    usecase.FunnelReportOutput
+	funnelErr       error
+	retentionInput  usecase.GetRetentionReportInput
+	retentionOutput domain.RetentionReport
+	retentionErr    error
 }
 
 func (f *fakeAnalyticsUsecase) GetLiveMetrics(ctx context.Context, input usecase.GetLiveMetricsInput) (domain.LiveMetrics, error) {
@@ -523,6 +526,11 @@ func (f *fakeAnalyticsUsecase) ListSessions(ctx context.Context, input usecase.L
 func (f *fakeAnalyticsUsecase) GetFunnelReport(ctx context.Context, input usecase.GetFunnelReportInput) (usecase.FunnelReportOutput, error) {
 	f.funnelInput = input
 	return f.funnelOutput, f.funnelErr
+}
+
+func (f *fakeAnalyticsUsecase) GetRetentionReport(ctx context.Context, input usecase.GetRetentionReportInput) (domain.RetentionReport, error) {
+	f.retentionInput = input
+	return f.retentionOutput, f.retentionErr
 }
 
 func stringPtr(value string) *string {

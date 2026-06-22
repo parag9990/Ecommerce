@@ -137,12 +137,94 @@ func (s *RedisActiveSessionStore) Delete(ctx context.Context, sessionID string) 
 		pipe.SRem(ctx, s.anonymousKey(snapshot.AnonymousID), sessionID)
 		if snapshot.UserID != nil {
 			pipe.SRem(ctx, s.userKey(*snapshot.UserID), sessionID)
+			pipe.ZRem(ctx, s.activeUsersKey(), *snapshot.UserID)
 		}
 	}
 	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("delete active session: %w", err)
 	}
 	return nil
+}
+
+func (s *RedisActiveSessionStore) PreviewDeletion(ctx context.Context, target domain.DeletionTarget) (int64, error) {
+	ids, err := s.deletionSessionIDs(ctx, target)
+	if err != nil {
+		return 0, err
+	}
+	return int64(len(ids)), nil
+}
+
+func (s *RedisActiveSessionStore) DeleteMatching(ctx context.Context, target domain.DeletionTarget) (int64, error) {
+	ids, err := s.deletionSessionIDs(ctx, target)
+	if err != nil {
+		return 0, err
+	}
+	var deleted int64
+	for _, sessionID := range ids {
+		if err := s.Delete(ctx, sessionID); err != nil {
+			return deleted, err
+		}
+		deleted++
+	}
+	switch target.Type {
+	case domain.DeletionTargetUserID:
+		if err := s.client.Del(ctx, s.userKey(target.Value)).Err(); err != nil {
+			return deleted, fmt.Errorf("delete active user index: %w", err)
+		}
+	case domain.DeletionTargetAnonymousID:
+		if err := s.client.Del(ctx, s.anonymousKey(target.Value)).Err(); err != nil {
+			return deleted, fmt.Errorf("delete active anonymous index: %w", err)
+		}
+	}
+	return deleted, nil
+}
+
+func (s *RedisActiveSessionStore) ApplyRetentionTTL(ctx context.Context, ttl time.Duration) error {
+	if ttl <= 0 {
+		return errors.New("active session retention ttl must be greater than zero")
+	}
+	patterns := []string{s.keyPrefix + ":active:*", s.keyPrefix + ":last_seen:*", s.keyPrefix + ":user:*", s.keyPrefix + ":anon:*"}
+	for _, pattern := range patterns {
+		var cursor uint64
+		for {
+			keys, next, err := s.client.Scan(ctx, cursor, pattern, 250).Result()
+			if err != nil {
+				return fmt.Errorf("scan active session retention keys: %w", err)
+			}
+			if len(keys) > 0 {
+				pipe := s.client.Pipeline()
+				for _, key := range keys {
+					pipe.Expire(ctx, key, ttl)
+				}
+				if _, err := pipe.Exec(ctx); err != nil {
+					return fmt.Errorf("apply active session retention ttl: %w", err)
+				}
+			}
+			cursor = next
+			if cursor == 0 {
+				break
+			}
+		}
+	}
+	return nil
+}
+
+func (s *RedisActiveSessionStore) deletionSessionIDs(ctx context.Context, target domain.DeletionTarget) ([]string, error) {
+	switch target.Type {
+	case domain.DeletionTargetUserID:
+		return s.ListByUser(ctx, target.Value)
+	case domain.DeletionTargetAnonymousID:
+		return s.ListByAnonymousID(ctx, target.Value)
+	case domain.DeletionTargetSessionID:
+		if _, err := s.Get(ctx, target.Value); errors.Is(err, domain.ErrSessionNotFound) {
+			return []string{}, nil
+		} else if err != nil {
+			return nil, err
+		}
+		return []string{target.Value}, nil
+	default:
+		return nil, fmt.Errorf("%w: unsupported deletion target type", domain.ErrInvalidInput)
+	}
 }
 
 func (s *RedisActiveSessionStore) ListByUser(ctx context.Context, userID string) ([]string, error) {

@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: session-service-ingress
+  namespace: core
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: session-service
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              ecommerce.io/tier: edge
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: api-gateway
+        - namespaceSelector:
+            matchLabels:
+              ecommerce.io/tier: core
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: session-service
+      ports:
+        - { protocol: TCP, port: 8086 }

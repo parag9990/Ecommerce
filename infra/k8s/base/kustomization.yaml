@@ -10,3 +10,4 @@ resources:
   - services/auth-service
   - services/product-service
   - services/session-service
+  - services/session-analytics-dashboard

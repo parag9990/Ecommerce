@@ -228,6 +228,39 @@ func (r *MongoPrivacyRepository) CreateAuditEvent(ctx context.Context, event dom
 	return err
 }
 
+func (r *MongoPrivacyRepository) ApplyRetentionSettings(ctx context.Context, settings domain.RetentionSettings) error {
+	if err := domain.ValidateRetentionSettings(settings); err != nil {
+		return err
+	}
+	database := r.settingsCollection.Database()
+	commands := []bson.D{
+		{{Key: "collMod", Value: "session_events"}, {Key: "index", Value: bson.D{{Key: "keyPattern", Value: bson.D{{Key: "occurred_at", Value: 1}}}, {Key: "expireAfterSeconds", Value: int64(settings.RawEventsDays) * 86400}}}},
+		{{Key: "collMod", Value: "analytics_deletion_requests"}, {Key: "index", Value: bson.D{{Key: "name", Value: "analytics_deletion_requests_created_at_ttl"}, {Key: "expireAfterSeconds", Value: int64(settings.DeletionRequestLogDays) * 86400}}}},
+	}
+	for _, command := range commands {
+		if err := database.RunCommand(ctx, command).Err(); err != nil {
+			return err
+		}
+	}
+	updates := []struct {
+		collection *mongo.Collection
+		timeField  string
+		amount     int
+		unit       string
+	}{
+		{r.journeySummariesCollection, "calculated_at", settings.JourneySummariesDays, "day"},
+		{database.Collection("heatmap_points"), "last_seen_at", settings.HeatmapAggregatesDays, "day"},
+		{database.Collection("analytics_aggregates"), "updated_at", settings.AnalyticsAggregatesMonths, "month"},
+	}
+	for _, update := range updates {
+		pipeline := mongo.Pipeline{{{Key: "$set", Value: bson.D{{Key: "retain_until", Value: bson.D{{Key: "$dateAdd", Value: bson.D{{Key: "startDate", Value: "$" + update.timeField}, {Key: "unit", Value: update.unit}, {Key: "amount", Value: update.amount}}}}}}}}}
+		if _, err := update.collection.UpdateMany(ctx, bson.D{{Key: update.timeField, Value: bson.D{{Key: "$type", Value: "date"}}}}, pipeline); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func deletionFilter(target domain.DeletionTarget) bson.D {
 	switch target.Type {
 	case domain.DeletionTargetUserID:

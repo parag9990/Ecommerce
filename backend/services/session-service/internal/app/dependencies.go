@@ -26,6 +26,8 @@ type Dependencies struct {
 	HeatmapRepo               *repository.MongoHeatmapRepository
 	AnalyticsRepo             *repository.MongoAnalyticsRepository
 	RetentionRepo             *repository.MongoRetentionRepository
+	PrivacyRepo               *repository.MongoPrivacyRepository
+	ReportsRepo               *repository.MongoReportsRepository
 	ActiveStore               *repository.RedisActiveSessionStore
 	LiveMetricsRepo           *repository.RedisLiveMetricsRepository
 	StorageUsecase            *usecase.StorageUsecase
@@ -35,6 +37,8 @@ type Dependencies struct {
 	HeatmapAggregationUsecase *usecase.HeatmapAggregationUsecase
 	AnalyticsUsecase          *usecase.AnalyticsUsecase
 	RetentionUsecase          *usecase.RetentionUsecase
+	PrivacyUsecase            *usecase.PrivacyUsecase
+	ReportsUsecase            *usecase.ReportsUsecase
 	HTTPHandler               *httptransport.Handler
 	heatmapWorkerCancel       context.CancelFunc
 	geoCloser                 func() error
@@ -94,6 +98,14 @@ func NewDependencies(ctx context.Context, cfg config.Config, logger *slog.Logger
 	if err != nil {
 		return nil, err
 	}
+	privacyRepo, err := repository.NewMongoPrivacyRepository(database)
+	if err != nil {
+		return nil, err
+	}
+	reportsRepo, err := repository.NewMongoReportsRepository(database)
+	if err != nil {
+		return nil, err
+	}
 	if err := sessionRepo.EnsureIndexes(ctx); err != nil {
 		return nil, err
 	}
@@ -110,6 +122,12 @@ func NewDependencies(ctx context.Context, cfg config.Config, logger *slog.Logger
 		return nil, err
 	}
 	if err := retentionRepo.EnsureIndexes(ctx); err != nil {
+		return nil, err
+	}
+	if err := privacyRepo.EnsureIndexes(ctx); err != nil {
+		return nil, err
+	}
+	if err := reportsRepo.EnsureIndexes(ctx); err != nil {
 		return nil, err
 	}
 
@@ -129,6 +147,16 @@ func NewDependencies(ctx context.Context, cfg config.Config, logger *slog.Logger
 	activeStore, err := repository.NewRedisActiveSessionStore(redisClient, cfg.Storage.ActiveSessionStoreConfig(), logger)
 	if err != nil {
 		return nil, err
+	}
+	if savedPrivacy, err := privacyRepo.GetPrivacySettings(ctx); err == nil {
+		if err := privacyRepo.ApplyRetentionSettings(ctx, savedPrivacy.Retention); err != nil {
+			return nil, fmt.Errorf("apply saved privacy retention policy: %w", err)
+		}
+		if err := activeStore.ApplyRetentionTTL(ctx, time.Duration(savedPrivacy.Retention.ActiveSessionTTLMinutes)*time.Minute); err != nil {
+			return nil, fmt.Errorf("apply saved active session ttl: %w", err)
+		}
+	} else if !errors.Is(err, domain.ErrNotFound) {
+		return nil, fmt.Errorf("load saved privacy settings: %w", err)
 	}
 	liveMetricsRepo, err := repository.NewRedisLiveMetricsRepository(redisClient, repository.RedisLiveMetricsConfig{
 		KeyPrefix: cfg.Storage.RedisKeyPrefix,
@@ -224,6 +252,19 @@ func NewDependencies(ctx context.Context, cfg config.Config, logger *slog.Logger
 	if err != nil {
 		return nil, err
 	}
+	privacyUsecase, err := usecase.NewPrivacyUsecase(
+		privacyRepo,
+		activeStore,
+		cfg.Privacy.UsecaseConfig(),
+		logger,
+	)
+	if err != nil {
+		return nil, err
+	}
+	reportsUsecase, err := usecase.NewReportsUsecase(reportsRepo, cfg.Reports.UsecaseConfig())
+	if err != nil {
+		return nil, err
+	}
 
 	requestContextConfig, err := httptransport.NewRequestContextConfig(cfg.DeviceTracking.TrustedProxyCIDRs)
 	if err != nil {
@@ -241,6 +282,13 @@ func NewDependencies(ctx context.Context, cfg config.Config, logger *slog.Logger
 		return nil, err
 	}
 	handler.SetRetentionUsecase(retentionUsecase)
+	handler.SetPrivacyUsecase(privacyUsecase)
+	handler.SetReportsUsecase(reportsUsecase)
+	sessionReferenceCodec, err := domain.NewSessionReferenceCodec(cfg.Privacy.HashPepper)
+	if err != nil {
+		return nil, err
+	}
+	handler.SetSessionReferenceCodec(sessionReferenceCodec)
 
 	var heatmapWorkerCancel context.CancelFunc
 	if cfg.Heatmap.AggregationEnabled {
@@ -261,6 +309,8 @@ func NewDependencies(ctx context.Context, cfg config.Config, logger *slog.Logger
 		HeatmapRepo:               heatmapRepo,
 		AnalyticsRepo:             analyticsRepo,
 		RetentionRepo:             retentionRepo,
+		PrivacyRepo:               privacyRepo,
+		ReportsRepo:               reportsRepo,
 		ActiveStore:               activeStore,
 		LiveMetricsRepo:           liveMetricsRepo,
 		StorageUsecase:            storageUsecase,
@@ -270,6 +320,8 @@ func NewDependencies(ctx context.Context, cfg config.Config, logger *slog.Logger
 		HeatmapAggregationUsecase: heatmapAggregationUsecase,
 		AnalyticsUsecase:          analyticsUsecase,
 		RetentionUsecase:          retentionUsecase,
+		PrivacyUsecase:            privacyUsecase,
+		ReportsUsecase:            reportsUsecase,
 		HTTPHandler:               handler,
 		heatmapWorkerCancel:       heatmapWorkerCancel,
 		geoCloser:                 geoCloser,

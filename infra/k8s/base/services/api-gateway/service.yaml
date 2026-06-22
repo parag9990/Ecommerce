@@ -12,5 +12,6 @@ spec:
     app.kubernetes.io/name: api-gateway
   ports:
     - { name: http, port: 80, targetPort: http, protocol: TCP }
+    - { name: http-internal, port: 8080, targetPort: http, protocol: TCP }
     - { name: grpc, port: 9090, targetPort: grpc, protocol: TCP }
     - { name: metrics, port: 9091, targetPort: metrics, protocol: TCP }

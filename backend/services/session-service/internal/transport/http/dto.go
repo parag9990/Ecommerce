@@ -487,8 +487,8 @@ func analyticsSessionResponseFromDomain(session domain.Session) AnalyticsSession
 	normalized := session.Normalize()
 	return AnalyticsSessionResponse{
 		SessionID:   normalized.SessionID,
-		AnonymousID: maskAnalyticsID(normalized.AnonymousID),
-		UserID:      maskAnalyticsIDPtr(normalized.UserID),
+		AnonymousID: normalized.AnonymousID,
+		UserID:      normalized.UserID,
 		Status:      normalized.Status,
 		Channel:     normalized.Channel,
 		EntryPage:   normalized.EntryPage,

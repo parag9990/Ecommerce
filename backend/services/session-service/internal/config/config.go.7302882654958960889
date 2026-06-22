@@ -1,0 +1,808 @@
+package config
+
+import (
+	"errors"
+	"fmt"
+	"net"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/example/ecommerce-platform/backend/services/session-service/internal/domain"
+	"github.com/example/ecommerce-platform/backend/services/session-service/internal/repository"
+	"github.com/example/ecommerce-platform/backend/services/session-service/internal/usecase"
+)
+
+type Config struct {
+	SessionModel   SessionModelConfig
+	Storage        StorageConfig
+	Ingest         EventIngestConfig
+	DeviceTracking DeviceTrackingConfig
+	Journey        JourneyConfig
+	Heatmap        HeatmapConfig
+	Analytics      AnalyticsConfig
+	Retention      RetentionConfig
+	Privacy        PrivacyConfig
+	Reports        ReportsConfig
+	HTTP           HTTPConfig
+}
+
+type HTTPConfig struct {
+	Address         string
+	ReadTimeout     time.Duration
+	WriteTimeout    time.Duration
+	IdleTimeout     time.Duration
+	ShutdownTimeout time.Duration
+}
+
+type SessionModelConfig struct {
+	SchemaVersion           int
+	InactivityTimeout       time.Duration
+	DefaultStatus           string
+	DefaultChannel          string
+	DefaultDeviceType       string
+	DefaultIPVersion        string
+	DefaultRiskLevel        string
+	MaxIDLength             int
+	MaxHashLength           int
+	MaxPageLength           int
+	MaxReferrerLength       int
+	MaxUserAgentLength      int
+	MaxMetadataLength       int
+	MaxUTMValueLength       int
+	MaxGeoValueLength       int
+	MaxRiskReasons          int
+	MaxRiskReasonTextLength int
+}
+
+type StorageConfig struct {
+	MongoURI                     string
+	MongoDatabase                string
+	MongoConnectTimeout          time.Duration
+	RedisAddr                    string
+	RedisPassword                string
+	RedisDB                      int
+	RedisDialTimeout             time.Duration
+	RedisReadTimeout             time.Duration
+	RedisWriteTimeout            time.Duration
+	RedisKeyPrefix               string
+	ActiveSessionTTL             time.Duration
+	ActiveCounterTTL             time.Duration
+	RawEventTTLDays              int
+	DefaultListLimit             int
+	MaxListLimit                 int
+	MaxEventTypeLength           int
+	MaxEventPropertyKeyLength    int
+	MaxEventPropertyStringLength int
+	MaxEventProperties           int
+	MaxEventPropertyDepth        int
+}
+
+type EventIngestConfig struct {
+	MaxBodyBytes     int64
+	AllowedClockSkew time.Duration
+	MaxEventAge      time.Duration
+	IPHashSalt       string
+}
+
+type DeviceTrackingConfig struct {
+	Enabled            bool
+	UserAgentMaxLength int
+	GeoIPEnabled       bool
+	GeoIPDBPath        string
+	GeoIPTimeout       time.Duration
+	PrivacyHashPepper  string
+	TrustedProxyCIDRs  []string
+	StoreUserAgent     bool
+}
+
+type JourneyConfig struct {
+	DefaultLimit         int
+	MaxLimit             int
+	SummaryTopPathsLimit int
+	SummaryUpsertEnabled bool
+}
+
+type HeatmapConfig struct {
+	ClickBucketSize               int
+	MaxDateRangeDays              int
+	MaxPoints                     int
+	AggregationEnabled            bool
+	AggregationInterval           time.Duration
+	AggregationBatchSize          int
+	AggregationInitialLookback    time.Duration
+	AggregationCheckpointLookback time.Duration
+	AggregationWorkerName         string
+}
+
+type AnalyticsConfig struct {
+	LiveWindow            time.Duration
+	SessionLookback       time.Duration
+	MaxSessionRangeDays   int
+	DefaultPageSize       int
+	MaxPageSize           int
+	MaxFunnelRangeDays    int
+	RawFallbackRange      time.Duration
+	MinFunnelSteps        int
+	MaxFunnelSteps        int
+	DefaultFunnelMetric   string
+	LiveCacheTTL          time.Duration
+	SessionsCacheTTL      time.Duration
+	FunnelsCacheTTL       time.Duration
+	MaxRetentionRangeDays int
+}
+
+type RetentionConfig struct {
+	RawEventTTLDays              int
+	SessionMetadataRetentionDays int
+	JourneySummaryRetentionDays  int
+	HeatmapRetentionDays         int
+	AggregateRetentionYears      int
+	WorkerBatchSize              int
+	WorkerInterval               time.Duration
+	WorkerDryRun                 bool
+	WorkerRunOnce                bool
+	SmallCohortThreshold         int64
+}
+
+type PrivacyConfig struct {
+	HashPepper        string
+	DeletionListLimit int
+}
+
+type ReportsConfig struct {
+	MaxRangeDays int
+	MaxRows      int
+	MaxBytes     int
+	ListLimit    int
+}
+
+func Load() (Config, error) {
+	defaultValidation := domain.DefaultValidationConfig()
+	defaultEventValidation := domain.DefaultSessionEventValidationConfig()
+	cfg := Config{
+		HTTP: HTTPConfig{
+			Address:         envString("SESSION_HTTP_ADDR", ":8086"),
+			ReadTimeout:     envDuration("SESSION_HTTP_READ_TIMEOUT", 5*time.Second),
+			WriteTimeout:    envDuration("SESSION_HTTP_WRITE_TIMEOUT", 10*time.Second),
+			IdleTimeout:     envDuration("SESSION_HTTP_IDLE_TIMEOUT", 60*time.Second),
+			ShutdownTimeout: envDuration("SESSION_SHUTDOWN_TIMEOUT", 10*time.Second),
+		},
+		SessionModel: SessionModelConfig{
+			SchemaVersion:           envInt("SESSION_SCHEMA_VERSION", domain.CurrentSessionSchemaVersion),
+			InactivityTimeout:       envDurationWithSeconds("SESSION_INACTIVITY_TIMEOUT", "SESSION_INACTIVITY_TIMEOUT_SECONDS", 30*time.Minute),
+			DefaultStatus:           envString("SESSION_DEFAULT_STATUS", string(domain.SessionStatusActive)),
+			DefaultChannel:          envString("SESSION_DEFAULT_CHANNEL", string(domain.ChannelUnknown)),
+			DefaultDeviceType:       envString("SESSION_DEFAULT_DEVICE_TYPE", string(domain.DeviceTypeUnknown)),
+			DefaultIPVersion:        envString("SESSION_DEFAULT_IP_VERSION", string(domain.IPVersionUnknown)),
+			DefaultRiskLevel:        envString("SESSION_DEFAULT_RISK_LEVEL", string(domain.RiskLevelUnknown)),
+			MaxIDLength:             envInt("SESSION_MAX_ID_LENGTH", defaultValidation.MaxIDLength),
+			MaxHashLength:           envInt("SESSION_MAX_HASH_LENGTH", defaultValidation.MaxHashLength),
+			MaxPageLength:           envInt("SESSION_MAX_PAGE_LENGTH", defaultValidation.MaxPageLength),
+			MaxReferrerLength:       envInt("SESSION_MAX_REFERRER_LENGTH", defaultValidation.MaxReferrerLength),
+			MaxUserAgentLength:      envInt("SESSION_MAX_USER_AGENT_LENGTH", defaultValidation.MaxUserAgentLength),
+			MaxMetadataLength:       envInt("SESSION_MAX_METADATA_LENGTH", defaultValidation.MaxMetadataLength),
+			MaxUTMValueLength:       envInt("SESSION_MAX_UTM_VALUE_LENGTH", defaultValidation.MaxUTMValueLength),
+			MaxGeoValueLength:       envInt("SESSION_MAX_GEO_VALUE_LENGTH", defaultValidation.MaxGeoValueLength),
+			MaxRiskReasons:          envInt("SESSION_MAX_RISK_REASONS", defaultValidation.MaxRiskReasons),
+			MaxRiskReasonTextLength: envInt("SESSION_MAX_RISK_REASON_TEXT_LENGTH", defaultValidation.MaxRiskReasonTextLength),
+		},
+		Storage: StorageConfig{
+			MongoURI:                     envString("SESSION_MONGO_URI", "mongodb://localhost:27017"),
+			MongoDatabase:                envString("SESSION_MONGO_DATABASE", "session_db"),
+			MongoConnectTimeout:          envDuration("SESSION_MONGO_CONNECT_TIMEOUT", 5*time.Second),
+			RedisAddr:                    envString("SESSION_REDIS_ADDR", "localhost:6379"),
+			RedisPassword:                os.Getenv("SESSION_REDIS_PASSWORD"),
+			RedisDB:                      envInt("SESSION_REDIS_DB", 2),
+			RedisDialTimeout:             envDuration("SESSION_REDIS_DIAL_TIMEOUT", 2*time.Second),
+			RedisReadTimeout:             envDuration("SESSION_REDIS_READ_TIMEOUT", 2*time.Second),
+			RedisWriteTimeout:            envDuration("SESSION_REDIS_WRITE_TIMEOUT", 2*time.Second),
+			RedisKeyPrefix:               envString("SESSION_REDIS_KEY_PREFIX", "session"),
+			ActiveSessionTTL:             envDurationWithSeconds("SESSION_ACTIVE_TTL", "SESSION_ACTIVE_TTL_SECONDS", 35*time.Minute),
+			ActiveCounterTTL:             envDurationWithSeconds("SESSION_ACTIVE_COUNTER_TTL", "SESSION_ACTIVE_COUNTER_TTL_SECONDS", 48*time.Hour),
+			RawEventTTLDays:              envInt("SESSION_RAW_EVENT_TTL_DAYS", 90),
+			DefaultListLimit:             envInt("SESSION_DEFAULT_LIST_LIMIT", 100),
+			MaxListLimit:                 envInt("SESSION_MAX_LIST_LIMIT", 500),
+			MaxEventTypeLength:           envInt("SESSION_MAX_EVENT_TYPE_LENGTH", defaultEventValidation.MaxEventTypeLength),
+			MaxEventPropertyKeyLength:    envInt("SESSION_MAX_EVENT_PROPERTY_KEY_LENGTH", defaultEventValidation.MaxPropertyKeyLength),
+			MaxEventPropertyStringLength: envInt("SESSION_MAX_EVENT_PROPERTY_STRING_LENGTH", defaultEventValidation.MaxPropertyStringLength),
+			MaxEventProperties:           envInt("SESSION_MAX_EVENT_PROPERTIES", defaultEventValidation.MaxProperties),
+			MaxEventPropertyDepth:        envInt("SESSION_MAX_EVENT_PROPERTY_DEPTH", defaultEventValidation.MaxPropertyDepth),
+		},
+		Ingest: EventIngestConfig{
+			MaxBodyBytes:     int64(envInt("SESSION_INGEST_MAX_BODY_BYTES", 64<<10)),
+			AllowedClockSkew: envDurationWithSeconds("SESSION_ALLOWED_CLOCK_SKEW", "SESSION_ALLOWED_CLOCK_SKEW_SECONDS", 5*time.Minute),
+			MaxEventAge:      envDurationWithHours("SESSION_MAX_EVENT_AGE", "SESSION_MAX_EVENT_AGE_HOURS", 24*time.Hour),
+			IPHashSalt:       strings.TrimSpace(os.Getenv("SESSION_IP_HASH_SALT")),
+		},
+		DeviceTracking: DeviceTrackingConfig{
+			Enabled:            envBool("SESSION_DEVICE_TRACKING_ENABLED", true),
+			UserAgentMaxLength: envInt("SESSION_USER_AGENT_MAX_LENGTH", envInt("SESSION_MAX_USER_AGENT_LENGTH", defaultValidation.MaxUserAgentLength)),
+			GeoIPEnabled:       envBool("SESSION_GEOIP_ENABLED", false),
+			GeoIPDBPath:        strings.TrimSpace(os.Getenv("SESSION_GEOIP_DB_PATH")),
+			GeoIPTimeout:       envDurationWithMillis("SESSION_GEOIP_TIMEOUT", "SESSION_GEOIP_TIMEOUT_MS", 20*time.Millisecond),
+			PrivacyHashPepper:  envString("SESSION_PRIVACY_HASH_PEPPER", strings.TrimSpace(os.Getenv("SESSION_IP_HASH_SALT"))),
+			TrustedProxyCIDRs:  envCSV("SESSION_TRUSTED_PROXY_CIDRS"),
+			StoreUserAgent:     envBool("SESSION_STORE_USER_AGENT", true),
+		},
+		Journey: JourneyConfig{
+			DefaultLimit:         envInt("SESSION_JOURNEY_DEFAULT_LIMIT", 1000),
+			MaxLimit:             envInt("SESSION_JOURNEY_MAX_LIMIT", 1000),
+			SummaryTopPathsLimit: envInt("SESSION_JOURNEY_SUMMARY_TOP_PATHS_LIMIT", 10),
+			SummaryUpsertEnabled: envBool("SESSION_JOURNEY_SUMMARY_UPSERT_ENABLED", true),
+		},
+		Heatmap: HeatmapConfig{
+			ClickBucketSize:               envInt("SESSION_HEATMAP_CLICK_BUCKET_SIZE", domain.DefaultHeatmapClickBucketSize),
+			MaxDateRangeDays:              envInt("SESSION_HEATMAP_MAX_DATE_RANGE_DAYS", 31),
+			MaxPoints:                     envInt("SESSION_HEATMAP_MAX_POINTS", 5000),
+			AggregationEnabled:            envBool("SESSION_HEATMAP_AGGREGATION_ENABLED", true),
+			AggregationInterval:           envDuration("SESSION_HEATMAP_AGGREGATION_INTERVAL", time.Minute),
+			AggregationBatchSize:          envInt("SESSION_HEATMAP_AGGREGATION_BATCH_SIZE", 1000),
+			AggregationInitialLookback:    envDuration("SESSION_HEATMAP_AGGREGATION_INITIAL_LOOKBACK", time.Hour),
+			AggregationCheckpointLookback: envDuration("SESSION_HEATMAP_AGGREGATION_CHECKPOINT_LOOKBACK", 5*time.Minute),
+			AggregationWorkerName:         envString("SESSION_HEATMAP_AGGREGATION_WORKER_NAME", "heatmap_aggregator"),
+		},
+		Analytics: AnalyticsConfig{
+			LiveWindow:            envDuration("SESSION_ANALYTICS_LIVE_WINDOW", 5*time.Minute),
+			SessionLookback:       envDuration("SESSION_ANALYTICS_SESSION_LOOKBACK", 24*time.Hour),
+			MaxSessionRangeDays:   envInt("SESSION_ANALYTICS_MAX_SESSION_RANGE_DAYS", 90),
+			DefaultPageSize:       envInt("SESSION_ANALYTICS_DEFAULT_PAGE_SIZE", 50),
+			MaxPageSize:           envInt("SESSION_ANALYTICS_MAX_PAGE_SIZE", 100),
+			MaxFunnelRangeDays:    envInt("SESSION_ANALYTICS_MAX_FUNNEL_RANGE_DAYS", 90),
+			RawFallbackRange:      envDuration("SESSION_ANALYTICS_RAW_FALLBACK_RANGE", 24*time.Hour),
+			MinFunnelSteps:        envInt("SESSION_ANALYTICS_MIN_FUNNEL_STEPS", 2),
+			MaxFunnelSteps:        envInt("SESSION_ANALYTICS_MAX_FUNNEL_STEPS", 8),
+			DefaultFunnelMetric:   envString("SESSION_ANALYTICS_DEFAULT_FUNNEL_METRIC", string(domain.AnalyticsMetricFunnelCheckout)),
+			LiveCacheTTL:          envDuration("SESSION_ANALYTICS_LIVE_CACHE_TTL", 10*time.Second),
+			SessionsCacheTTL:      envDuration("SESSION_ANALYTICS_SESSIONS_CACHE_TTL", 30*time.Second),
+			FunnelsCacheTTL:       envDuration("SESSION_ANALYTICS_FUNNELS_CACHE_TTL", 2*time.Minute),
+			MaxRetentionRangeDays: envInt("SESSION_RETENTION_MAX_RANGE_DAYS", 366),
+		},
+		Retention: RetentionConfig{
+			RawEventTTLDays:              envInt("SESSION_RAW_EVENT_TTL_DAYS", 90),
+			SessionMetadataRetentionDays: envInt("SESSION_METADATA_RETENTION_DAYS", domain.DefaultSessionMetadataRetentionDays),
+			JourneySummaryRetentionDays:  envInt("SESSION_JOURNEY_RETENTION_DAYS", domain.DefaultJourneySummaryRetentionDays),
+			HeatmapRetentionDays:         envInt("SESSION_HEATMAP_RETENTION_DAYS", domain.DefaultHeatmapRetentionDays),
+			AggregateRetentionYears:      envInt("SESSION_AGGREGATE_RETENTION_YEARS", domain.DefaultAggregateRetentionYears),
+			WorkerBatchSize:              envInt("SESSION_RETENTION_WORKER_BATCH_SIZE", domain.DefaultRetentionWorkerBatchSize),
+			WorkerInterval:               envDurationWithMinutes("SESSION_RETENTION_WORKER_INTERVAL", "SESSION_RETENTION_WORKER_INTERVAL_MINUTES", domain.DefaultRetentionWorkerInterval),
+			WorkerDryRun:                 envBool("SESSION_RETENTION_DRY_RUN", false),
+			WorkerRunOnce:                envBool("SESSION_RETENTION_WORKER_RUN_ONCE", false),
+			SmallCohortThreshold:         int64(envInt("SESSION_SMALL_COHORT_THRESHOLD", int(domain.DefaultSmallCohortThreshold))),
+		},
+		Privacy: PrivacyConfig{
+			HashPepper:        strings.TrimSpace(os.Getenv("SESSION_PRIVACY_HASH_PEPPER")),
+			DeletionListLimit: envInt("SESSION_PRIVACY_DELETION_LIST_LIMIT", 50),
+		},
+		Reports: ReportsConfig{
+			MaxRangeDays: envInt("SESSION_REPORT_MAX_RANGE_DAYS", 366),
+			MaxRows:      envInt("SESSION_REPORT_MAX_ROWS", 10000),
+			MaxBytes:     envInt("SESSION_REPORT_MAX_BYTES", 5<<20),
+			ListLimit:    envInt("SESSION_REPORT_SCHEDULE_LIST_LIMIT", 100),
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+func (c Config) Validate() error {
+	if err := c.HTTP.Validate(); err != nil {
+		return fmt.Errorf("invalid http config: %w", err)
+	}
+	if err := c.SessionModel.Validate(); err != nil {
+		return fmt.Errorf("invalid session model config: %w", err)
+	}
+	if err := c.Storage.Validate(); err != nil {
+		return fmt.Errorf("invalid storage config: %w", err)
+	}
+	if err := c.Ingest.Validate(); err != nil {
+		return fmt.Errorf("invalid ingest config: %w", err)
+	}
+	if err := c.DeviceTracking.Validate(); err != nil {
+		return fmt.Errorf("invalid device tracking config: %w", err)
+	}
+	if err := c.Journey.Validate(); err != nil {
+		return fmt.Errorf("invalid journey config: %w", err)
+	}
+	if err := c.Heatmap.Validate(); err != nil {
+		return fmt.Errorf("invalid heatmap config: %w", err)
+	}
+	if err := c.Analytics.Validate(); err != nil {
+		return fmt.Errorf("invalid analytics config: %w", err)
+	}
+	if err := c.Retention.Validate(); err != nil {
+		return fmt.Errorf("invalid retention config: %w", err)
+	}
+	if err := c.Privacy.Validate(); err != nil {
+		return fmt.Errorf("invalid privacy config: %w", err)
+	}
+	if err := c.Reports.Validate(); err != nil {
+		return fmt.Errorf("invalid reports config: %w", err)
+	}
+	return nil
+}
+
+func (c PrivacyConfig) Validate() error {
+	if strings.TrimSpace(c.HashPepper) == "" {
+		return errors.New("SESSION_PRIVACY_HASH_PEPPER cannot be empty")
+	}
+	if c.DeletionListLimit < 1 || c.DeletionListLimit > 200 {
+		return errors.New("SESSION_PRIVACY_DELETION_LIST_LIMIT must be between 1 and 200")
+	}
+	return nil
+}
+
+func (c PrivacyConfig) UsecaseConfig() usecase.PrivacyConfig {
+	return usecase.PrivacyConfig{
+		HashPepper:        c.HashPepper,
+		DeletionListLimit: c.DeletionListLimit,
+	}
+}
+
+func (c ReportsConfig) Validate() error {
+	if c.MaxRangeDays < 1 || c.MaxRows < 1 || c.MaxBytes < 1024 || c.ListLimit < 1 || c.ListLimit > 200 {
+		return errors.New("SESSION_REPORT_* values are outside allowed bounds")
+	}
+	return nil
+}
+
+func (c ReportsConfig) UsecaseConfig() usecase.ReportsConfig {
+	return usecase.ReportsConfig{MaxRangeDays: c.MaxRangeDays, MaxRows: c.MaxRows, MaxBytes: c.MaxBytes, ListLimit: c.ListLimit}
+}
+
+func (c Config) EventValidationConfig() domain.SessionEventValidationConfig {
+	return domain.SessionEventValidationConfig{
+		MaxIDLength:             c.SessionModel.UsecaseConfig().Validation.MaxIDLength,
+		MaxEventTypeLength:      c.Storage.MaxEventTypeLength,
+		MaxPageLength:           c.SessionModel.UsecaseConfig().Validation.MaxPageLength,
+		MaxPropertyKeyLength:    c.Storage.MaxEventPropertyKeyLength,
+		MaxPropertyStringLength: c.Storage.MaxEventPropertyStringLength,
+		MaxProperties:           c.Storage.MaxEventProperties,
+		MaxPropertyDepth:        c.Storage.MaxEventPropertyDepth,
+	}.WithDefaults()
+}
+
+func (c Config) StorageUsecaseConfig() usecase.StorageConfig {
+	return usecase.StorageConfig{
+		ActiveSessionTTL: c.Storage.ActiveSessionTTL,
+		DefaultListLimit: c.Storage.DefaultListLimit,
+		MaxListLimit:     c.Storage.MaxListLimit,
+		SessionEvent:     c.EventValidationConfig(),
+	}
+}
+
+func (c Config) IngestUsecaseConfig() usecase.IngestConfig {
+	return usecase.IngestConfig{
+		ActiveSessionTTL: c.Storage.ActiveSessionTTL,
+		AllowedClockSkew: c.Ingest.AllowedClockSkew,
+		MaxEventAge:      c.Ingest.MaxEventAge,
+		EventValidation:  c.EventValidationConfig(),
+		DefaultChannel:   domain.Channel(strings.TrimSpace(c.SessionModel.DefaultChannel)),
+		DefaultDevice:    domain.DeviceType(strings.TrimSpace(c.SessionModel.DefaultDeviceType)),
+		DefaultIPVersion: domain.IPVersion(strings.TrimSpace(c.SessionModel.DefaultIPVersion)),
+		IPHashSalt:       c.Ingest.IPHashSalt,
+	}
+}
+
+func (c Config) DeviceEnricherConfig() usecase.DeviceEnricherConfig {
+	return usecase.DeviceEnricherConfig{
+		Enabled:            c.DeviceTracking.Enabled,
+		StoreUserAgent:     c.DeviceTracking.StoreUserAgent,
+		UserAgentMaxLength: c.DeviceTracking.UserAgentMaxLength,
+		GeoLookupTimeout:   c.DeviceTracking.GeoIPTimeout,
+		DefaultChannel:     domain.Channel(strings.TrimSpace(c.SessionModel.DefaultChannel)),
+		DefaultDevice:      domain.DeviceType(strings.TrimSpace(c.SessionModel.DefaultDeviceType)),
+		DefaultIPVersion:   domain.IPVersion(strings.TrimSpace(c.SessionModel.DefaultIPVersion)),
+	}
+}
+
+func (c Config) JourneyUsecaseConfig() usecase.JourneyConfig {
+	return usecase.JourneyConfig{
+		DefaultLimit:          c.Journey.DefaultLimit,
+		MaxLimit:              c.Journey.MaxLimit,
+		SummaryTopPathsLimit:  c.Journey.SummaryTopPathsLimit,
+		SummaryUpsertDisabled: !c.Journey.SummaryUpsertEnabled,
+	}
+}
+
+func (c Config) HeatmapQueryConfig() usecase.HeatmapQueryConfig {
+	return usecase.HeatmapQueryConfig{
+		MaxDateRangeDays: c.Heatmap.MaxDateRangeDays,
+		MaxPoints:        c.Heatmap.MaxPoints,
+	}
+}
+
+func (c Config) HeatmapAggregationConfig() usecase.HeatmapAggregationConfig {
+	return usecase.HeatmapAggregationConfig{
+		BatchSize:          c.Heatmap.AggregationBatchSize,
+		ClickBucketSize:    c.Heatmap.ClickBucketSize,
+		WorkerName:         c.Heatmap.AggregationWorkerName,
+		InitialLookback:    c.Heatmap.AggregationInitialLookback,
+		CheckpointLookback: c.Heatmap.AggregationCheckpointLookback,
+	}
+}
+
+func (c Config) AnalyticsUsecaseConfig() usecase.AnalyticsConfig {
+	return usecase.AnalyticsConfig{
+		LiveWindow:            c.Analytics.LiveWindow,
+		SessionLookback:       c.Analytics.SessionLookback,
+		MaxSessionRangeDays:   c.Analytics.MaxSessionRangeDays,
+		DefaultPageSize:       c.Analytics.DefaultPageSize,
+		MaxPageSize:           c.Analytics.MaxPageSize,
+		MaxFunnelRangeDays:    c.Analytics.MaxFunnelRangeDays,
+		RawFallbackRange:      c.Analytics.RawFallbackRange,
+		MinFunnelSteps:        c.Analytics.MinFunnelSteps,
+		MaxFunnelSteps:        c.Analytics.MaxFunnelSteps,
+		DefaultFunnelMetric:   domain.AnalyticsMetric(strings.TrimSpace(c.Analytics.DefaultFunnelMetric)),
+		LiveCacheTTL:          c.Analytics.LiveCacheTTL,
+		SessionsCacheTTL:      c.Analytics.SessionsCacheTTL,
+		FunnelsCacheTTL:       c.Analytics.FunnelsCacheTTL,
+		MaxRetentionRangeDays: c.Analytics.MaxRetentionRangeDays,
+		SmallCountThreshold:   c.Retention.SmallCohortThreshold,
+	}
+}
+
+func (c Config) RetentionUsecaseConfig() usecase.RetentionConfig {
+	return usecase.RetentionConfig{
+		RawEventTTLDays:              c.Retention.RawEventTTLDays,
+		SessionMetadataRetentionDays: c.Retention.SessionMetadataRetentionDays,
+		JourneySummaryRetentionDays:  c.Retention.JourneySummaryRetentionDays,
+		HeatmapRetentionDays:         c.Retention.HeatmapRetentionDays,
+		AggregateRetentionYears:      c.Retention.AggregateRetentionYears,
+		WorkerBatchSize:              c.Retention.WorkerBatchSize,
+		WorkerInterval:               c.Retention.WorkerInterval,
+		DryRun:                       c.Retention.WorkerDryRun,
+		SmallCohortThreshold:         c.Retention.SmallCohortThreshold,
+	}
+}
+
+func (c HTTPConfig) Validate() error {
+	if strings.TrimSpace(c.Address) == "" {
+		return errors.New("SESSION_HTTP_ADDR cannot be empty")
+	}
+	if c.ReadTimeout <= 0 {
+		return errors.New("SESSION_HTTP_READ_TIMEOUT must be greater than zero")
+	}
+	if c.WriteTimeout <= 0 {
+		return errors.New("SESSION_HTTP_WRITE_TIMEOUT must be greater than zero")
+	}
+	if c.IdleTimeout <= 0 {
+		return errors.New("SESSION_HTTP_IDLE_TIMEOUT must be greater than zero")
+	}
+	if c.ShutdownTimeout <= 0 {
+		return errors.New("SESSION_SHUTDOWN_TIMEOUT must be greater than zero")
+	}
+	return nil
+}
+
+func (c SessionModelConfig) Validate() error {
+	if c.SchemaVersion != domain.CurrentSessionSchemaVersion {
+		return fmt.Errorf("SESSION_SCHEMA_VERSION must be %d", domain.CurrentSessionSchemaVersion)
+	}
+	if c.InactivityTimeout <= 0 {
+		return errors.New("SESSION_INACTIVITY_TIMEOUT must be greater than zero")
+	}
+	usecaseCfg := c.UsecaseConfig()
+	return usecaseCfg.Validate()
+}
+
+func (c SessionModelConfig) UsecaseConfig() usecase.Config {
+	return usecase.Config{
+		SchemaVersion:     c.SchemaVersion,
+		InactivityTimeout: c.InactivityTimeout,
+		DefaultStatus:     domain.SessionStatus(strings.TrimSpace(c.DefaultStatus)),
+		DefaultChannel:    domain.Channel(strings.TrimSpace(c.DefaultChannel)),
+		DefaultDeviceType: domain.DeviceType(strings.TrimSpace(c.DefaultDeviceType)),
+		DefaultIPVersion:  domain.IPVersion(strings.TrimSpace(c.DefaultIPVersion)),
+		DefaultRiskLevel:  domain.RiskLevel(strings.TrimSpace(c.DefaultRiskLevel)),
+		Validation: domain.ValidationConfig{
+			MaxIDLength:             c.MaxIDLength,
+			MaxHashLength:           c.MaxHashLength,
+			MaxPageLength:           c.MaxPageLength,
+			MaxReferrerLength:       c.MaxReferrerLength,
+			MaxUserAgentLength:      c.MaxUserAgentLength,
+			MaxMetadataLength:       c.MaxMetadataLength,
+			MaxUTMValueLength:       c.MaxUTMValueLength,
+			MaxGeoValueLength:       c.MaxGeoValueLength,
+			MaxRiskReasons:          c.MaxRiskReasons,
+			MaxRiskReasonTextLength: c.MaxRiskReasonTextLength,
+		}.WithDefaults(),
+	}
+}
+
+func (c StorageConfig) Validate() error {
+	if err := c.MongoConfig().Validate(); err != nil {
+		return err
+	}
+	if err := c.RedisClientConfig().Validate(); err != nil {
+		return err
+	}
+	if err := c.ActiveSessionStoreConfig().Validate(); err != nil {
+		return err
+	}
+	if c.RawEventTTLDays < 30 || c.RawEventTTLDays > 180 {
+		return errors.New("SESSION_RAW_EVENT_TTL_DAYS must be between 30 and 180")
+	}
+	return c.StorageUsecaseConfig().Validate()
+}
+
+func (c StorageConfig) MongoConfig() repository.MongoConfig {
+	return repository.MongoConfig{
+		URI:            c.MongoURI,
+		Database:       c.MongoDatabase,
+		ConnectTimeout: c.MongoConnectTimeout,
+	}
+}
+
+func (c StorageConfig) RedisClientConfig() repository.RedisClientConfig {
+	return repository.RedisClientConfig{
+		Addr:         c.RedisAddr,
+		Password:     c.RedisPassword,
+		DB:           c.RedisDB,
+		DialTimeout:  c.RedisDialTimeout,
+		ReadTimeout:  c.RedisReadTimeout,
+		WriteTimeout: c.RedisWriteTimeout,
+	}
+}
+
+func (c StorageConfig) ActiveSessionStoreConfig() repository.ActiveSessionStoreConfig {
+	return repository.ActiveSessionStoreConfig{
+		KeyPrefix:  c.RedisKeyPrefix,
+		CounterTTL: c.ActiveCounterTTL,
+	}
+}
+
+func (c StorageConfig) EventValidationConfig() domain.SessionEventValidationConfig {
+	return domain.SessionEventValidationConfig{
+		MaxIDLength:             domain.DefaultValidationConfig().MaxIDLength,
+		MaxEventTypeLength:      c.MaxEventTypeLength,
+		MaxPageLength:           domain.DefaultValidationConfig().MaxPageLength,
+		MaxPropertyKeyLength:    c.MaxEventPropertyKeyLength,
+		MaxPropertyStringLength: c.MaxEventPropertyStringLength,
+		MaxProperties:           c.MaxEventProperties,
+		MaxPropertyDepth:        c.MaxEventPropertyDepth,
+	}.WithDefaults()
+}
+
+func (c StorageConfig) StorageUsecaseConfig() usecase.StorageConfig {
+	return usecase.StorageConfig{
+		ActiveSessionTTL: c.ActiveSessionTTL,
+		DefaultListLimit: c.DefaultListLimit,
+		MaxListLimit:     c.MaxListLimit,
+		SessionEvent:     c.EventValidationConfig(),
+	}
+}
+
+func (c EventIngestConfig) Validate() error {
+	if c.MaxBodyBytes <= 0 {
+		return errors.New("SESSION_INGEST_MAX_BODY_BYTES must be greater than zero")
+	}
+	if c.AllowedClockSkew <= 0 {
+		return errors.New("SESSION_ALLOWED_CLOCK_SKEW must be greater than zero")
+	}
+	if c.MaxEventAge <= 0 {
+		return errors.New("SESSION_MAX_EVENT_AGE must be greater than zero")
+	}
+	return nil
+}
+
+func (c DeviceTrackingConfig) Validate() error {
+	if c.UserAgentMaxLength <= 0 {
+		return errors.New("SESSION_USER_AGENT_MAX_LENGTH must be greater than zero")
+	}
+	if c.GeoIPTimeout <= 0 {
+		return errors.New("SESSION_GEOIP_TIMEOUT must be greater than zero")
+	}
+	if c.GeoIPEnabled && strings.TrimSpace(c.GeoIPDBPath) == "" {
+		return errors.New("SESSION_GEOIP_DB_PATH is required when SESSION_GEOIP_ENABLED=true")
+	}
+	for _, cidr := range c.TrustedProxyCIDRs {
+		if _, _, err := net.ParseCIDR(strings.TrimSpace(cidr)); err != nil {
+			return fmt.Errorf("SESSION_TRUSTED_PROXY_CIDRS contains invalid CIDR %q", cidr)
+		}
+	}
+	return nil
+}
+
+func (c JourneyConfig) Validate() error {
+	return usecase.JourneyConfig{
+		DefaultLimit:         c.DefaultLimit,
+		MaxLimit:             c.MaxLimit,
+		SummaryTopPathsLimit: c.SummaryTopPathsLimit,
+	}.Validate()
+}
+
+func (c HeatmapConfig) Validate() error {
+	if err := (usecase.HeatmapQueryConfig{
+		MaxDateRangeDays: c.MaxDateRangeDays,
+		MaxPoints:        c.MaxPoints,
+	}).Validate(); err != nil {
+		return err
+	}
+	if err := (usecase.HeatmapAggregationConfig{
+		BatchSize:          c.AggregationBatchSize,
+		ClickBucketSize:    c.ClickBucketSize,
+		WorkerName:         c.AggregationWorkerName,
+		InitialLookback:    c.AggregationInitialLookback,
+		CheckpointLookback: c.AggregationCheckpointLookback,
+	}).Validate(); err != nil {
+		return err
+	}
+	if c.AggregationInterval <= 0 {
+		return errors.New("SESSION_HEATMAP_AGGREGATION_INTERVAL must be greater than zero")
+	}
+	return nil
+}
+
+func (c AnalyticsConfig) Validate() error {
+	return usecase.AnalyticsConfig{
+		LiveWindow:          c.LiveWindow,
+		SessionLookback:     c.SessionLookback,
+		MaxSessionRangeDays: c.MaxSessionRangeDays,
+		DefaultPageSize:     c.DefaultPageSize,
+		MaxPageSize:         c.MaxPageSize,
+		MaxFunnelRangeDays:  c.MaxFunnelRangeDays,
+		RawFallbackRange:    c.RawFallbackRange,
+		MinFunnelSteps:      c.MinFunnelSteps,
+		MaxFunnelSteps:      c.MaxFunnelSteps,
+		DefaultFunnelMetric: domain.AnalyticsMetric(strings.TrimSpace(c.DefaultFunnelMetric)),
+		LiveCacheTTL:        c.LiveCacheTTL,
+		SessionsCacheTTL:    c.SessionsCacheTTL,
+		FunnelsCacheTTL:     c.FunnelsCacheTTL,
+		MaxRetentionRangeDays: c.MaxRetentionRangeDays,
+		SmallCountThreshold: domain.DefaultSmallCohortThreshold,
+	}.Validate()
+}
+
+func (c RetentionConfig) Validate() error {
+	return usecase.RetentionConfig{
+		RawEventTTLDays:              c.RawEventTTLDays,
+		SessionMetadataRetentionDays: c.SessionMetadataRetentionDays,
+		JourneySummaryRetentionDays:  c.JourneySummaryRetentionDays,
+		HeatmapRetentionDays:         c.HeatmapRetentionDays,
+		AggregateRetentionYears:      c.AggregateRetentionYears,
+		WorkerBatchSize:              c.WorkerBatchSize,
+		WorkerInterval:               c.WorkerInterval,
+		DryRun:                       c.WorkerDryRun,
+		SmallCohortThreshold:         c.SmallCohortThreshold,
+	}.Validate()
+}
+
+func envString(key string, fallback string) string {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+func envBool(key string, fallback bool) bool {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func envInt(key string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func envCSV(key string) []string {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+func envDuration(key string, fallback time.Duration) time.Duration {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := time.ParseDuration(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func envDurationWithMillis(key string, millisKey string, fallback time.Duration) time.Duration {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value != "" {
+		parsed, err := time.ParseDuration(value)
+		if err == nil {
+			return parsed
+		}
+	}
+	millis := strings.TrimSpace(os.Getenv(millisKey))
+	if millis == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(millis)
+	if err != nil {
+		return fallback
+	}
+	return time.Duration(parsed) * time.Millisecond
+}
+
+func envDurationWithSeconds(key string, secondsKey string, fallback time.Duration) time.Duration {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value != "" {
+		parsed, err := time.ParseDuration(value)
+		if err == nil {
+			return parsed
+		}
+	}
+	seconds := strings.TrimSpace(os.Getenv(secondsKey))
+	if seconds == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(seconds)
+	if err != nil {
+		return fallback
+	}
+	return time.Duration(parsed) * time.Second
+}
+
+func envDurationWithHours(key string, hoursKey string, fallback time.Duration) time.Duration {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value != "" {
+		parsed, err := time.ParseDuration(value)
+		if err == nil {
+			return parsed
+		}
+	}
+	hours := strings.TrimSpace(os.Getenv(hoursKey))
+	if hours == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(hours)
+	if err != nil {
+		return fallback
+	}
+	return time.Duration(parsed) * time.Hour
+}
+
+func envDurationWithMinutes(key string, minutesKey string, fallback time.Duration) time.Duration {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value != "" {
+		parsed, err := time.ParseDuration(value)
+		if err == nil {
+			return parsed
+		}
+	}
+	minutes := strings.TrimSpace(os.Getenv(minutesKey))
+	if minutes == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(minutes)
+	if err != nil {
+		return fallback
+	}
+	return time.Duration(parsed) * time.Minute
+}

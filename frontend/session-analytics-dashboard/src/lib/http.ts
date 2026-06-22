@@ -1,4 +1,5 @@
 import { appConfig, type AppConfig } from "./config";
+import { getAccessToken } from "./auth-session";
 
 type ApiEnvelope<T> = {
   data?: T;
@@ -66,6 +67,7 @@ export async function getJSON<T>(path: string, options: HttpOptions = {}): Promi
   const headers = new Headers(options.headers);
   headers.set("Accept", "application/json");
   headers.set("X-Request-ID", requestId);
+  setAuthorizationHeader(headers);
 
   try {
     const response = await fetch(buildRequestURL(path, config.apiBaseUrl), {
@@ -125,6 +127,7 @@ export async function sendJSON<T>(
   const headers = new Headers(options.headers);
   headers.set("Accept", "application/json");
   headers.set("X-Request-ID", requestId);
+  setAuthorizationHeader(headers);
 
   let body: BodyInit | undefined;
   if (options.body !== undefined) {
@@ -195,6 +198,7 @@ export async function getBlob(
   const headers = new Headers(options.headers);
   headers.set("Accept", headers.get("Accept") ?? "*/*");
   headers.set("X-Request-ID", requestId);
+  setAuthorizationHeader(headers);
 
   try {
     const response = await fetch(buildRequestURL(path, config.apiBaseUrl), {
@@ -249,6 +253,13 @@ function buildRequestURL(path: string, apiBaseUrl: string): string {
   }
 
   return new URL(path, `${apiBaseUrl}/`).toString();
+}
+
+function setAuthorizationHeader(headers: Headers): void {
+  const accessToken = getAccessToken();
+  if (accessToken && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${accessToken}`);
+  }
 }
 
 function bindAbortSignal(

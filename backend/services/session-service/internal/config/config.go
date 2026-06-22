@@ -23,6 +23,8 @@ type Config struct {
 	Heatmap        HeatmapConfig
 	Analytics      AnalyticsConfig
 	Retention      RetentionConfig
+	Privacy        PrivacyConfig
+	Reports        ReportsConfig
 	HTTP           HTTPConfig
 }
 
@@ -115,19 +117,20 @@ type HeatmapConfig struct {
 }
 
 type AnalyticsConfig struct {
-	LiveWindow          time.Duration
-	SessionLookback     time.Duration
-	MaxSessionRangeDays int
-	DefaultPageSize     int
-	MaxPageSize         int
-	MaxFunnelRangeDays  int
-	RawFallbackRange    time.Duration
-	MinFunnelSteps      int
-	MaxFunnelSteps      int
-	DefaultFunnelMetric string
-	LiveCacheTTL        time.Duration
-	SessionsCacheTTL    time.Duration
-	FunnelsCacheTTL     time.Duration
+	LiveWindow            time.Duration
+	SessionLookback       time.Duration
+	MaxSessionRangeDays   int
+	DefaultPageSize       int
+	MaxPageSize           int
+	MaxFunnelRangeDays    int
+	RawFallbackRange      time.Duration
+	MinFunnelSteps        int
+	MaxFunnelSteps        int
+	DefaultFunnelMetric   string
+	LiveCacheTTL          time.Duration
+	SessionsCacheTTL      time.Duration
+	FunnelsCacheTTL       time.Duration
+	MaxRetentionRangeDays int
 }
 
 type RetentionConfig struct {
@@ -141,6 +144,18 @@ type RetentionConfig struct {
 	WorkerDryRun                 bool
 	WorkerRunOnce                bool
 	SmallCohortThreshold         int64
+}
+
+type PrivacyConfig struct {
+	HashPepper        string
+	DeletionListLimit int
+}
+
+type ReportsConfig struct {
+	MaxRangeDays int
+	MaxRows      int
+	MaxBytes     int
+	ListLimit    int
 }
 
 func Load() (Config, error) {
@@ -229,19 +244,20 @@ func Load() (Config, error) {
 			AggregationWorkerName:         envString("SESSION_HEATMAP_AGGREGATION_WORKER_NAME", "heatmap_aggregator"),
 		},
 		Analytics: AnalyticsConfig{
-			LiveWindow:          envDuration("SESSION_ANALYTICS_LIVE_WINDOW", 5*time.Minute),
-			SessionLookback:     envDuration("SESSION_ANALYTICS_SESSION_LOOKBACK", 24*time.Hour),
-			MaxSessionRangeDays: envInt("SESSION_ANALYTICS_MAX_SESSION_RANGE_DAYS", 90),
-			DefaultPageSize:     envInt("SESSION_ANALYTICS_DEFAULT_PAGE_SIZE", 50),
-			MaxPageSize:         envInt("SESSION_ANALYTICS_MAX_PAGE_SIZE", 100),
-			MaxFunnelRangeDays:  envInt("SESSION_ANALYTICS_MAX_FUNNEL_RANGE_DAYS", 90),
-			RawFallbackRange:    envDuration("SESSION_ANALYTICS_RAW_FALLBACK_RANGE", 24*time.Hour),
-			MinFunnelSteps:      envInt("SESSION_ANALYTICS_MIN_FUNNEL_STEPS", 2),
-			MaxFunnelSteps:      envInt("SESSION_ANALYTICS_MAX_FUNNEL_STEPS", 8),
-			DefaultFunnelMetric: envString("SESSION_ANALYTICS_DEFAULT_FUNNEL_METRIC", string(domain.AnalyticsMetricFunnelCheckout)),
-			LiveCacheTTL:        envDuration("SESSION_ANALYTICS_LIVE_CACHE_TTL", 10*time.Second),
-			SessionsCacheTTL:    envDuration("SESSION_ANALYTICS_SESSIONS_CACHE_TTL", 30*time.Second),
-			FunnelsCacheTTL:     envDuration("SESSION_ANALYTICS_FUNNELS_CACHE_TTL", 2*time.Minute),
+			LiveWindow:            envDuration("SESSION_ANALYTICS_LIVE_WINDOW", 5*time.Minute),
+			SessionLookback:       envDuration("SESSION_ANALYTICS_SESSION_LOOKBACK", 24*time.Hour),
+			MaxSessionRangeDays:   envInt("SESSION_ANALYTICS_MAX_SESSION_RANGE_DAYS", 90),
+			DefaultPageSize:       envInt("SESSION_ANALYTICS_DEFAULT_PAGE_SIZE", 50),
+			MaxPageSize:           envInt("SESSION_ANALYTICS_MAX_PAGE_SIZE", 100),
+			MaxFunnelRangeDays:    envInt("SESSION_ANALYTICS_MAX_FUNNEL_RANGE_DAYS", 90),
+			RawFallbackRange:      envDuration("SESSION_ANALYTICS_RAW_FALLBACK_RANGE", 24*time.Hour),
+			MinFunnelSteps:        envInt("SESSION_ANALYTICS_MIN_FUNNEL_STEPS", 2),
+			MaxFunnelSteps:        envInt("SESSION_ANALYTICS_MAX_FUNNEL_STEPS", 8),
+			DefaultFunnelMetric:   envString("SESSION_ANALYTICS_DEFAULT_FUNNEL_METRIC", string(domain.AnalyticsMetricFunnelCheckout)),
+			LiveCacheTTL:          envDuration("SESSION_ANALYTICS_LIVE_CACHE_TTL", 10*time.Second),
+			SessionsCacheTTL:      envDuration("SESSION_ANALYTICS_SESSIONS_CACHE_TTL", 30*time.Second),
+			FunnelsCacheTTL:       envDuration("SESSION_ANALYTICS_FUNNELS_CACHE_TTL", 2*time.Minute),
+			MaxRetentionRangeDays: envInt("SESSION_RETENTION_MAX_RANGE_DAYS", 366),
 		},
 		Retention: RetentionConfig{
 			RawEventTTLDays:              envInt("SESSION_RAW_EVENT_TTL_DAYS", 90),
@@ -254,6 +270,16 @@ func Load() (Config, error) {
 			WorkerDryRun:                 envBool("SESSION_RETENTION_DRY_RUN", false),
 			WorkerRunOnce:                envBool("SESSION_RETENTION_WORKER_RUN_ONCE", false),
 			SmallCohortThreshold:         int64(envInt("SESSION_SMALL_COHORT_THRESHOLD", int(domain.DefaultSmallCohortThreshold))),
+		},
+		Privacy: PrivacyConfig{
+			HashPepper:        strings.TrimSpace(os.Getenv("SESSION_PRIVACY_HASH_PEPPER")),
+			DeletionListLimit: envInt("SESSION_PRIVACY_DELETION_LIST_LIMIT", 50),
+		},
+		Reports: ReportsConfig{
+			MaxRangeDays: envInt("SESSION_REPORT_MAX_RANGE_DAYS", 366),
+			MaxRows:      envInt("SESSION_REPORT_MAX_ROWS", 10000),
+			MaxBytes:     envInt("SESSION_REPORT_MAX_BYTES", 5<<20),
+			ListLimit:    envInt("SESSION_REPORT_SCHEDULE_LIST_LIMIT", 100),
 		},
 	}
 	if err := cfg.Validate(); err != nil {
@@ -290,7 +316,41 @@ func (c Config) Validate() error {
 	if err := c.Retention.Validate(); err != nil {
 		return fmt.Errorf("invalid retention config: %w", err)
 	}
+	if err := c.Privacy.Validate(); err != nil {
+		return fmt.Errorf("invalid privacy config: %w", err)
+	}
+	if err := c.Reports.Validate(); err != nil {
+		return fmt.Errorf("invalid reports config: %w", err)
+	}
 	return nil
+}
+
+func (c PrivacyConfig) Validate() error {
+	if strings.TrimSpace(c.HashPepper) == "" {
+		return errors.New("SESSION_PRIVACY_HASH_PEPPER cannot be empty")
+	}
+	if c.DeletionListLimit < 1 || c.DeletionListLimit > 200 {
+		return errors.New("SESSION_PRIVACY_DELETION_LIST_LIMIT must be between 1 and 200")
+	}
+	return nil
+}
+
+func (c PrivacyConfig) UsecaseConfig() usecase.PrivacyConfig {
+	return usecase.PrivacyConfig{
+		HashPepper:        c.HashPepper,
+		DeletionListLimit: c.DeletionListLimit,
+	}
+}
+
+func (c ReportsConfig) Validate() error {
+	if c.MaxRangeDays < 1 || c.MaxRows < 1 || c.MaxBytes < 1024 || c.ListLimit < 1 || c.ListLimit > 200 {
+		return errors.New("SESSION_REPORT_* values are outside allowed bounds")
+	}
+	return nil
+}
+
+func (c ReportsConfig) UsecaseConfig() usecase.ReportsConfig {
+	return usecase.ReportsConfig{MaxRangeDays: c.MaxRangeDays, MaxRows: c.MaxRows, MaxBytes: c.MaxBytes, ListLimit: c.ListLimit}
 }
 
 func (c Config) EventValidationConfig() domain.SessionEventValidationConfig {
@@ -367,19 +427,21 @@ func (c Config) HeatmapAggregationConfig() usecase.HeatmapAggregationConfig {
 
 func (c Config) AnalyticsUsecaseConfig() usecase.AnalyticsConfig {
 	return usecase.AnalyticsConfig{
-		LiveWindow:          c.Analytics.LiveWindow,
-		SessionLookback:     c.Analytics.SessionLookback,
-		MaxSessionRangeDays: c.Analytics.MaxSessionRangeDays,
-		DefaultPageSize:     c.Analytics.DefaultPageSize,
-		MaxPageSize:         c.Analytics.MaxPageSize,
-		MaxFunnelRangeDays:  c.Analytics.MaxFunnelRangeDays,
-		RawFallbackRange:    c.Analytics.RawFallbackRange,
-		MinFunnelSteps:      c.Analytics.MinFunnelSteps,
-		MaxFunnelSteps:      c.Analytics.MaxFunnelSteps,
-		DefaultFunnelMetric: domain.AnalyticsMetric(strings.TrimSpace(c.Analytics.DefaultFunnelMetric)),
-		LiveCacheTTL:        c.Analytics.LiveCacheTTL,
-		SessionsCacheTTL:    c.Analytics.SessionsCacheTTL,
-		FunnelsCacheTTL:     c.Analytics.FunnelsCacheTTL,
+		LiveWindow:            c.Analytics.LiveWindow,
+		SessionLookback:       c.Analytics.SessionLookback,
+		MaxSessionRangeDays:   c.Analytics.MaxSessionRangeDays,
+		DefaultPageSize:       c.Analytics.DefaultPageSize,
+		MaxPageSize:           c.Analytics.MaxPageSize,
+		MaxFunnelRangeDays:    c.Analytics.MaxFunnelRangeDays,
+		RawFallbackRange:      c.Analytics.RawFallbackRange,
+		MinFunnelSteps:        c.Analytics.MinFunnelSteps,
+		MaxFunnelSteps:        c.Analytics.MaxFunnelSteps,
+		DefaultFunnelMetric:   domain.AnalyticsMetric(strings.TrimSpace(c.Analytics.DefaultFunnelMetric)),
+		LiveCacheTTL:          c.Analytics.LiveCacheTTL,
+		SessionsCacheTTL:      c.Analytics.SessionsCacheTTL,
+		FunnelsCacheTTL:       c.Analytics.FunnelsCacheTTL,
+		MaxRetentionRangeDays: c.Analytics.MaxRetentionRangeDays,
+		SmallCountThreshold:   c.Retention.SmallCohortThreshold,
 	}
 }
 
@@ -577,19 +639,21 @@ func (c HeatmapConfig) Validate() error {
 
 func (c AnalyticsConfig) Validate() error {
 	return usecase.AnalyticsConfig{
-		LiveWindow:          c.LiveWindow,
-		SessionLookback:     c.SessionLookback,
-		MaxSessionRangeDays: c.MaxSessionRangeDays,
-		DefaultPageSize:     c.DefaultPageSize,
-		MaxPageSize:         c.MaxPageSize,
-		MaxFunnelRangeDays:  c.MaxFunnelRangeDays,
-		RawFallbackRange:    c.RawFallbackRange,
-		MinFunnelSteps:      c.MinFunnelSteps,
-		MaxFunnelSteps:      c.MaxFunnelSteps,
-		DefaultFunnelMetric: domain.AnalyticsMetric(strings.TrimSpace(c.DefaultFunnelMetric)),
-		LiveCacheTTL:        c.LiveCacheTTL,
-		SessionsCacheTTL:    c.SessionsCacheTTL,
-		FunnelsCacheTTL:     c.FunnelsCacheTTL,
+		LiveWindow:            c.LiveWindow,
+		SessionLookback:       c.SessionLookback,
+		MaxSessionRangeDays:   c.MaxSessionRangeDays,
+		DefaultPageSize:       c.DefaultPageSize,
+		MaxPageSize:           c.MaxPageSize,
+		MaxFunnelRangeDays:    c.MaxFunnelRangeDays,
+		RawFallbackRange:      c.RawFallbackRange,
+		MinFunnelSteps:        c.MinFunnelSteps,
+		MaxFunnelSteps:        c.MaxFunnelSteps,
+		DefaultFunnelMetric:   domain.AnalyticsMetric(strings.TrimSpace(c.DefaultFunnelMetric)),
+		LiveCacheTTL:          c.LiveCacheTTL,
+		SessionsCacheTTL:      c.SessionsCacheTTL,
+		FunnelsCacheTTL:       c.FunnelsCacheTTL,
+		MaxRetentionRangeDays: c.MaxRetentionRangeDays,
+		SmallCountThreshold:   domain.DefaultSmallCohortThreshold,
 	}.Validate()
 }
 

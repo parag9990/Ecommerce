@@ -31,6 +31,8 @@ data:
   JWT_ALLOWED_ALGS: RS256
   JWT_JWKS_URL: http://auth-service.core.svc.cluster.local:8081/.well-known/jwks.json
   AUTH_GRPC_ADDR: auth-service.core.svc.cluster.local:8081
+  AUTH_HTTP_URL: http://auth-service.core.svc.cluster.local:8081
+  AUTH_HTTP_TIMEOUT: 10s
   USER_GRPC_ADDR: user-service.core.svc.cluster.local:50052
   PRODUCT_GRPC_ADDR: product-service.core.svc.cluster.local:9092
   CART_GRPC_ADDR: cart-service.core.svc.cluster.local:8083
@@ -40,5 +42,7 @@ data:
   SEARCH_GRPC_ADDR: search-service.core.svc.cluster.local:9085
   CMS_GRPC_ADDR: cms-service.core.svc.cluster.local:9098
   SESSION_GRPC_ADDR: session-service.core.svc.cluster.local:8086
+  SESSION_HTTP_URL: http://session-service.core.svc.cluster.local:8086
+  SESSION_HTTP_TIMEOUT: 30s
   NOTIFICATION_GRPC_ADDR: notification-service.core.svc.cluster.local:9090
   SUPERADMIN_GRPC_ADDR: superadmin-service.core.svc.cluster.local:8088
