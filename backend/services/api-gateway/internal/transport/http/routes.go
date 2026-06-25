@@ -17,6 +17,7 @@ import (
 	"ecommerce/api-gateway/internal/ratelimit"
 	"ecommerce/api-gateway/internal/usecase"
 	"ecommerce/api-gateway/internal/validation"
+	orderv1 "github.com/parag/ecommerce/backend/shared/gen/go/ecommerce/order/v1"
 )
 
 func NewRouter(ctx context.Context, cfg config.Config, catalog usecase.RouteCatalog, logger *slog.Logger, downstreamHealth DownstreamHealthChecker) (http.Handler, error) {
@@ -30,10 +31,13 @@ type RouterOptions struct {
 	RequestValidator     RequestValidator
 	Metrics              *observability.Metrics
 	UserClient           clients.UserClient
+	OrderClient          orderv1.OrderServiceClient
 	SearchClient         clients.SearchServiceClient
 	NotificationClient   clients.NotificationClient
 	SessionHTTPClient    *http.Client
 	AuthHTTPClient       *http.Client
+	ProductHTTPClient    *http.Client
+	CMSHTTPClient        *http.Client
 	WishlistHTTPClient   *http.Client
 	SuperadminHTTPClient *http.Client
 }
@@ -68,6 +72,10 @@ func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecas
 	var userHandler *handlers.UserHandler
 	if opts.UserClient != nil {
 		userHandler = handlers.NewUserHandler(opts.UserClient, logger)
+	}
+	var sellerOrderHandler *SellerOrderHandler
+	if opts.OrderClient != nil {
+		sellerOrderHandler = NewSellerOrderHandler(opts.OrderClient, logger)
 	}
 	var searchHandler *handlers.SearchHandler
 	if opts.SearchClient != nil {
@@ -110,6 +118,34 @@ func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecas
 			return nil, fmt.Errorf("configure wishlist HTTP proxy: %w", err)
 		}
 	}
+	var productProxy *SessionProxy
+	if strings.TrimSpace(cfg.ProductHTTPURL) != "" {
+		client := opts.ProductHTTPClient
+		if client == nil {
+			client = &http.Client{Timeout: cfg.ProductHTTPTimeout}
+		}
+		productProxy, err = NewServiceHTTPProxy("product", cfg.ProductHTTPURL, client, logger)
+		if err != nil {
+			return nil, fmt.Errorf("configure product HTTP proxy: %w", err)
+		}
+	}
+	var cmsProxy *SessionProxy
+	if strings.TrimSpace(cfg.CMSHTTPURL) != "" {
+		client := opts.CMSHTTPClient
+		if client == nil {
+			client = &http.Client{Timeout: cfg.CMSHTTPTimeout}
+		}
+		cmsProxy, err = NewServiceHTTPProxy(
+			"cms",
+			cfg.CMSHTTPURL,
+			client,
+			logger,
+			WithInternalAuth(cfg.CMSInternalAuthHeader, cfg.CMSInternalAuthToken),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("configure cms HTTP proxy: %w", err)
+		}
+	}
 	var superadminProxy *SessionProxy
 	if strings.TrimSpace(cfg.SuperadminHTTPURL) != "" {
 		client := opts.SuperadminHTTPClient
@@ -133,6 +169,9 @@ func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecas
 		if notificationHandler != nil {
 			endpoint = notificationRouteEndpoint(route, notificationHandler, endpoint)
 		}
+		if sellerOrderHandler != nil {
+			endpoint = sellerOrderRouteEndpoint(route, sellerOrderHandler, endpoint)
+		}
 		if sessionProxy != nil && route.Service == "session-service" {
 			endpoint = sessionProxy.ServeHTTP
 		}
@@ -142,9 +181,16 @@ func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecas
 		if wishlistProxy != nil && route.Service == "wishlist-service" {
 			endpoint = wishlistProxy.ServeHTTP
 		}
+		if productProxy != nil && route.Service == "product-service" {
+			endpoint = productProxy.ServeHTTP
+		}
+		if cmsProxy != nil && route.Service == "cms-service" {
+			endpoint = cmsProxy.ServeHTTP
+		}
 		if superadminProxy != nil && route.Service == "superadmin-service" {
 			endpoint = superadminProxy.ServeHTTP
 		}
+		endpoint = sellerSessionRouteEndpoint(route, endpoint)
 		baseHandler := RequestValidationMiddleware(route, requestValidator, logger, opts.Metrics)(http.HandlerFunc(endpoint))
 		routeHandler, err := secureRoute(route, baseHandler, verifier, cfg.WebhookSignatureHeader, logger, rateLimiter, opts.Metrics, cfg.Observability.Normalize(cfg.ServiceName, cfg.Environment).UserHashSalt)
 		if err != nil {

@@ -92,6 +92,32 @@ func TestConfigLoadReadsGRPCSettings(t *testing.T) {
 	}
 }
 
+func TestConfigLoadReadsSellerDashboardHTTPTargets(t *testing.T) {
+	contractPath := writeTestContract(t)
+	t.Setenv("API_CONTRACT_PATH", contractPath)
+	t.Setenv("PRODUCT_HTTP_URL", "http://product-service:8082")
+	t.Setenv("PRODUCT_HTTP_TIMEOUT", "1500ms")
+	t.Setenv("CMS_HTTP_URL", "http://cms-service:8087")
+	t.Setenv("CMS_HTTP_TIMEOUT", "2s")
+	t.Setenv("CMS_INTERNAL_AUTH_HEADER", "X-CMS-Token")
+	t.Setenv("CMS_INTERNAL_AUTH_TOKEN", "change-me")
+	setGRPCTargetEnv(t)
+
+	cfg, err := Load(context.Background())
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.ProductHTTPURL != "http://product-service:8082" || cfg.ProductHTTPTimeout != 1500*time.Millisecond {
+		t.Fatalf("unexpected product http config: url=%q timeout=%s", cfg.ProductHTTPURL, cfg.ProductHTTPTimeout)
+	}
+	if cfg.CMSHTTPURL != "http://cms-service:8087" || cfg.CMSHTTPTimeout != 2*time.Second {
+		t.Fatalf("unexpected cms http config: url=%q timeout=%s", cfg.CMSHTTPURL, cfg.CMSHTTPTimeout)
+	}
+	if cfg.CMSInternalAuthHeader != "X-CMS-Token" || cfg.CMSInternalAuthToken != "change-me" {
+		t.Fatalf("unexpected cms auth config: header=%q token=%q", cfg.CMSInternalAuthHeader, cfg.CMSInternalAuthToken)
+	}
+}
+
 func TestConfigLoadReadsGRPCWebSettings(t *testing.T) {
 	contractPath := writeTestContract(t)
 	policyPath := filepath.Join(t.TempDir(), "grpcweb-policies.json")

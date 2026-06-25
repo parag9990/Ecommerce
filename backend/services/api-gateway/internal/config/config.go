@@ -90,6 +90,8 @@ type Config struct {
 	AuthHTTPTimeout       time.Duration
 	UserGRPCAddr          string
 	ProductGRPCAddr       string
+	ProductHTTPURL        string
+	ProductHTTPTimeout    time.Duration
 	CartGRPCAddr          string
 	WishlistGRPCAddr      string
 	WishlistHTTPURL       string
@@ -98,6 +100,10 @@ type Config struct {
 	PaymentGRPCAddr       string
 	SearchGRPCAddr        string
 	CMSGRPCAddr           string
+	CMSHTTPURL            string
+	CMSHTTPTimeout        time.Duration
+	CMSInternalAuthHeader string
+	CMSInternalAuthToken  string
 	SessionGRPCAddr       string
 	SessionHTTPURL        string
 	SessionHTTPTimeout    time.Duration
@@ -141,6 +147,14 @@ func Load(ctx context.Context) (Config, error) {
 		return Config{}, err
 	}
 	wishlistHTTPTimeout, err := getDuration("WISHLIST_HTTP_TIMEOUT", 10*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	productHTTPTimeout, err := getDuration("PRODUCT_HTTP_TIMEOUT", 10*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	cmsHTTPTimeout, err := getDuration("CMS_HTTP_TIMEOUT", 10*time.Second)
 	if err != nil {
 		return Config{}, err
 	}
@@ -327,6 +341,8 @@ func Load(ctx context.Context) (Config, error) {
 		AuthHTTPTimeout:        authHTTPTimeout,
 		UserGRPCAddr:           getenv("USER_GRPC_ADDR", ""),
 		ProductGRPCAddr:        getenv("PRODUCT_GRPC_ADDR", ""),
+		ProductHTTPURL:         getenv("PRODUCT_HTTP_URL", "http://product-service:8082"),
+		ProductHTTPTimeout:     productHTTPTimeout,
 		CartGRPCAddr:           getenv("CART_GRPC_ADDR", ""),
 		WishlistGRPCAddr:       getenv("WISHLIST_GRPC_ADDR", ""),
 		WishlistHTTPURL:        getenv("WISHLIST_HTTP_URL", "http://wishlist-service:8084"),
@@ -335,6 +351,10 @@ func Load(ctx context.Context) (Config, error) {
 		PaymentGRPCAddr:        getenv("PAYMENT_GRPC_ADDR", ""),
 		SearchGRPCAddr:         getenv("SEARCH_GRPC_ADDR", ""),
 		CMSGRPCAddr:            getenv("CMS_GRPC_ADDR", ""),
+		CMSHTTPURL:             getenv("CMS_HTTP_URL", "http://cms-service:8087"),
+		CMSHTTPTimeout:         cmsHTTPTimeout,
+		CMSInternalAuthHeader:  getenv("CMS_INTERNAL_AUTH_HEADER", "X-Internal-Token"),
+		CMSInternalAuthToken:   getenv("CMS_INTERNAL_AUTH_TOKEN", ""),
 		SessionGRPCAddr:        getenv("SESSION_GRPC_ADDR", ""),
 		SessionHTTPURL:         getenv("SESSION_HTTP_URL", "http://session-service:8086"),
 		SessionHTTPTimeout:     sessionHTTPTimeout,
@@ -517,6 +537,25 @@ func (c Config) Validate() error {
 		}
 		if c.WishlistHTTPTimeout <= 0 {
 			errs = append(errs, errors.New("WISHLIST_HTTP_TIMEOUT must be positive"))
+		}
+	}
+	if strings.TrimSpace(c.ProductHTTPURL) != "" {
+		if err := validateHTTPURL(c.ProductHTTPURL); err != nil {
+			errs = append(errs, fmt.Errorf("PRODUCT_HTTP_URL is invalid: %w", err))
+		}
+		if c.ProductHTTPTimeout <= 0 {
+			errs = append(errs, errors.New("PRODUCT_HTTP_TIMEOUT must be positive"))
+		}
+	}
+	if strings.TrimSpace(c.CMSHTTPURL) != "" {
+		if err := validateHTTPURL(c.CMSHTTPURL); err != nil {
+			errs = append(errs, fmt.Errorf("CMS_HTTP_URL is invalid: %w", err))
+		}
+		if c.CMSHTTPTimeout <= 0 {
+			errs = append(errs, errors.New("CMS_HTTP_TIMEOUT must be positive"))
+		}
+		if strings.TrimSpace(c.CMSInternalAuthToken) != "" && strings.TrimSpace(c.CMSInternalAuthHeader) == "" {
+			errs = append(errs, errors.New("CMS_INTERNAL_AUTH_HEADER is required when CMS_INTERNAL_AUTH_TOKEN is set"))
 		}
 	}
 	if c.JWTJWKSCacheTTL <= 0 {

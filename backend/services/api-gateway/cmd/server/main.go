@@ -20,6 +20,7 @@ import (
 	grpcwebtransport "ecommerce/api-gateway/internal/transport/grpcweb"
 	httptransport "ecommerce/api-gateway/internal/transport/http"
 	"ecommerce/api-gateway/internal/usecase"
+	orderv1 "github.com/parag/ecommerce/backend/shared/gen/go/ecommerce/order/v1"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -161,6 +162,7 @@ func run() error {
 		RateLimiter:        rateLimiter,
 		Metrics:            metrics,
 		UserClient:         grpcClients.User,
+		OrderClient:        orderv1.NewOrderServiceClient(grpcClients.Order.Conn()),
 		SearchClient:       grpcClients.Search,
 		NotificationClient: grpcClients.Notification,
 	})

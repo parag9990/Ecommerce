@@ -44,6 +44,15 @@ function buildUrl(path: string) {
 
   const baseUrl = getApiBaseUrl().replace(/\/+$/, "");
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const basePath = new URL(baseUrl).pathname.replace(/\/+$/, "");
+
+  if (basePath !== "" && normalizedPath === basePath) {
+    return baseUrl;
+  }
+
+  if (basePath !== "" && normalizedPath.startsWith(`${basePath}/`)) {
+    return `${baseUrl}${normalizedPath.slice(basePath.length)}`;
+  }
 
   return `${baseUrl}${normalizedPath}`;
 }

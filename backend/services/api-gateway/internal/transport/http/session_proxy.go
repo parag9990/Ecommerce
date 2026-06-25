@@ -13,17 +13,28 @@ import (
 )
 
 type SessionProxy struct {
-	target  *url.URL
-	client  *http.Client
-	logger  *slog.Logger
-	service string
+	target             *url.URL
+	client             *http.Client
+	logger             *slog.Logger
+	service            string
+	internalAuthHeader string
+	internalAuthToken  string
 }
 
 func NewSessionProxy(rawTarget string, client *http.Client, logger *slog.Logger) (*SessionProxy, error) {
 	return NewServiceHTTPProxy("session", rawTarget, client, logger)
 }
 
-func NewServiceHTTPProxy(service, rawTarget string, client *http.Client, logger *slog.Logger) (*SessionProxy, error) {
+type ServiceHTTPProxyOption func(*SessionProxy)
+
+func WithInternalAuth(header string, token string) ServiceHTTPProxyOption {
+	return func(proxy *SessionProxy) {
+		proxy.internalAuthHeader = strings.TrimSpace(header)
+		proxy.internalAuthToken = strings.TrimSpace(token)
+	}
+}
+
+func NewServiceHTTPProxy(service, rawTarget string, client *http.Client, logger *slog.Logger, options ...ServiceHTTPProxyOption) (*SessionProxy, error) {
 	target, err := url.Parse(strings.TrimSpace(rawTarget))
 	if err != nil || target.Scheme == "" || target.Host == "" {
 		return nil, errors.New("valid service HTTP target is required")
@@ -38,7 +49,11 @@ func NewServiceHTTPProxy(service, rawTarget string, client *http.Client, logger 
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &SessionProxy{target: target, client: client, logger: logger, service: service}, nil
+	proxy := &SessionProxy{target: target, client: client, logger: logger, service: service}
+	for _, option := range options {
+		option(proxy)
+	}
+	return proxy, nil
 }
 
 func (p *SessionProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -59,6 +74,7 @@ func (p *SessionProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		request.Header.Set("X-Actor-ID", claims.UserID())
 		request.Header.Set("X-User-Roles", strings.Join(claims.Roles, ","))
 		request.Header.Set("X-Roles", strings.Join(claims.Roles, ","))
+		request.Header.Set("X-Seller-ID", claims.SellerID)
 		request.Header.Set("X-Session-ID", claims.SessionID)
 		request.Header.Set("X-Request-ID", RequestIDFromContext(r.Context()))
 		if p.service == "superadmin" {
@@ -66,6 +82,9 @@ func (p *SessionProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			request.Header.Set("X-Admin-Roles", strings.Join(claims.Roles, ","))
 			request.Header.Set("X-MFA-Verified", strconv.FormatBool(claims.MFAVerified()))
 		}
+	}
+	if p.internalAuthHeader != "" && p.internalAuthToken != "" {
+		request.Header.Set(p.internalAuthHeader, p.internalAuthToken)
 	}
 	request.Host = p.target.Host
 
@@ -89,7 +108,7 @@ func (p *SessionProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func removeIdentityHeaders(header http.Header) {
-	for _, name := range []string{"X-User-ID", "X-Authenticated-User-ID", "X-Auth-User-ID", "X-Actor-ID", "X-Admin-ID", "X-User-Roles", "X-User-Role", "X-Authenticated-Roles", "X-Auth-Roles", "X-Roles", "X-Actor-Roles", "X-Admin-Roles", "X-MFA-Verified", "X-Session-ID"} {
+	for _, name := range []string{"X-User-ID", "X-Authenticated-User-ID", "X-Auth-User-ID", "X-Actor-ID", "X-Admin-ID", "X-User-Roles", "X-User-Role", "X-Authenticated-Roles", "X-Auth-Roles", "X-Roles", "X-Actor-Roles", "X-Admin-Roles", "X-MFA-Verified", "X-Session-ID", "X-Seller-ID", "X-Tenant-ID", "X-Permissions", "X-Staff-Status"} {
 		header.Del(name)
 	}
 }

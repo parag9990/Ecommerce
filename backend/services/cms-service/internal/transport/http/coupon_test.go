@@ -77,6 +77,40 @@ func TestValidateCouponLegacyRouteAcceptsCartPayload(t *testing.T) {
 	}
 }
 
+func TestSellerCouponContractRouteUsesInternalAuth(t *testing.T) {
+	handler, err := NewHandler(
+		noopAuthorizer{},
+		noopModerationService{},
+		&capturingCouponService{},
+		noopCampaignService{},
+		noopAuditLogService{},
+		HandlerConfig{
+			InternalAuthHeader: "X-Internal-Token",
+			InternalAuthToken:  "secret",
+			MaxBodyBytes:       1 << 20,
+		},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	if err != nil {
+		t.Fatalf("NewHandler: %v", err)
+	}
+
+	router := NewRouter(handler)
+	unauthorized := httptest.NewRecorder()
+	router.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "/api/v1/seller/coupons", nil))
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized status = %d, want 401", unauthorized.Code)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/seller/coupons", nil)
+	req.Header.Set("X-Internal-Token", "secret")
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("authorized status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
 type noopAuthorizer struct{}
 
 func (noopAuthorizer) Authorize(context.Context, usecase.AuthorizeInput) (usecase.AuthorizationDecision, error) {

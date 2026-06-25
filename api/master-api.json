@@ -198,6 +198,16 @@
       "response_schema": "SellerProfile"
     },
     {
+      "id": "seller.session_get",
+      "method": "GET",
+      "path": "/api/v1/seller/session",
+      "service": "api-gateway-service",
+      "grpc": "GatewayService.GetSellerSession",
+      "auth": "seller",
+      "request_schema": "Empty",
+      "response_schema": "SellerSessionResponse"
+    },
+    {
       "id": "product.list",
       "method": "GET",
       "path": "/api/v1/products",
@@ -424,7 +434,7 @@
       "service": "order-service",
       "grpc": "OrderService.ListSellerOrders",
       "auth": "seller",
-      "request_schema": "PaginationRequest",
+      "request_schema": "SellerOrderListRequest",
       "response_schema": "OrderListResponse"
     },
     {
@@ -1196,6 +1206,8 @@
     "AddressListResponse": {"type": "object", "properties": {"addresses": {"type": "array", "items": {"$ref": "#/schemas/Address"}}}},
     "SellerProfile": {"type": "object", "properties": {"seller_id": {"type": "string"}, "user_id": {"type": "string"}, "store_name": {"type": "string"}, "status": {"type": "string"}, "gst_number": {"type": "string"}}},
     "UpdateSellerProfileRequest": {"type": "object", "properties": {"store_name": {"type": "string"}, "display_name": {"type": "string"}, "gst_number": {"type": "string"}, "support_email": {"type": "string"}}},
+    "SellerSessionSeller": {"type": "object", "required": ["seller_id", "display_name", "status"], "properties": {"seller_id": {"type": "string"}, "display_name": {"type": "string"}, "status": {"type": "string", "enum": ["active", "pending", "suspended"]}, "role": {"type": "string"}, "roles": {"type": "array", "items": {"type": "string"}}, "staff_role": {"type": "string"}}},
+    "SellerSessionResponse": {"type": "object", "required": ["authenticated", "sellers"], "properties": {"authenticated": {"type": "boolean"}, "active_seller": {"$ref": "#/schemas/SellerSessionSeller"}, "sellers": {"type": "array", "items": {"$ref": "#/schemas/SellerSessionSeller"}}}},
     "ProductInput": {"type": "object", "required": ["title", "category_id", "variants"], "properties": {"title": {"type": "string"}, "description": {"type": "string"}, "brand": {"type": "string"}, "category_id": {"type": "string"}, "attributes": {"type": "object"}, "images": {"type": "array", "items": {"type": "string"}}, "variants": {"type": "array", "items": {"$ref": "#/schemas/ProductVariantInput"}}}},
     "ProductVariantInput": {"type": "object", "required": ["sku", "price", "stock_quantity"], "properties": {"sku": {"type": "string"}, "attributes": {"type": "object"}, "price": {"$ref": "#/schemas/Money"}, "stock_quantity": {"type": "integer"}}},
     "Product": {"type": "object", "properties": {"product_id": {"type": "string"}, "seller_id": {"type": "string"}, "title": {"type": "string"}, "description": {"type": "string"}, "brand": {"type": "string"}, "category_id": {"type": "string"}, "status": {"type": "string"}, "variants": {"type": "array", "items": {"$ref": "#/schemas/ProductVariantInput"}}}},
@@ -1226,7 +1238,8 @@
     "CheckoutRequest": {"type": "object", "required": ["address_id", "payment_provider", "idempotency_key"], "properties": {"address_id": {"type": "string"}, "coupon_code": {"type": "string"}, "payment_provider": {"type": "string"}, "idempotency_key": {"type": "string"}}},
     "CheckoutResponse": {"type": "object", "properties": {"order": {"$ref": "#/schemas/Order"}, "payment_intent": {"$ref": "#/schemas/PaymentIntentResponse"}}},
     "Order": {"type": "object", "properties": {"order_id": {"type": "string"}, "user_id": {"type": "string"}, "status": {"type": "string"}, "items": {"type": "array", "items": {"type": "object"}}, "total": {"$ref": "#/schemas/Money"}, "created_at": {"type": "string", "format": "date-time"}}},
-    "OrderListResponse": {"type": "object", "properties": {"orders": {"type": "array", "items": {"$ref": "#/schemas/Order"}}, "total": {"type": "integer"}}},
+    "SellerOrderListRequest": {"allOf": [{"$ref": "#/schemas/PaginationRequest"}, {"type": "object", "properties": {"status": {"type": "string"}, "q": {"type": "string"}, "date_from": {"type": "string"}, "date_to": {"type": "string"}, "page_token": {"type": "string"}}}]},
+    "OrderListResponse": {"type": "object", "properties": {"orders": {"type": "array", "items": {"$ref": "#/schemas/Order"}}, "total": {"type": "integer"}, "next_page_token": {"type": "string"}}},
     "CancelOrderRequest": {"type": "object", "required": ["reason"], "properties": {"order_id": {"type": "string"}, "reason": {"type": "string"}}},
     "FulfillmentUpdateRequest": {"type": "object", "properties": {"order_id": {"type": "string"}, "status": {"type": "string"}, "tracking_number": {"type": "string"}, "carrier": {"type": "string"}}},
     "OrderPaymentUpdateRequest": {"type": "object", "required": ["order_id", "payment_id"], "properties": {"order_id": {"type": "string"}, "payment_id": {"type": "string"}, "status": {"type": "string"}}},

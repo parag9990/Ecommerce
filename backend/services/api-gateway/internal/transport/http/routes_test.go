@@ -21,8 +21,11 @@ import (
 	"ecommerce/api-gateway/internal/usecase"
 	"github.com/golang-jwt/jwt/v5"
 	notificationv1 "github.com/parag/ecommerce/backend/shared/gen/go/ecommerce/notification/v1"
+	orderv1 "github.com/parag/ecommerce/backend/shared/gen/go/ecommerce/order/v1"
 	userv1 "github.com/parag/ecommerce/backend/shared/gen/go/ecommerce/user/v1"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestNewRouterRegistersDefinedRoute(t *testing.T) {
@@ -213,6 +216,270 @@ func TestProtectedWishlistRouteProxiesAuthenticatedIdentityToHTTP(t *testing.T) 
 	router.ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestSellerSessionRouteBuildsFromAuthenticatedClaims(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "master-api.json")
+	contract := `{"project":"test","version":"1.0.0","rest_endpoints":[{"id":"seller.session_get","method":"GET","path":"/api/v1/seller/session","service":"api-gateway-service","grpc":"GatewayService.GetSellerSession","auth":"seller","request_schema":"Empty","response_schema":"SellerSessionResponse"}]}`
+	if err := os.WriteFile(path, []byte(contract), 0o600); err != nil {
+		t.Fatalf("write contract: %v", err)
+	}
+	cfg := authTestConfig(path)
+	repo := repository.NewJSONRouteRepository(path)
+	catalog := usecase.NewRouteCatalogService(repo, cfg.APIBasePath)
+	router, err := NewRouterWithOptions(context.Background(), cfg, catalog, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, RouterOptions{
+		TokenVerifier: stubTokenVerifier{},
+	})
+	if err != nil {
+		t.Fatalf("new router: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/seller/session", nil)
+	request.Header.Set("Authorization", "Bearer seller-token")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", response.Code, response.Body.String())
+	}
+	var envelope ResponseEnvelope
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	data, ok := envelope.Data.(map[string]any)
+	if !ok || data["authenticated"] != true {
+		t.Fatalf("unexpected session response: %#v", envelope.Data)
+	}
+	activeSeller, ok := data["active_seller"].(map[string]any)
+	if !ok || activeSeller["seller_id"] != "seller_123" {
+		t.Fatalf("unexpected active seller: %#v", data["active_seller"])
+	}
+}
+
+func TestProductRouteProxiesSellerIdentityToHTTP(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-User-ID"); got != "user_seller" {
+			t.Fatalf("upstream X-User-ID = %q, want user_seller", got)
+		}
+		if got := r.Header.Get("X-Seller-ID"); got != "seller_123" {
+			t.Fatalf("upstream X-Seller-ID = %q, want seller_123", got)
+		}
+		if got := r.Header.Get("X-Roles"); got != "seller" {
+			t.Fatalf("upstream X-Roles = %q, want seller", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"product_id":"prod_1"}`))
+	}))
+	defer upstream.Close()
+
+	path := filepath.Join(t.TempDir(), "master-api.json")
+	contract := `{"project":"test","version":"1.0.0","rest_endpoints":[{"id":"seller.product_create","method":"POST","path":"/api/v1/seller/products","service":"product-service","grpc":"ProductService.CreateProduct","auth":"seller","request_schema":"ProductInput","response_schema":"Product"}]}`
+	if err := os.WriteFile(path, []byte(contract), 0o600); err != nil {
+		t.Fatalf("write contract: %v", err)
+	}
+	cfg := authTestConfig(path)
+	cfg.ProductHTTPURL = upstream.URL
+	cfg.ProductHTTPTimeout = time.Second
+	repo := repository.NewJSONRouteRepository(path)
+	catalog := usecase.NewRouteCatalogService(repo, cfg.APIBasePath)
+	router, err := NewRouterWithOptions(context.Background(), cfg, catalog, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, RouterOptions{
+		TokenVerifier:     stubTokenVerifier{},
+		ProductHTTPClient: upstream.Client(),
+	})
+	if err != nil {
+		t.Fatalf("new router: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/seller/products", strings.NewReader(`{}`))
+	request.Header.Set("Authorization", "Bearer seller-token")
+	request.Header.Set("X-Seller-ID", "spoofed")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestCMSRouteProxiesSellerIdentityAndInternalAuthToHTTP(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-Internal-Token"); got != "cms-secret" {
+			t.Fatalf("upstream X-Internal-Token = %q, want cms-secret", got)
+		}
+		if got := r.Header.Get("X-Seller-ID"); got != "seller_123" {
+			t.Fatalf("upstream X-Seller-ID = %q, want seller_123", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"coupons":[]}`))
+	}))
+	defer upstream.Close()
+
+	path := filepath.Join(t.TempDir(), "master-api.json")
+	contract := `{"project":"test","version":"1.0.0","rest_endpoints":[{"id":"cms.coupon_list","method":"GET","path":"/api/v1/seller/coupons","service":"cms-service","grpc":"CMSService.ListCoupons","auth":"seller","request_schema":"PaginationRequest","response_schema":"CouponListResponse"}]}`
+	if err := os.WriteFile(path, []byte(contract), 0o600); err != nil {
+		t.Fatalf("write contract: %v", err)
+	}
+	cfg := authTestConfig(path)
+	cfg.CMSHTTPURL = upstream.URL
+	cfg.CMSHTTPTimeout = time.Second
+	cfg.CMSInternalAuthHeader = "X-Internal-Token"
+	cfg.CMSInternalAuthToken = "cms-secret"
+	repo := repository.NewJSONRouteRepository(path)
+	catalog := usecase.NewRouteCatalogService(repo, cfg.APIBasePath)
+	router, err := NewRouterWithOptions(context.Background(), cfg, catalog, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, RouterOptions{
+		TokenVerifier: stubTokenVerifier{},
+		CMSHTTPClient: upstream.Client(),
+	})
+	if err != nil {
+		t.Fatalf("new router: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/seller/coupons", nil)
+	request.Header.Set("Authorization", "Bearer seller-token")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestSellerOrderRouteBridgesAuthenticatedIdentityToGRPC(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "master-api.json")
+	contract := `{"project":"test","version":"1.0.0","rest_endpoints":[{"id":"seller.order.list","method":"GET","path":"/api/v1/seller/orders","service":"order-service","grpc":"OrderService.ListSellerOrders","auth":"seller","request_schema":"SellerOrderListRequest","response_schema":"OrderListResponse"}],"schemas":{"PaginationRequest":{"type":"object","properties":{"page":{"type":"integer","minimum":1},"page_size":{"type":"integer","minimum":1,"maximum":100},"cursor":{"type":"string"}}},"SellerOrderListRequest":{"allOf":[{"$ref":"#/schemas/PaginationRequest"},{"type":"object","properties":{"status":{"type":"string"},"q":{"type":"string"},"date_from":{"type":"string"},"date_to":{"type":"string"},"page_token":{"type":"string"}}}]}}}`
+	if err := os.WriteFile(path, []byte(contract), 0o600); err != nil {
+		t.Fatalf("write contract: %v", err)
+	}
+	cfg := authTestConfig(path)
+	repo := repository.NewJSONRouteRepository(path)
+	catalog := usecase.NewRouteCatalogService(repo, cfg.APIBasePath)
+	orderClient := &routerOrderClient{
+		listSellerOrders: func(ctx context.Context, request *orderv1.ListSellerOrdersRequest, _ ...grpc.CallOption) (*orderv1.ListSellerOrdersResponse, error) {
+			if request.GetPageSize() != 25 {
+				t.Fatalf("page_size = %d, want 25", request.GetPageSize())
+			}
+			if request.GetPageToken() != "cursor_1" {
+				t.Fatalf("page_token = %q, want cursor_1", request.GetPageToken())
+			}
+			if request.GetFulfillmentFilter() != orderv1.SellerFulfillmentStatus_SELLER_FULFILLMENT_STATUS_SHIPPED {
+				t.Fatalf("fulfillment_filter = %v, want shipped", request.GetFulfillmentFilter())
+			}
+			outgoing, ok := metadata.FromOutgoingContext(ctx)
+			if !ok || len(outgoing.Get("x-seller-id")) != 1 || outgoing.Get("x-seller-id")[0] != "seller_123" {
+				t.Fatalf("outgoing x-seller-id = %#v", outgoing.Get("x-seller-id"))
+			}
+			if got := outgoing.Get("x-user-id"); len(got) != 1 || got[0] != "user_seller" {
+				t.Fatalf("outgoing x-user-id = %#v", got)
+			}
+			return &orderv1.ListSellerOrdersResponse{
+				Orders: []*orderv1.SellerOrderView{{
+					OrderId:                 "ord_1",
+					ParentOrderStatus:       orderv1.OrderStatus_ORDER_STATUS_PAID,
+					SellerFulfillmentStatus: orderv1.SellerFulfillmentStatus_SELLER_FULFILLMENT_STATUS_SHIPPED,
+					SellerItemsTotal:        &orderv1.Money{MinorUnits: 129900, Currency: "INR"},
+					CreatedAt:               timestamppb.New(time.Date(2026, 6, 25, 10, 30, 0, 0, time.UTC)),
+					Items: []*orderv1.SellerOrderItem{{
+						OrderItemId:       "oi_1",
+						ProductId:         "prod_1",
+						Sku:               "SKU-1",
+						TitleSnapshot:     "Running Shoe",
+						Quantity:          1,
+						UnitPrice:         &orderv1.Money{MinorUnits: 129900, Currency: "INR"},
+						LineTotal:         &orderv1.Money{MinorUnits: 129900, Currency: "INR"},
+						FulfillmentStatus: orderv1.ItemFulfillmentStatus_ITEM_FULFILLMENT_STATUS_SHIPPED,
+					}},
+				}},
+				NextPageToken: "cursor_2",
+			}, nil
+		},
+	}
+	router, err := NewRouterWithOptions(context.Background(), cfg, catalog, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, RouterOptions{
+		TokenVerifier: stubTokenVerifier{},
+		OrderClient:   orderClient,
+	})
+	if err != nil {
+		t.Fatalf("new router: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/seller/orders?status=shipped&page_size=25&cursor=cursor_1", nil)
+	request.Header.Set("Authorization", "Bearer seller-token")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", response.Code, response.Body.String())
+	}
+	var envelope ResponseEnvelope
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	data, ok := envelope.Data.(map[string]any)
+	if !ok || data["total"].(float64) != 1 || data["next_page_token"] != "cursor_2" {
+		t.Fatalf("unexpected list data: %#v", envelope.Data)
+	}
+	orders, ok := data["orders"].([]any)
+	if !ok || len(orders) != 1 {
+		t.Fatalf("unexpected orders: %#v", data["orders"])
+	}
+	order := orders[0].(map[string]any)
+	if order["order_id"] != "ord_1" || order["status"] != "shipped" {
+		t.Fatalf("unexpected order response: %#v", order)
+	}
+}
+
+func TestSellerOrderFulfillmentRouteBridgesUpdateToGRPC(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "master-api.json")
+	contract := `{"project":"test","version":"1.0.0","rest_endpoints":[{"id":"seller.order.fulfillment","method":"PATCH","path":"/api/v1/seller/orders/{order_id}/fulfillment","service":"order-service","grpc":"OrderService.UpdateFulfillment","auth":"seller","request_schema":"FulfillmentUpdateRequest","response_schema":"Order"}],"schemas":{"FulfillmentUpdateRequest":{"type":"object","properties":{"order_id":{"type":"string"},"status":{"type":"string"},"tracking_number":{"type":"string"},"carrier":{"type":"string"}}}}}`
+	if err := os.WriteFile(path, []byte(contract), 0o600); err != nil {
+		t.Fatalf("write contract: %v", err)
+	}
+	cfg := authTestConfig(path)
+	repo := repository.NewJSONRouteRepository(path)
+	catalog := usecase.NewRouteCatalogService(repo, cfg.APIBasePath)
+	orderClient := &routerOrderClient{
+		updateFulfillment: func(ctx context.Context, request *orderv1.UpdateFulfillmentRequest, _ ...grpc.CallOption) (*orderv1.UpdateFulfillmentResponse, error) {
+			if request.GetOrderId() != "ord_1" || request.GetTargetStatus() != orderv1.OrderStatus_ORDER_STATUS_SHIPPED {
+				t.Fatalf("unexpected update request: %#v", request)
+			}
+			if request.GetTrackingNumber() != "TRK123" || request.GetCarrier() != "Delhivery" {
+				t.Fatalf("unexpected tracking request: %#v", request)
+			}
+			outgoing, ok := metadata.FromOutgoingContext(ctx)
+			if !ok || len(outgoing.Get("x-seller-id")) != 1 || outgoing.Get("x-seller-id")[0] != "seller_123" {
+				t.Fatalf("outgoing x-seller-id = %#v", outgoing.Get("x-seller-id"))
+			}
+			return &orderv1.UpdateFulfillmentResponse{
+				SellerOrder: &orderv1.SellerOrderView{
+					OrderId:                 "ord_1",
+					ParentOrderStatus:       orderv1.OrderStatus_ORDER_STATUS_PAID,
+					SellerFulfillmentStatus: orderv1.SellerFulfillmentStatus_SELLER_FULFILLMENT_STATUS_SHIPPED,
+					SellerItemsTotal:        &orderv1.Money{MinorUnits: 50000, Currency: "INR"},
+				},
+			}, nil
+		},
+	}
+	router, err := NewRouterWithOptions(context.Background(), cfg, catalog, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, RouterOptions{
+		TokenVerifier: stubTokenVerifier{},
+		OrderClient:   orderClient,
+	})
+	if err != nil {
+		t.Fatalf("new router: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPatch, "/api/v1/seller/orders/ord_1/fulfillment", strings.NewReader(`{"order_id":"ord_1","status":"shipped","tracking_number":"TRK123","carrier":"Delhivery"}`))
+	request.Header.Set("Authorization", "Bearer seller-token")
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", response.Code, response.Body.String())
+	}
+	var envelope ResponseEnvelope
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	data, ok := envelope.Data.(map[string]any)
+	if !ok || data["order_id"] != "ord_1" || data["status"] != "shipped" {
+		t.Fatalf("unexpected update response: %#v", envelope.Data)
 	}
 }
 
@@ -625,6 +892,7 @@ func (stubTokenVerifier) Verify(_ context.Context, raw string) (gatewayauth.Acce
 		return gatewayauth.AccessClaims{
 			SessionID: "sess_seller",
 			Roles:     []string{"seller"},
+			SellerID:  "seller_123",
 			TokenType: gatewayauth.AccessTokenType,
 			RegisteredClaims: jwt.RegisteredClaims{
 				Subject: "user_seller",
@@ -693,4 +961,39 @@ func assertNotificationMetadata(t *testing.T, ctx context.Context) {
 	if roles := outgoing.Get("x-roles"); len(roles) != 1 || roles[0] != "buyer" {
 		t.Fatalf("outgoing x-roles = %#v", roles)
 	}
+}
+
+type routerOrderClient struct {
+	listSellerOrders  func(context.Context, *orderv1.ListSellerOrdersRequest, ...grpc.CallOption) (*orderv1.ListSellerOrdersResponse, error)
+	updateFulfillment func(context.Context, *orderv1.UpdateFulfillmentRequest, ...grpc.CallOption) (*orderv1.UpdateFulfillmentResponse, error)
+}
+
+func (*routerOrderClient) CreateOrder(context.Context, *orderv1.CreateOrderRequest, ...grpc.CallOption) (*orderv1.CreateOrderResponse, error) {
+	return nil, errors.New("unexpected CreateOrder call")
+}
+
+func (*routerOrderClient) GetOrder(context.Context, *orderv1.GetOrderRequest, ...grpc.CallOption) (*orderv1.GetOrderResponse, error) {
+	return nil, errors.New("unexpected GetOrder call")
+}
+
+func (*routerOrderClient) ListOrders(context.Context, *orderv1.ListOrdersRequest, ...grpc.CallOption) (*orderv1.ListOrdersResponse, error) {
+	return nil, errors.New("unexpected ListOrders call")
+}
+
+func (c *routerOrderClient) ListSellerOrders(ctx context.Context, request *orderv1.ListSellerOrdersRequest, opts ...grpc.CallOption) (*orderv1.ListSellerOrdersResponse, error) {
+	if c.listSellerOrders == nil {
+		return nil, errors.New("unexpected ListSellerOrders call")
+	}
+	return c.listSellerOrders(ctx, request, opts...)
+}
+
+func (*routerOrderClient) CancelOrder(context.Context, *orderv1.CancelOrderRequest, ...grpc.CallOption) (*orderv1.CancelOrderResponse, error) {
+	return nil, errors.New("unexpected CancelOrder call")
+}
+
+func (c *routerOrderClient) UpdateFulfillment(ctx context.Context, request *orderv1.UpdateFulfillmentRequest, opts ...grpc.CallOption) (*orderv1.UpdateFulfillmentResponse, error) {
+	if c.updateFulfillment == nil {
+		return nil, errors.New("unexpected UpdateFulfillment call")
+	}
+	return c.updateFulfillment(ctx, request, opts...)
 }
