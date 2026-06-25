@@ -143,7 +143,7 @@ Priority values:
 |---:|---|---|---|---|---|
 | 1 | Define seller permissions | Seller manager, catalog editor, order manager roles define karo. | Auth RBAC | P1 | Completed |
 | 2 | Choose MySQL | Coupons, offers, seller settings, workflows structured hain, relational model fit hai. | Permissions | P1 | Completed |
-| 3 | Product moderation flow | Seller draft, submit, approve/reject, publish states design karo. | Product Service | P1 | Pending |
+| 3 | Product moderation flow | Seller draft, submit, approve/reject, publish states design karo. | Product Service | P1 | Completed |
 | 4 | Coupon engine MVP | Fixed, percentage, min cart, category/product/seller scope rules banao. | Cart and Order | P1 | Completed |
 | 5 | Offer campaigns | Start/end time, budget, usage limits, seller ownership implement karo. | Coupon engine | P2 | Completed |
 | 6 | Seller analytics APIs | Revenue, orders, conversion, top products metrics expose karo. | Order and Payment | P2 | Completed |

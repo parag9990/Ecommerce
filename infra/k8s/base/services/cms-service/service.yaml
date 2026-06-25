@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cms-service
+  namespace: core
+  labels:
+    app.kubernetes.io/name: cms-service
+    app.kubernetes.io/part-of: ecommerce-platform
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: cms-service
+  ports:
+    - { name: http, port: 8087, targetPort: http, protocol: TCP }
+    - { name: grpc, port: 9098, targetPort: grpc, protocol: TCP }

@@ -150,23 +150,30 @@ type couponRuleValueRequest struct {
 
 type couponValidationRequest struct {
 	CouponCode     string              `json:"coupon_code"`
+	Code           string              `json:"code,omitempty"`
 	CampaignID     string              `json:"campaign_id,omitempty"`
 	UserID         string              `json:"user_id"`
+	GuestSessionID string              `json:"guest_session_id,omitempty"`
 	CartID         string              `json:"cart_id,omitempty"`
 	OrderID        string              `json:"order_id,omitempty"`
 	Currency       string              `json:"currency"`
 	SubtotalAmount int64               `json:"subtotal_amount"`
+	Subtotal       *amountValue        `json:"subtotal,omitempty"`
+	CartSubtotal   *amountValue        `json:"cart_subtotal,omitempty"`
 	Items          []couponItemRequest `json:"items,omitempty"`
 }
 
 type couponItemRequest struct {
-	ProductID          string   `json:"product_id"`
-	VariantID          string   `json:"variant_id,omitempty"`
-	SellerID           string   `json:"seller_id"`
-	CategoryIDs        []string `json:"category_ids,omitempty"`
-	Quantity           int64    `json:"quantity,omitempty"`
-	UnitAmount         int64    `json:"unit_amount,omitempty"`
-	LineSubtotalAmount int64    `json:"line_subtotal_amount"`
+	ProductID          string       `json:"product_id"`
+	VariantID          string       `json:"variant_id,omitempty"`
+	SellerID           string       `json:"seller_id"`
+	CategoryID         string       `json:"category_id,omitempty"`
+	CategoryIDs        []string     `json:"category_ids,omitempty"`
+	Quantity           int64        `json:"quantity,omitempty"`
+	UnitAmount         int64        `json:"unit_amount,omitempty"`
+	UnitPrice          *amountValue `json:"unit_price,omitempty"`
+	LineSubtotalAmount int64        `json:"line_subtotal_amount"`
+	LineSubtotal       *amountValue `json:"line_subtotal,omitempty"`
 }
 
 type couponRedemptionRequest struct {
@@ -382,4 +389,66 @@ func (v *amountValue) UnmarshalJSON(data []byte) error {
 	v.Amount = amount
 	v.Currency = ""
 	return nil
+}
+
+func (r couponValidationRequest) resolvedCouponCode() string {
+	return firstNonEmpty(r.CouponCode, r.Code)
+}
+
+func (r couponValidationRequest) resolvedUserID() string {
+	return firstNonEmpty(r.UserID, r.GuestSessionID, r.CartID)
+}
+
+func (r couponValidationRequest) resolvedCurrency() string {
+	return firstNonEmpty(r.Currency, currencyFromAmount(r.Subtotal), currencyFromAmount(r.CartSubtotal))
+}
+
+func (r couponValidationRequest) resolvedSubtotalAmount() int64 {
+	if r.SubtotalAmount != 0 {
+		return r.SubtotalAmount
+	}
+	if r.Subtotal != nil {
+		return r.Subtotal.Amount
+	}
+	if r.CartSubtotal != nil {
+		return r.CartSubtotal.Amount
+	}
+	return 0
+}
+
+func (r couponItemRequest) resolvedCategoryIDs() []string {
+	if strings.TrimSpace(r.CategoryID) == "" {
+		return r.CategoryIDs
+	}
+	categoryIDs := make([]string, 0, len(r.CategoryIDs)+1)
+	categoryIDs = append(categoryIDs, r.CategoryID)
+	categoryIDs = append(categoryIDs, r.CategoryIDs...)
+	return categoryIDs
+}
+
+func (r couponItemRequest) resolvedUnitAmount() int64 {
+	if r.UnitAmount != 0 {
+		return r.UnitAmount
+	}
+	if r.UnitPrice != nil {
+		return r.UnitPrice.Amount
+	}
+	return 0
+}
+
+func (r couponItemRequest) resolvedLineSubtotalAmount() int64 {
+	if r.LineSubtotalAmount != 0 {
+		return r.LineSubtotalAmount
+	}
+	if r.LineSubtotal != nil {
+		return r.LineSubtotal.Amount
+	}
+	return 0
+}
+
+func currencyFromAmount(value *amountValue) string {
+	if value == nil {
+		return ""
+	}
+	return value.Currency
 }

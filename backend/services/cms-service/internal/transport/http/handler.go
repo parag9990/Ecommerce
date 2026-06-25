@@ -135,6 +135,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("PATCH /internal/v1/cms/seller/coupons/{coupon_id}", h.requireInternalAuth(http.HandlerFunc(h.handleUpdateCoupon)))
 	mux.Handle("POST /internal/v1/cms/seller/coupons/{coupon_id}/disable", h.requireInternalAuth(http.HandlerFunc(h.handleDisableCoupon)))
 	mux.Handle("POST /internal/v1/cms/coupons/validate", h.requireInternalAuth(http.HandlerFunc(h.handleValidateCoupon)))
+	mux.Handle("POST /internal/v1/coupons/validate", h.requireInternalAuth(http.HandlerFunc(h.handleValidateCoupon)))
 	mux.Handle("POST /internal/v1/cms/coupons/redemptions", h.requireInternalAuth(http.HandlerFunc(h.handleRecordCouponRedemption)))
 	mux.Handle("GET /internal/v1/cms/seller/campaigns", h.requireInternalAuth(http.HandlerFunc(h.handleListCampaigns)))
 	mux.Handle("POST /internal/v1/cms/seller/campaigns", h.requireInternalAuth(http.HandlerFunc(h.handleCreateCampaign)))
@@ -513,13 +514,13 @@ func (h *Handler) handleValidateCoupon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.coupons.ValidateCoupon(r.Context(), usecase.ValidateCouponInput{
-		CouponCode:     req.CouponCode,
+		CouponCode:     req.resolvedCouponCode(),
 		CampaignID:     req.CampaignID,
-		UserID:         req.UserID,
+		UserID:         req.resolvedUserID(),
 		CartID:         req.CartID,
 		OrderID:        req.OrderID,
-		Currency:       req.Currency,
-		SubtotalAmount: req.SubtotalAmount,
+		Currency:       req.resolvedCurrency(),
+		SubtotalAmount: req.resolvedSubtotalAmount(),
 		Items:          couponItemsFromRequest(req.Items),
 		RequestID:      requestID(r),
 	})
@@ -941,10 +942,10 @@ func couponItemsFromRequest(requests []couponItemRequest) []domain.CouponCartIte
 			ProductID:          req.ProductID,
 			VariantID:          req.VariantID,
 			SellerID:           req.SellerID,
-			CategoryIDs:        req.CategoryIDs,
+			CategoryIDs:        req.resolvedCategoryIDs(),
 			Quantity:           req.Quantity,
-			UnitAmount:         req.UnitAmount,
-			LineSubtotalAmount: req.LineSubtotalAmount,
+			UnitAmount:         req.resolvedUnitAmount(),
+			LineSubtotalAmount: req.resolvedLineSubtotalAmount(),
 		})
 	}
 	return items

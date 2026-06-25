@@ -10,6 +10,7 @@ resources:
   - services/auth-service
   - services/product-service
   - services/cart-service
+  - services/cms-service
   - services/payment-service
   - services/wishlist-service
   - services/session-service
