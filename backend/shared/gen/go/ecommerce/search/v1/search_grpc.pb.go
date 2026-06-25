@@ -22,6 +22,8 @@ const (
 	SearchService_SearchProducts_FullMethodName = "/ecommerce.search.v1.SearchService/SearchProducts"
 	SearchService_Autocomplete_FullMethodName   = "/ecommerce.search.v1.SearchService/Autocomplete"
 	SearchService_CreateSynonym_FullMethodName  = "/ecommerce.search.v1.SearchService/CreateSynonym"
+	SearchService_UpdateSynonym_FullMethodName  = "/ecommerce.search.v1.SearchService/UpdateSynonym"
+	SearchService_DeleteSynonym_FullMethodName  = "/ecommerce.search.v1.SearchService/DeleteSynonym"
 	SearchService_ListSynonyms_FullMethodName   = "/ecommerce.search.v1.SearchService/ListSynonyms"
 )
 
@@ -32,6 +34,8 @@ type SearchServiceClient interface {
 	SearchProducts(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error)
 	Autocomplete(ctx context.Context, in *AutocompleteRequest, opts ...grpc.CallOption) (*AutocompleteResponse, error)
 	CreateSynonym(ctx context.Context, in *CreateSynonymRequest, opts ...grpc.CallOption) (*SearchSynonym, error)
+	UpdateSynonym(ctx context.Context, in *CreateSynonymRequest, opts ...grpc.CallOption) (*SearchSynonym, error)
+	DeleteSynonym(ctx context.Context, in *CreateSynonymRequest, opts ...grpc.CallOption) (*SearchSynonym, error)
 	ListSynonyms(ctx context.Context, in *ListSynonymsRequest, opts ...grpc.CallOption) (*ListSynonymsResponse, error)
 }
 
@@ -73,6 +77,26 @@ func (c *searchServiceClient) CreateSynonym(ctx context.Context, in *CreateSynon
 	return out, nil
 }
 
+func (c *searchServiceClient) UpdateSynonym(ctx context.Context, in *CreateSynonymRequest, opts ...grpc.CallOption) (*SearchSynonym, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SearchSynonym)
+	err := c.cc.Invoke(ctx, SearchService_UpdateSynonym_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *searchServiceClient) DeleteSynonym(ctx context.Context, in *CreateSynonymRequest, opts ...grpc.CallOption) (*SearchSynonym, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SearchSynonym)
+	err := c.cc.Invoke(ctx, SearchService_DeleteSynonym_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *searchServiceClient) ListSynonyms(ctx context.Context, in *ListSynonymsRequest, opts ...grpc.CallOption) (*ListSynonymsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListSynonymsResponse)
@@ -90,6 +114,8 @@ type SearchServiceServer interface {
 	SearchProducts(context.Context, *SearchRequest) (*SearchResponse, error)
 	Autocomplete(context.Context, *AutocompleteRequest) (*AutocompleteResponse, error)
 	CreateSynonym(context.Context, *CreateSynonymRequest) (*SearchSynonym, error)
+	UpdateSynonym(context.Context, *CreateSynonymRequest) (*SearchSynonym, error)
+	DeleteSynonym(context.Context, *CreateSynonymRequest) (*SearchSynonym, error)
 	ListSynonyms(context.Context, *ListSynonymsRequest) (*ListSynonymsResponse, error)
 	mustEmbedUnimplementedSearchServiceServer()
 }
@@ -109,6 +135,12 @@ func (UnimplementedSearchServiceServer) Autocomplete(context.Context, *Autocompl
 }
 func (UnimplementedSearchServiceServer) CreateSynonym(context.Context, *CreateSynonymRequest) (*SearchSynonym, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateSynonym not implemented")
+}
+func (UnimplementedSearchServiceServer) UpdateSynonym(context.Context, *CreateSynonymRequest) (*SearchSynonym, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateSynonym not implemented")
+}
+func (UnimplementedSearchServiceServer) DeleteSynonym(context.Context, *CreateSynonymRequest) (*SearchSynonym, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteSynonym not implemented")
 }
 func (UnimplementedSearchServiceServer) ListSynonyms(context.Context, *ListSynonymsRequest) (*ListSynonymsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListSynonyms not implemented")
@@ -188,6 +220,42 @@ func _SearchService_CreateSynonym_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SearchService_UpdateSynonym_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateSynonymRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SearchServiceServer).UpdateSynonym(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SearchService_UpdateSynonym_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SearchServiceServer).UpdateSynonym(ctx, req.(*CreateSynonymRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SearchService_DeleteSynonym_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateSynonymRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SearchServiceServer).DeleteSynonym(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SearchService_DeleteSynonym_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SearchServiceServer).DeleteSynonym(ctx, req.(*CreateSynonymRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _SearchService_ListSynonyms_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListSynonymsRequest)
 	if err := dec(in); err != nil {
@@ -224,6 +292,14 @@ var SearchService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreateSynonym",
 			Handler:    _SearchService_CreateSynonym_Handler,
+		},
+		{
+			MethodName: "UpdateSynonym",
+			Handler:    _SearchService_UpdateSynonym_Handler,
+		},
+		{
+			MethodName: "DeleteSynonym",
+			Handler:    _SearchService_DeleteSynonym_Handler,
 		},
 		{
 			MethodName: "ListSynonyms",

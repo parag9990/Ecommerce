@@ -1,6 +1,8 @@
 package httptransport
 
 import (
+	"time"
+
 	"github.com/example/ecommerce-platform/backend/services/payment-service/internal/domain"
 	"github.com/example/ecommerce-platform/backend/services/payment-service/internal/usecase"
 )
@@ -196,6 +198,8 @@ type refundResponse struct {
 	RequestedBy      string       `json:"requested_by"`
 	ReviewedBy       string       `json:"reviewed_by,omitempty"`
 	ReviewReason     string       `json:"review_reason,omitempty"`
+	ReviewedAt       *time.Time   `json:"reviewed_at,omitempty"`
+	CreatedAt        *time.Time   `json:"created_at,omitempty"`
 	Replayed         bool         `json:"replayed,omitempty"`
 }
 
@@ -392,6 +396,7 @@ func refundPaymentInputFromRequest(paymentID string, actorID string, requestID s
 }
 
 func refundResponseFromDomain(refund domain.Refund, replayed bool) refundResponse {
+	createdAt := refund.CreatedAt
 	return refundResponse{
 		RefundID:         refund.RefundID,
 		PaymentID:        refund.PaymentID,
@@ -402,6 +407,8 @@ func refundResponseFromDomain(refund domain.Refund, replayed bool) refundRespons
 		RequestedBy:      refund.RequestedBy,
 		ReviewedBy:       refund.ReviewedBy,
 		ReviewReason:     refund.ReviewReason,
+		ReviewedAt:       refund.ReviewedAt,
+		CreatedAt:        &createdAt,
 		Replayed:         replayed,
 	}
 }

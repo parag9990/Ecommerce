@@ -67,9 +67,38 @@ func TestSynonymRPCsEnforceAdminIdentityAndRole(t *testing.T) {
 	}
 }
 
+func TestUpdateAndDeleteSynonymForwardMetadata(t *testing.T) {
+	update := &fakeUpdateSynonym{}
+	delete := &fakeDeleteSynonym{}
+	handler, err := NewHandler(&fakeSearchProducts{}, fakeAutocomplete{}, fakeCreateSynonym{}, update, delete, fakeListSynonyms{})
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
+		"x-actor-id", "admin_1",
+		"x-roles", "catalog_admin",
+		"x-synonym-id", "syn_mobile",
+		"x-audit-reason", "catalog terminology",
+	))
+
+	if _, err := handler.UpdateSynonym(ctx, &searchv1.CreateSynonymRequest{Root: "cell phone", Synonyms: []string{"smartphone"}}); err != nil {
+		t.Fatalf("update synonym: %v", err)
+	}
+	if update.synonymID != "syn_mobile" || update.input.Root != "cell phone" || update.input.Reason != "catalog terminology" {
+		t.Fatalf("update = id:%q input:%#v", update.synonymID, update.input)
+	}
+
+	if _, err := handler.DeleteSynonym(ctx, &searchv1.CreateSynonymRequest{Root: "syn_mobile"}); err != nil {
+		t.Fatalf("delete synonym: %v", err)
+	}
+	if delete.synonymID != "syn_mobile" || delete.reason != "catalog terminology" {
+		t.Fatalf("delete = id:%q reason:%q", delete.synonymID, delete.reason)
+	}
+}
+
 func newTestHandler(t *testing.T, search SearchProductsUsecase) *Handler {
 	t.Helper()
-	handler, err := NewHandler(search, fakeAutocomplete{}, fakeCreateSynonym{}, fakeListSynonyms{})
+	handler, err := NewHandler(search, fakeAutocomplete{}, fakeCreateSynonym{}, &fakeUpdateSynonym{}, &fakeDeleteSynonym{}, fakeListSynonyms{})
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -97,6 +126,28 @@ type fakeCreateSynonym struct{}
 
 func (fakeCreateSynonym) Execute(_ context.Context, input domain.SearchSynonymInput) (domain.SearchSynonym, error) {
 	return domain.SearchSynonym{ID: "syn_1", Root: input.Root, Synonyms: input.Synonyms}, nil
+}
+
+type fakeUpdateSynonym struct {
+	synonymID string
+	input     domain.SearchSynonymInput
+}
+
+func (f *fakeUpdateSynonym) Execute(_ context.Context, synonymID string, input domain.SearchSynonymInput) (domain.SearchSynonym, error) {
+	f.synonymID = synonymID
+	f.input = input
+	return domain.SearchSynonym{ID: "syn_1", Root: input.Root, Synonyms: input.Synonyms}, nil
+}
+
+type fakeDeleteSynonym struct {
+	synonymID string
+	reason    string
+}
+
+func (f *fakeDeleteSynonym) Execute(_ context.Context, synonymID string, reason string) (domain.SearchSynonym, error) {
+	f.synonymID = synonymID
+	f.reason = reason
+	return domain.SearchSynonym{ID: synonymID, Root: "mobile", Synonyms: []string{"phone"}}, nil
 }
 
 type fakeListSynonyms struct{}

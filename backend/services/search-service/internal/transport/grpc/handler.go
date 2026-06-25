@@ -27,6 +27,14 @@ type CreateSynonymUsecase interface {
 	Execute(context.Context, domain.SearchSynonymInput) (domain.SearchSynonym, error)
 }
 
+type UpdateSynonymUsecase interface {
+	Execute(context.Context, string, domain.SearchSynonymInput) (domain.SearchSynonym, error)
+}
+
+type DeleteSynonymUsecase interface {
+	Execute(context.Context, string, string) (domain.SearchSynonym, error)
+}
+
 type ListSynonymsUsecase interface {
 	Execute(context.Context, domain.SearchSynonymPageRequest) ([]domain.SearchSynonym, error)
 }
@@ -36,10 +44,12 @@ type Handler struct {
 	searchProducts SearchProductsUsecase
 	autocomplete   AutocompleteUsecase
 	createSynonym  CreateSynonymUsecase
+	updateSynonym  UpdateSynonymUsecase
+	deleteSynonym  DeleteSynonymUsecase
 	listSynonyms   ListSynonymsUsecase
 }
 
-func NewHandler(searchProducts SearchProductsUsecase, autocomplete AutocompleteUsecase, createSynonym CreateSynonymUsecase, listSynonyms ListSynonymsUsecase) (*Handler, error) {
+func NewHandler(searchProducts SearchProductsUsecase, autocomplete AutocompleteUsecase, createSynonym CreateSynonymUsecase, updateSynonym UpdateSynonymUsecase, deleteSynonym DeleteSynonymUsecase, listSynonyms ListSynonymsUsecase) (*Handler, error) {
 	if searchProducts == nil {
 		return nil, errors.New("search products usecase is required")
 	}
@@ -49,6 +59,12 @@ func NewHandler(searchProducts SearchProductsUsecase, autocomplete AutocompleteU
 	if createSynonym == nil {
 		return nil, errors.New("create synonym usecase is required")
 	}
+	if updateSynonym == nil {
+		return nil, errors.New("update synonym usecase is required")
+	}
+	if deleteSynonym == nil {
+		return nil, errors.New("delete synonym usecase is required")
+	}
 	if listSynonyms == nil {
 		return nil, errors.New("list synonyms usecase is required")
 	}
@@ -56,6 +72,8 @@ func NewHandler(searchProducts SearchProductsUsecase, autocomplete AutocompleteU
 		searchProducts: searchProducts,
 		autocomplete:   autocomplete,
 		createSynonym:  createSynonym,
+		updateSynonym:  updateSynonym,
+		deleteSynonym:  deleteSynonym,
 		listSynonyms:   listSynonyms,
 	}, nil
 }
@@ -114,6 +132,40 @@ func (h *Handler) CreateSynonym(ctx context.Context, req *searchv1.CreateSynonym
 		Synonyms: append([]string(nil), req.GetSynonyms()...),
 		Reason:   firstMetadataFromContext(ctx, "x-audit-reason"),
 	})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return synonymResponse(result), nil
+}
+
+func (h *Handler) UpdateSynonym(ctx context.Context, req *searchv1.CreateSynonymRequest) (*searchv1.SearchSynonym, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "request is required")
+	}
+	ctx = contextFromMetadata(ctx)
+	if err := authorizeAdmin(ctx); err != nil {
+		return nil, err
+	}
+	result, err := h.updateSynonym.Execute(ctx, synonymIDFromContext(ctx, req.GetRoot()), domain.SearchSynonymInput{
+		Root:     req.GetRoot(),
+		Synonyms: append([]string(nil), req.GetSynonyms()...),
+		Reason:   firstMetadataFromContext(ctx, "x-audit-reason"),
+	})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return synonymResponse(result), nil
+}
+
+func (h *Handler) DeleteSynonym(ctx context.Context, req *searchv1.CreateSynonymRequest) (*searchv1.SearchSynonym, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "request is required")
+	}
+	ctx = contextFromMetadata(ctx)
+	if err := authorizeAdmin(ctx); err != nil {
+		return nil, err
+	}
+	result, err := h.deleteSynonym.Execute(ctx, synonymIDFromContext(ctx, req.GetRoot()), firstMetadataFromContext(ctx, "x-audit-reason"))
 	if err != nil {
 		return nil, mapError(err)
 	}
@@ -216,6 +268,13 @@ func contextFromMetadata(ctx context.Context) context.Context {
 	})
 }
 
+func synonymIDFromContext(ctx context.Context, fallback string) string {
+	if id := firstMetadataFromContext(ctx, "x-synonym-id"); id != "" {
+		return id
+	}
+	return strings.TrimSpace(fallback)
+}
+
 func authorizeAdmin(ctx context.Context) error {
 	md, _ := metadata.FromIncomingContext(ctx)
 	if firstMetadata(md, "x-user-id", "x-actor-id", "x-admin-id") == "" {
@@ -269,6 +328,8 @@ func mapError(err error) error {
 		return status.Error(codes.Unauthenticated, "authentication required")
 	case errors.Is(err, domain.ErrPermissionDenied):
 		return status.Error(codes.PermissionDenied, "permission denied")
+	case errors.Is(err, domain.ErrSearchSynonymNotFound):
+		return status.Error(codes.NotFound, "search synonym not found")
 	case errors.Is(err, domain.ErrSearchBackendUnavailable),
 		errors.Is(err, domain.ErrSearchCollectionUnavailable),
 		errors.Is(err, domain.ErrProductHydrationUnavailable),

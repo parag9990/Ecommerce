@@ -88,3 +88,14 @@ func (s *auditLogUsecaseStub) ListAuditLogs(ctx context.Context, req domain.Audi
 	}
 	return s.response, nil
 }
+
+func (s *auditLogUsecaseStub) ExportAuditLogs(ctx context.Context, req domain.AuditLogListRequest, reason string) (domain.AuditLogListResponse, error) {
+	if _, ok := domain.ActorFromContext(ctx); !ok {
+		return domain.AuditLogListResponse{}, domain.NewAdminContextMissing("admin actor is missing from request context")
+	}
+	s.request = req
+	if s.err != nil {
+		return domain.AuditLogListResponse{}, s.err
+	}
+	return s.response, nil
+}

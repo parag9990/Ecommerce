@@ -27,10 +27,14 @@ type OrderServiceClient interface {
 
 type PaymentServiceClient interface {
 	ListPaymentsForAdmin(ctx context.Context, req domain.AdminPaymentListRequest, actor domain.AdminActor) (domain.AdminPaymentListResponse, error)
+	GetPaymentForAdmin(ctx context.Context, paymentID string, actor domain.AdminActor) (domain.AdminPaymentDetailResponse, error)
+	ListRefundsForAdmin(ctx context.Context, req domain.RefundListRequest, actor domain.AdminActor) (domain.RefundListResponse, error)
 	ListPaymentsForOrder(ctx context.Context, orderID string, actor domain.AdminActor) ([]domain.PaymentSnapshot, error)
 	ListRefundsForPayment(ctx context.Context, paymentID string, actor domain.AdminActor) ([]domain.RefundSnapshot, error)
 	GetRefundForAdmin(ctx context.Context, refundID string, actor domain.AdminActor) (domain.RefundSnapshot, error)
 	ApplyRefundReview(ctx context.Context, refundID string, req domain.RefundReviewRequest, mutation domain.AdminMutationContext) (domain.RefundSnapshot, error)
+	ListReconciliationAlerts(ctx context.Context, req domain.ReconciliationListRequest, actor domain.AdminActor) (domain.ReconciliationListResponse, error)
+	GetReconciliationAlert(ctx context.Context, reconciliationID string, actor domain.AdminActor) (domain.ReconciliationDetailResponse, error)
 }
 
 type OrderPaymentReviewTaskRepository interface {
@@ -111,6 +115,66 @@ func (s *OrderPaymentControlService) ListPaymentsForAdmin(ctx context.Context, r
 		return domain.AdminPaymentListResponse{}, err
 	}
 	return s.payment.ListPaymentsForAdmin(ctx, cleanReq, actor)
+}
+
+func (s *OrderPaymentControlService) GetPaymentForAdmin(ctx context.Context, paymentID string) (domain.AdminPaymentDetailResponse, error) {
+	paymentID = strings.TrimSpace(paymentID)
+	if paymentID == "" {
+		return domain.AdminPaymentDetailResponse{}, domain.NewValidationError("payment_id is required")
+	}
+	actor, err := actorFromContext(ctx)
+	if err != nil {
+		return domain.AdminPaymentDetailResponse{}, err
+	}
+	if err := s.authorizer.RequirePermission(ctx, actor, domain.PermissionPaymentsRead); err != nil {
+		return domain.AdminPaymentDetailResponse{}, err
+	}
+	return s.payment.GetPaymentForAdmin(ctx, paymentID, actor)
+}
+
+func (s *OrderPaymentControlService) ListRefundsForAdmin(ctx context.Context, req domain.RefundListRequest) (domain.RefundListResponse, error) {
+	actor, err := actorFromContext(ctx)
+	if err != nil {
+		return domain.RefundListResponse{}, err
+	}
+	if err := s.authorizer.RequirePermission(ctx, actor, domain.PermissionPaymentsRead); err != nil {
+		return domain.RefundListResponse{}, err
+	}
+	cleanReq, err := req.Normalize()
+	if err != nil {
+		return domain.RefundListResponse{}, err
+	}
+	return s.payment.ListRefundsForAdmin(ctx, cleanReq, actor)
+}
+
+func (s *OrderPaymentControlService) ListReconciliationAlerts(ctx context.Context, req domain.ReconciliationListRequest) (domain.ReconciliationListResponse, error) {
+	actor, err := actorFromContext(ctx)
+	if err != nil {
+		return domain.ReconciliationListResponse{}, err
+	}
+	if err := s.authorizer.RequirePermission(ctx, actor, domain.PermissionPaymentsRead); err != nil {
+		return domain.ReconciliationListResponse{}, err
+	}
+	cleanReq, err := req.Normalize()
+	if err != nil {
+		return domain.ReconciliationListResponse{}, err
+	}
+	return s.payment.ListReconciliationAlerts(ctx, cleanReq, actor)
+}
+
+func (s *OrderPaymentControlService) GetReconciliationAlert(ctx context.Context, reconciliationID string) (domain.ReconciliationDetailResponse, error) {
+	reconciliationID = strings.TrimSpace(reconciliationID)
+	if reconciliationID == "" {
+		return domain.ReconciliationDetailResponse{}, domain.NewValidationError("reconciliation_id is required")
+	}
+	actor, err := actorFromContext(ctx)
+	if err != nil {
+		return domain.ReconciliationDetailResponse{}, err
+	}
+	if err := s.authorizer.RequirePermission(ctx, actor, domain.PermissionPaymentsRead); err != nil {
+		return domain.ReconciliationDetailResponse{}, err
+	}
+	return s.payment.GetReconciliationAlert(ctx, reconciliationID, actor)
 }
 
 func (s *OrderPaymentControlService) ReviewRefund(ctx context.Context, refundID string, req domain.RefundReviewRequest) (domain.RefundSnapshot, error) {
@@ -302,6 +366,51 @@ func (s *OrderPaymentControlService) GetOrderDisputeView(ctx context.Context, or
 	return domain.BuildDisputeView(order, history, payments, refunds, reviewTasks), nil
 }
 
+func (s *OrderPaymentControlService) GetOrderForAdmin(ctx context.Context, orderID string) (domain.AdminOrderDetailResponse, error) {
+	view, err := s.GetOrderDisputeView(ctx, orderID)
+	if err != nil {
+		return domain.AdminOrderDetailResponse{}, err
+	}
+	return domain.AdminOrderDetailResponse{
+		Order:         view.Order,
+		StatusHistory: view.StatusHistory,
+		Payments:      view.Payments,
+		Refunds:       view.Refunds,
+		ReviewTasks:   view.ReviewTasks,
+		RiskFlags:     view.RiskFlags,
+	}, nil
+}
+
+func (s *OrderPaymentControlService) ListOrderDisputes(ctx context.Context, orderID string) (domain.OrderDisputeListResponse, error) {
+	view, err := s.GetOrderDisputeView(ctx, orderID)
+	if err != nil {
+		return domain.OrderDisputeListResponse{}, err
+	}
+	disputes := make([]domain.OrderDispute, 0, len(view.ReviewTasks)+len(view.RiskFlags))
+	for _, task := range view.ReviewTasks {
+		disputes = append(disputes, domain.OrderDispute{
+			DisputeID: task.TaskID,
+			OrderID:   orderID,
+			Type:      task.TaskType,
+			Status:    string(task.Status),
+			OpenedBy:  firstNonEmpty(task.CreatedBy, "admin"),
+			Summary:   firstNonEmpty(task.Reason, "Manual review task"),
+			CreatedAt: task.CreatedAt,
+		})
+	}
+	for _, flag := range view.RiskFlags {
+		disputes = append(disputes, domain.OrderDispute{
+			DisputeID: "risk_" + strings.ReplaceAll(flag, " ", "_"),
+			OrderID:   orderID,
+			Type:      flag,
+			Status:    "open",
+			OpenedBy:  "system",
+			Summary:   "Risk signal detected: " + strings.ReplaceAll(flag, "_", " "),
+		})
+	}
+	return domain.OrderDisputeListResponse{Disputes: disputes}, nil
+}
+
 func (s *OrderPaymentControlService) closeRefundReviewTask(ctx context.Context, refundID string, actor domain.AdminActor, review domain.NormalizedRefundReview) {
 	if s.reviewTasks == nil {
 		return
@@ -406,4 +515,13 @@ func refundAuditSnapshot(refund domain.RefundSnapshot) map[string]string {
 		"currency":   refund.Amount.Currency,
 		"amount":     fmt.Sprintf("%d", refund.Amount.Amount),
 	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }

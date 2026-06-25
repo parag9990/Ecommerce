@@ -10,15 +10,38 @@ import (
 )
 
 func TestConfigValidateRequiresDownstreamGRPCTargets(t *testing.T) {
-	cfg := validConfig(t)
-	cfg.ProductGRPCAddr = ""
-
-	err := cfg.Validate()
-	if err == nil {
-		t.Fatal("expected missing product grpc address to fail validation")
+	tests := []struct {
+		name    string
+		clear   func(*Config)
+		wantErr string
+	}{
+		{name: "auth", clear: func(cfg *Config) { cfg.AuthGRPCAddr = "" }, wantErr: "AUTH_GRPC_ADDR is required"},
+		{name: "user", clear: func(cfg *Config) { cfg.UserGRPCAddr = "" }, wantErr: "USER_GRPC_ADDR is required"},
+		{name: "product", clear: func(cfg *Config) { cfg.ProductGRPCAddr = "" }, wantErr: "PRODUCT_GRPC_ADDR is required"},
+		{name: "cart", clear: func(cfg *Config) { cfg.CartGRPCAddr = "" }, wantErr: "CART_GRPC_ADDR is required"},
+		{name: "wishlist", clear: func(cfg *Config) { cfg.WishlistGRPCAddr = "" }, wantErr: "WISHLIST_GRPC_ADDR is required"},
+		{name: "order", clear: func(cfg *Config) { cfg.OrderGRPCAddr = "" }, wantErr: "ORDER_GRPC_ADDR is required"},
+		{name: "payment", clear: func(cfg *Config) { cfg.PaymentGRPCAddr = "" }, wantErr: "PAYMENT_GRPC_ADDR is required"},
+		{name: "search", clear: func(cfg *Config) { cfg.SearchGRPCAddr = "" }, wantErr: "SEARCH_GRPC_ADDR is required"},
+		{name: "cms", clear: func(cfg *Config) { cfg.CMSGRPCAddr = "" }, wantErr: "CMS_GRPC_ADDR is required"},
+		{name: "session", clear: func(cfg *Config) { cfg.SessionGRPCAddr = "" }, wantErr: "SESSION_GRPC_ADDR is required"},
+		{name: "notification", clear: func(cfg *Config) { cfg.NotificationGRPCAddr = "" }, wantErr: "NOTIFICATION_GRPC_ADDR is required"},
+		{name: "superadmin", clear: func(cfg *Config) { cfg.SuperadminGRPCAddr = "" }, wantErr: "SUPERADMIN_GRPC_ADDR is required"},
 	}
-	if !strings.Contains(err.Error(), "PRODUCT_GRPC_ADDR is required") {
-		t.Fatalf("expected product grpc address validation error, got %v", err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig(t)
+			tt.clear(&cfg)
+
+			err := cfg.Validate()
+			if err == nil {
+				t.Fatalf("expected missing %s grpc address to fail validation", tt.name)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected %q validation error, got %v", tt.wantErr, err)
+			}
+		})
 	}
 }
 

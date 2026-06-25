@@ -80,6 +80,69 @@ func TestListSynonymsUsecaseNormalizesPagination(t *testing.T) {
 	}
 }
 
+func TestUpdateSynonymUsecaseUpsertsAndDeletesRenamedSynonym(t *testing.T) {
+	repo := &fakeSynonymRepository{
+		before: domain.SearchSynonym{ID: "syn_mobile", Root: "mobile", Synonyms: []string{"phone"}},
+		found:  true,
+	}
+	uc, err := NewUpdateSynonymUsecase(repo, UpdateSynonymOptions{Timeout: time.Second}, slog.Default())
+	if err != nil {
+		t.Fatalf("usecase: %v", err)
+	}
+
+	got, err := uc.Execute(context.Background(), "syn_mobile", domain.SearchSynonymInput{
+		Root:     "cell phone",
+		Synonyms: []string{"smartphone"},
+		Reason:   "rename root",
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if got.ID != "syn_cell_phone" {
+		t.Fatalf("updated id = %q", got.ID)
+	}
+	if repo.deletedID != "syn_mobile" {
+		t.Fatalf("deleted id = %q", repo.deletedID)
+	}
+}
+
+func TestUpdateSynonymUsecaseReturnsNotFound(t *testing.T) {
+	repo := &fakeSynonymRepository{}
+	uc, err := NewUpdateSynonymUsecase(repo, UpdateSynonymOptions{Timeout: time.Second}, slog.Default())
+	if err != nil {
+		t.Fatalf("usecase: %v", err)
+	}
+
+	_, err = uc.Execute(context.Background(), "syn_missing", domain.SearchSynonymInput{
+		Root:     "mobile",
+		Synonyms: []string{"phone"},
+	})
+	if !errors.Is(err, domain.ErrSearchSynonymNotFound) {
+		t.Fatalf("expected not found, got %v", err)
+	}
+}
+
+func TestDeleteSynonymUsecaseDeletesExistingSynonym(t *testing.T) {
+	repo := &fakeSynonymRepository{
+		before: domain.SearchSynonym{ID: "syn_mobile", Root: "mobile", Synonyms: []string{"phone"}},
+		found:  true,
+	}
+	uc, err := NewDeleteSynonymUsecase(repo, DeleteSynonymOptions{Timeout: time.Second}, slog.Default())
+	if err != nil {
+		t.Fatalf("usecase: %v", err)
+	}
+
+	got, err := uc.Execute(context.Background(), "syn_mobile", "cleanup")
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if got.ID != "syn_mobile" || repo.deletedID != "syn_mobile" {
+		t.Fatalf("deleted = %#v, id=%q", got, repo.deletedID)
+	}
+}
+
 func newCreateSynonymTestUsecase(t *testing.T) (*CreateSynonymUsecase, *fakeSynonymRepository) {
 	t.Helper()
 	repo := &fakeSynonymRepository{}
@@ -97,6 +160,8 @@ type fakeSynonymRepository struct {
 	upsertCalls int
 	upserted    domain.SearchSynonym
 	upsertErr   error
+	deleteErr   error
+	deletedID   string
 	listCalls   int
 	page        domain.SearchSynonymPageRequest
 	listed      []domain.SearchSynonym
@@ -114,6 +179,17 @@ func (r *fakeSynonymRepository) UpsertSynonym(_ context.Context, synonym domain.
 		return domain.SearchSynonym{}, r.upsertErr
 	}
 	return synonym, nil
+}
+
+func (r *fakeSynonymRepository) DeleteSynonym(_ context.Context, id string) (domain.SearchSynonym, bool, error) {
+	r.deletedID = id
+	if r.deleteErr != nil {
+		return domain.SearchSynonym{}, false, r.deleteErr
+	}
+	if r.found && id == r.before.ID {
+		return r.before, true, nil
+	}
+	return domain.SearchSynonym{}, false, nil
 }
 
 func (r *fakeSynonymRepository) ListSynonyms(_ context.Context, page domain.SearchSynonymPageRequest) ([]domain.SearchSynonym, error) {

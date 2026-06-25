@@ -37,6 +37,7 @@ data:
   USER_GRPC_ADDR: user-service.core.svc.cluster.local:50052
   PRODUCT_GRPC_ADDR: product-service.core.svc.cluster.local:9092
   CART_GRPC_ADDR: cart-service.core.svc.cluster.local:8083
+  WISHLIST_GRPC_ADDR: wishlist-service.core.svc.cluster.local:8084
   WISHLIST_HTTP_URL: http://wishlist-service.core.svc.cluster.local:8084
   WISHLIST_HTTP_TIMEOUT: 10s
   ORDER_GRPC_ADDR: order-service.core.svc.cluster.local:9094

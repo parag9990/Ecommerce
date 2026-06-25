@@ -11,14 +11,17 @@ spec:
   template:
     metadata:
       labels: { app.kubernetes.io/name: api-gateway, app.kubernetes.io/part-of: ecommerce }
-      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "8080", prometheus.io/path: /metrics }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "9091", prometheus.io/path: /metrics }
     spec:
       securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: api-gateway
           image: ecommerce/api-gateway:local
           imagePullPolicy: IfNotPresent
-          ports: [{ name: http, containerPort: 8080 }]
+          ports:
+            - { name: http, containerPort: 8080 }
+            - { name: grpc, containerPort: 9090 }
+            - { name: metrics, containerPort: 9091 }
           envFrom:
             - configMapRef: { name: ecommerce-local-config }
             - secretRef: { name: ecommerce-local-secrets }
@@ -34,4 +37,7 @@ kind: Service
 metadata: { name: api-gateway, namespace: ecommerce-local }
 spec:
   selector: { app.kubernetes.io/name: api-gateway }
-  ports: [{ name: http, port: 8080, targetPort: http }]
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+    - { name: grpc, port: 9090, targetPort: grpc }
+    - { name: metrics, port: 9091, targetPort: metrics }

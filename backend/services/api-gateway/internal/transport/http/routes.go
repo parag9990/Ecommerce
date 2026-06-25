@@ -185,6 +185,10 @@ func searchRouteEndpoint(route domain.RouteDefinition, handler *handlers.SearchH
 		return handler.Autocomplete
 	case "POST /api/v1/admin/search/synonyms":
 		return handler.CreateSynonym
+	case "PATCH /api/v1/admin/search/synonyms/{synonym_id}":
+		return handler.UpdateSynonym
+	case "DELETE /api/v1/admin/search/synonyms/{synonym_id}":
+		return handler.DeleteSynonym
 	case "GET /api/v1/admin/search/synonyms":
 		return handler.ListSynonyms
 	default:

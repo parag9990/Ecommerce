@@ -55,6 +55,7 @@ type AutocompleteCache interface {
 type SynonymRepository interface {
 	GetSynonym(ctx context.Context, id string) (domain.SearchSynonym, bool, error)
 	UpsertSynonym(ctx context.Context, synonym domain.SearchSynonym) (domain.SearchSynonym, error)
+	DeleteSynonym(ctx context.Context, id string) (domain.SearchSynonym, bool, error)
 	ListSynonyms(ctx context.Context, page domain.SearchSynonymPageRequest) ([]domain.SearchSynonym, error)
 }
 

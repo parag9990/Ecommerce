@@ -190,9 +190,13 @@ func (c ManualReviewCategory) Valid() bool {
 }
 
 type AdminOrderListRequest struct {
-	Status   OrderStatus `json:"status,omitempty"`
-	UserID   string      `json:"user_id,omitempty"`
-	SellerID string      `json:"seller_id,omitempty"`
+	Query        string      `json:"q,omitempty"`
+	Status       OrderStatus `json:"status,omitempty"`
+	ReviewStatus string      `json:"review_status,omitempty"`
+	UserID       string      `json:"user_id,omitempty"`
+	SellerID     string      `json:"seller_id,omitempty"`
+	From         string      `json:"from,omitempty"`
+	To           string      `json:"to,omitempty"`
 	Pagination
 }
 
@@ -202,8 +206,18 @@ func (r AdminOrderListRequest) Normalize() (AdminOrderListRequest, error) {
 		return AdminOrderListRequest{}, err
 	}
 	r.Status = status
+	r.Query = strings.TrimSpace(r.Query)
+	r.ReviewStatus = strings.TrimSpace(r.ReviewStatus)
 	r.UserID = strings.TrimSpace(r.UserID)
 	r.SellerID = strings.TrimSpace(r.SellerID)
+	r.From = strings.TrimSpace(r.From)
+	r.To = strings.TrimSpace(r.To)
+	if len(r.Query) > MaxSearchLength {
+		return AdminOrderListRequest{}, NewValidationError(fmt.Sprintf("q must be at most %d characters", MaxSearchLength))
+	}
+	if len(r.ReviewStatus) > MaxSearchLength {
+		return AdminOrderListRequest{}, NewValidationError(fmt.Sprintf("review_status must be at most %d characters", MaxSearchLength))
+	}
 	if len(r.UserID) > MaxSearchLength {
 		return AdminOrderListRequest{}, NewValidationError(fmt.Sprintf("user_id must be at most %d characters", MaxSearchLength))
 	}
@@ -295,15 +309,105 @@ type AdminPaymentListResponse struct {
 	Cursor   string            `json:"cursor,omitempty"`
 }
 
+type PaymentAttemptSnapshot struct {
+	AttemptID         string        `json:"attempt_id"`
+	PaymentID         string        `json:"payment_id"`
+	Status            PaymentStatus `json:"status"`
+	ProviderReference string        `json:"provider_reference,omitempty"`
+	ErrorCode         string        `json:"error_code,omitempty"`
+	ErrorMessage      string        `json:"error_message,omitempty"`
+	CreatedAt         *time.Time    `json:"created_at,omitempty"`
+}
+
+type AdminPaymentDetailResponse struct {
+	Payment  PaymentSnapshot          `json:"payment"`
+	Attempts []PaymentAttemptSnapshot `json:"attempts,omitempty"`
+	Refunds  []RefundSnapshot         `json:"refunds,omitempty"`
+}
+
 type RefundSnapshot struct {
-	RefundID  string       `json:"refund_id"`
-	PaymentID string       `json:"payment_id,omitempty"`
-	OrderID   string       `json:"order_id,omitempty"`
-	Status    RefundStatus `json:"status"`
-	Amount    Money        `json:"amount"`
-	Reason    string       `json:"reason,omitempty"`
-	CreatedAt *time.Time   `json:"created_at,omitempty"`
-	UpdatedAt *time.Time   `json:"updated_at,omitempty"`
+	RefundID    string       `json:"refund_id"`
+	PaymentID   string       `json:"payment_id,omitempty"`
+	OrderID     string       `json:"order_id,omitempty"`
+	Status      RefundStatus `json:"status"`
+	Amount      Money        `json:"amount"`
+	Reason      string       `json:"reason,omitempty"`
+	RequestedBy string       `json:"requested_by,omitempty"`
+	ReviewedBy  string       `json:"reviewed_by,omitempty"`
+	ReviewedAt  *time.Time   `json:"reviewed_at,omitempty"`
+	CreatedAt   *time.Time   `json:"created_at,omitempty"`
+	UpdatedAt   *time.Time   `json:"updated_at,omitempty"`
+}
+
+type RefundListRequest struct {
+	Status string `json:"status,omitempty"`
+	Pagination
+}
+
+func (r RefundListRequest) Normalize() (RefundListRequest, error) {
+	r.Status = strings.TrimSpace(r.Status)
+	if len(r.Status) > MaxSearchLength {
+		return RefundListRequest{}, NewValidationError(fmt.Sprintf("status must be at most %d characters", MaxSearchLength))
+	}
+	r.Pagination = NormalizePagination(r.Pagination.Page, r.Pagination.PageSize, r.Pagination.Cursor)
+	return r, nil
+}
+
+type RefundListResponse struct {
+	Refunds  []RefundSnapshot `json:"refunds"`
+	Page     int              `json:"page,omitempty"`
+	PageSize int              `json:"page_size,omitempty"`
+	Total    int64            `json:"total,omitempty"`
+	Cursor   string           `json:"cursor,omitempty"`
+}
+
+type ReconciliationStatus string
+
+const (
+	ReconciliationStatusMatched         ReconciliationStatus = "matched"
+	ReconciliationStatusMismatch        ReconciliationStatus = "mismatch"
+	ReconciliationStatusMissingLocal    ReconciliationStatus = "missing_local"
+	ReconciliationStatusMissingProvider ReconciliationStatus = "missing_provider"
+)
+
+type ReconciliationAlertSnapshot struct {
+	ReconciliationID string               `json:"reconciliation_id"`
+	PaymentID        string               `json:"payment_id,omitempty"`
+	Provider         string               `json:"provider"`
+	Status           ReconciliationStatus `json:"status"`
+	LocalAmount      *Money               `json:"local_amount,omitempty"`
+	ProviderAmount   *Money               `json:"provider_amount,omitempty"`
+	LocalStatus      string               `json:"local_status,omitempty"`
+	ProviderStatus   string               `json:"provider_status,omitempty"`
+	SettlementID     string               `json:"settlement_id,omitempty"`
+	DetectedAt       *time.Time           `json:"detected_at,omitempty"`
+	Note             string               `json:"note,omitempty"`
+}
+
+type ReconciliationListRequest struct {
+	Status string `json:"status,omitempty"`
+	Pagination
+}
+
+func (r ReconciliationListRequest) Normalize() (ReconciliationListRequest, error) {
+	r.Status = strings.TrimSpace(r.Status)
+	if len(r.Status) > MaxSearchLength {
+		return ReconciliationListRequest{}, NewValidationError(fmt.Sprintf("status must be at most %d characters", MaxSearchLength))
+	}
+	r.Pagination = NormalizePagination(r.Pagination.Page, r.Pagination.PageSize, r.Pagination.Cursor)
+	return r, nil
+}
+
+type ReconciliationListResponse struct {
+	Alerts   []ReconciliationAlertSnapshot `json:"alerts"`
+	Page     int                           `json:"page,omitempty"`
+	PageSize int                           `json:"page_size,omitempty"`
+	Total    int64                         `json:"total,omitempty"`
+	Cursor   string                        `json:"cursor,omitempty"`
+}
+
+type ReconciliationDetailResponse struct {
+	Alert ReconciliationAlertSnapshot `json:"alert"`
 }
 
 type RefundReviewRequest struct {
@@ -338,8 +442,10 @@ func NormalizeRefundReviewRequest(pathRefundID string, req RefundReviewRequest) 
 }
 
 type ManualOrderReviewRequest struct {
-	Category string `json:"category"`
-	Reason   string `json:"reason"`
+	Category     string `json:"category,omitempty"`
+	Decision     string `json:"decision,omitempty"`
+	Reason       string `json:"reason"`
+	InternalNote string `json:"internal_note,omitempty"`
 }
 
 type NormalizedManualOrderReview struct {
@@ -351,6 +457,9 @@ func NormalizeManualOrderReviewRequest(orderID string, req ManualOrderReviewRequ
 	if strings.TrimSpace(orderID) == "" {
 		return NormalizedManualOrderReview{}, NewValidationError("order_id is required")
 	}
+	if strings.TrimSpace(req.Category) == "" {
+		req.Category = manualReviewCategoryForDecision(req.Decision)
+	}
 	category, err := ParseManualReviewCategory(req.Category)
 	if err != nil {
 		return NormalizedManualOrderReview{}, err
@@ -360,6 +469,15 @@ func NormalizeManualOrderReviewRequest(orderID string, req ManualOrderReviewRequ
 		return NormalizedManualOrderReview{}, err
 	}
 	return NormalizedManualOrderReview{Category: category, Reason: reason}, nil
+}
+
+func manualReviewCategoryForDecision(decision string) string {
+	switch strings.TrimSpace(decision) {
+	case "mark_reviewing", "resolve", "escalate":
+		return string(ManualReviewCustomerDispute)
+	default:
+		return string(ManualReviewCustomerDispute)
+	}
 }
 
 type ReviewTask struct {
@@ -385,6 +503,29 @@ type DisputeView struct {
 	Refunds       []RefundSnapshot   `json:"refunds,omitempty"`
 	ReviewTasks   []ReviewTask       `json:"review_tasks,omitempty"`
 	RiskFlags     []string           `json:"risk_flags,omitempty"`
+}
+
+type AdminOrderDetailResponse struct {
+	Order         OrderSnapshot      `json:"order"`
+	StatusHistory []OrderStatusEvent `json:"status_history,omitempty"`
+	Payments      []PaymentSnapshot  `json:"payments,omitempty"`
+	Refunds       []RefundSnapshot   `json:"refunds,omitempty"`
+	ReviewTasks   []ReviewTask       `json:"review_tasks,omitempty"`
+	RiskFlags     []string           `json:"risk_flags,omitempty"`
+}
+
+type OrderDispute struct {
+	DisputeID string     `json:"dispute_id"`
+	OrderID   string     `json:"order_id"`
+	Type      string     `json:"type"`
+	Status    string     `json:"status"`
+	OpenedBy  string     `json:"opened_by"`
+	Summary   string     `json:"summary"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+}
+
+type OrderDisputeListResponse struct {
+	Disputes []OrderDispute `json:"disputes"`
 }
 
 func BuildDisputeView(order OrderSnapshot, history []OrderStatusEvent, payments []PaymentSnapshot, refunds []RefundSnapshot, reviewTasks []ReviewTask) DisputeView {

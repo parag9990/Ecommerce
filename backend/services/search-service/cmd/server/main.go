@@ -173,6 +173,20 @@ func main() {
 		logger.Error("search.create_synonym_usecase.init_failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
+	updateSynonymUsecase, err := usecase.NewUpdateSynonymUsecase(synonymRepo, usecase.UpdateSynonymOptions{
+		Timeout: cfg.Admin.Timeout,
+	}, logger)
+	if err != nil {
+		logger.Error("search.update_synonym_usecase.init_failed", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	deleteSynonymUsecase, err := usecase.NewDeleteSynonymUsecase(synonymRepo, usecase.DeleteSynonymOptions{
+		Timeout: cfg.Admin.Timeout,
+	}, logger)
+	if err != nil {
+		logger.Error("search.delete_synonym_usecase.init_failed", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
 	listSynonymsUsecase, err := usecase.NewListSynonymsUsecase(synonymRepo, usecase.ListSynonymsOptions{
 		Timeout: cfg.Admin.Timeout,
 	}, logger)
@@ -235,7 +249,7 @@ func main() {
 		searchUsecase,
 		autocompleteUsecase,
 		logger,
-		httptransport.WithSynonymUsecases(createSynonymUsecase, listSynonymsUsecase),
+		httptransport.WithSynonymUsecases(createSynonymUsecase, updateSynonymUsecase, deleteSynonymUsecase, listSynonymsUsecase),
 		httptransport.WithReindexStarter(reindexStarter),
 		httptransport.WithAdminAuthorizer(httptransport.NewHeaderAdminAuthorizer(cfg.Admin.AuthEnabled)),
 		httptransport.WithAdminRateLimiter(httptransport.NewFixedWindowAdminRateLimiter(cfg.Admin.MutationRateLimit, cfg.Admin.MutationRateWindow)),
@@ -263,7 +277,7 @@ func main() {
 		logger.Error("search.http.handler_init_failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
-	grpcHandler, err := grpctransport.NewHandler(searchUsecase, autocompleteUsecase, createSynonymUsecase, listSynonymsUsecase)
+	grpcHandler, err := grpctransport.NewHandler(searchUsecase, autocompleteUsecase, createSynonymUsecase, updateSynonymUsecase, deleteSynonymUsecase, listSynonymsUsecase)
 	if err != nil {
 		logger.Error("search.grpc.handler_init_failed", slog.String("error", err.Error()))
 		os.Exit(1)

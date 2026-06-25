@@ -63,6 +63,22 @@ func (r *TypesenseSynonymRepository) GetSynonym(ctx context.Context, id string) 
 	return mapTypesenseSynonym(item, domain.SearchSynonym{ID: id}), true, nil
 }
 
+func (r *TypesenseSynonymRepository) DeleteSynonym(ctx context.Context, id string) (domain.SearchSynonym, bool, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return domain.SearchSynonym{}, false, domain.ErrInvalidSynonym
+	}
+	item, err := r.client.Collection(r.collection).Synonym(id).Delete(ctx)
+	if err != nil {
+		var httpErr *typesense.HTTPError
+		if errors.As(err, &httpErr) && httpErr.Status == http.StatusNotFound {
+			return domain.SearchSynonym{}, false, nil
+		}
+		return domain.SearchSynonym{}, false, mapTypesenseSynonymError("delete synonym", err)
+	}
+	return mapTypesenseSynonym(item, domain.SearchSynonym{ID: id}), true, nil
+}
+
 func (r *TypesenseSynonymRepository) ListSynonyms(ctx context.Context, page domain.SearchSynonymPageRequest) ([]domain.SearchSynonym, error) {
 	page = domain.NormalizeSearchSynonymPageRequest(page)
 	items, err := r.client.Collection(r.collection).Synonyms().Retrieve(ctx)

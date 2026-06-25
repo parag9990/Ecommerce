@@ -788,6 +788,36 @@
       "response_schema": "OrderListResponse"
     },
     {
+      "id": "admin.order_detail",
+      "method": "GET",
+      "path": "/api/v1/admin/orders/{order_id}",
+      "service": "superadmin-service",
+      "grpc": "SuperadminService.GetOrderForAdmin",
+      "auth": "admin",
+      "request_schema": "PathOrderIDRequest",
+      "response_schema": "AdminOrderDetailResponse"
+    },
+    {
+      "id": "admin.order_disputes",
+      "method": "GET",
+      "path": "/api/v1/admin/orders/{order_id}/disputes",
+      "service": "superadmin-service",
+      "grpc": "SuperadminService.ListOrderDisputes",
+      "auth": "admin",
+      "request_schema": "PathOrderIDRequest",
+      "response_schema": "OrderDisputeListResponse"
+    },
+    {
+      "id": "admin.order_review",
+      "method": "POST",
+      "path": "/api/v1/admin/orders/{order_id}/review",
+      "service": "superadmin-service",
+      "grpc": "SuperadminService.MarkOrderManualReview",
+      "auth": "admin",
+      "request_schema": "ManualOrderReviewRequest",
+      "response_schema": "AdminReviewTask"
+    },
+    {
       "id": "admin.payments",
       "method": "GET",
       "path": "/api/v1/admin/payments",
@@ -796,6 +826,46 @@
       "auth": "admin",
       "request_schema": "AdminPaymentListRequest",
       "response_schema": "PaymentListResponse"
+    },
+    {
+      "id": "admin.payment_detail",
+      "method": "GET",
+      "path": "/api/v1/admin/payments/{payment_id}",
+      "service": "superadmin-service",
+      "grpc": "SuperadminService.GetPaymentForAdmin",
+      "auth": "admin",
+      "request_schema": "PathPaymentIDRequest",
+      "response_schema": "AdminPaymentDetailResponse"
+    },
+    {
+      "id": "admin.refunds",
+      "method": "GET",
+      "path": "/api/v1/admin/refunds",
+      "service": "superadmin-service",
+      "grpc": "SuperadminService.ListRefunds",
+      "auth": "admin",
+      "request_schema": "RefundListRequest",
+      "response_schema": "RefundListResponse"
+    },
+    {
+      "id": "admin.payment_reconciliations",
+      "method": "GET",
+      "path": "/api/v1/admin/payment-reconciliations",
+      "service": "superadmin-service",
+      "grpc": "SuperadminService.ListPaymentReconciliations",
+      "auth": "admin",
+      "request_schema": "ReconciliationListRequest",
+      "response_schema": "ReconciliationListResponse"
+    },
+    {
+      "id": "admin.payment_reconciliation_detail",
+      "method": "GET",
+      "path": "/api/v1/admin/payment-reconciliations/{reconciliation_id}",
+      "service": "superadmin-service",
+      "grpc": "SuperadminService.GetPaymentReconciliation",
+      "auth": "admin",
+      "request_schema": "PathReconciliationIDRequest",
+      "response_schema": "ReconciliationDetailResponse"
     },
     {
       "id": "admin.refund_review",
@@ -858,6 +928,16 @@
       "response_schema": "AuditLogListResponse"
     },
     {
+      "id": "admin.audit_logs_export",
+      "method": "POST",
+      "path": "/api/v1/admin/audit-logs/export",
+      "service": "superadmin-service",
+      "grpc": "SuperadminService.ExportAuditLogs",
+      "auth": "superadmin",
+      "request_schema": "AuditLogExportRequest",
+      "response_schema": "CSVExportResponse"
+    },
+    {
       "id": "admin.settings",
       "method": "GET",
       "path": "/api/v1/admin/settings",
@@ -896,6 +976,26 @@
       "auth": "admin",
       "request_schema": "SearchSynonymUpsertInput",
       "response_schema": "SearchSynonym"
+    },
+    {
+      "id": "admin.search_synonym_update",
+      "method": "PATCH",
+      "path": "/api/v1/admin/search/synonyms/{synonym_id}",
+      "service": "search-service",
+      "grpc": "SearchService.UpdateSynonym",
+      "auth": "admin",
+      "request_schema": "SearchSynonymUpsertInput",
+      "response_schema": "SearchSynonym"
+    },
+    {
+      "id": "admin.search_synonym_delete",
+      "method": "DELETE",
+      "path": "/api/v1/admin/search/synonyms/{synonym_id}",
+      "service": "search-service",
+      "grpc": "SearchService.DeleteSynonym",
+      "auth": "admin",
+      "request_schema": "ReasonRequest",
+      "response_schema": "SuccessResponse"
     }
   ],
   "grpc_services": {

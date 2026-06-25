@@ -199,6 +199,25 @@ func (c *orderPaymentPaymentClient) ListPaymentsForAdmin(ctx context.Context, re
 	return domain.AdminPaymentListResponse{Payments: payments}, nil
 }
 
+func (c *orderPaymentPaymentClient) GetPaymentForAdmin(ctx context.Context, paymentID string, actor domain.AdminActor) (domain.AdminPaymentDetailResponse, error) {
+	for _, orderPayments := range c.paymentsByOrder {
+		for _, payment := range orderPayments {
+			if payment.PaymentID == paymentID {
+				return domain.AdminPaymentDetailResponse{Payment: payment}, nil
+			}
+		}
+	}
+	return domain.AdminPaymentDetailResponse{}, domain.NewPaymentNotFound(paymentID)
+}
+
+func (c *orderPaymentPaymentClient) ListRefundsForAdmin(ctx context.Context, req domain.RefundListRequest, actor domain.AdminActor) (domain.RefundListResponse, error) {
+	refunds := make([]domain.RefundSnapshot, 0, len(c.refunds))
+	for _, refund := range c.refunds {
+		refunds = append(refunds, refund)
+	}
+	return domain.RefundListResponse{Refunds: refunds}, nil
+}
+
 func (c *orderPaymentPaymentClient) ListPaymentsForOrder(ctx context.Context, orderID string, actor domain.AdminActor) ([]domain.PaymentSnapshot, error) {
 	return c.paymentsByOrder[orderID], nil
 }
@@ -225,6 +244,14 @@ func (c *orderPaymentPaymentClient) ApplyRefundReview(ctx context.Context, refun
 	refund.Status = domain.RefundStatus(req.Decision)
 	c.refunds[refundID] = refund
 	return refund, nil
+}
+
+func (c *orderPaymentPaymentClient) ListReconciliationAlerts(ctx context.Context, req domain.ReconciliationListRequest, actor domain.AdminActor) (domain.ReconciliationListResponse, error) {
+	return domain.ReconciliationListResponse{}, nil
+}
+
+func (c *orderPaymentPaymentClient) GetReconciliationAlert(ctx context.Context, reconciliationID string, actor domain.AdminActor) (domain.ReconciliationDetailResponse, error) {
+	return domain.ReconciliationDetailResponse{}, nil
 }
 
 type orderPaymentReviewTasks struct {

@@ -52,7 +52,11 @@ type RefundUsecase interface {
 
 type AdminPaymentQuery interface {
 	ListPaymentsForAdmin(context.Context, string, string, string, int, int) (repository.AdminPaymentPage, error)
+	GetPaymentForAdmin(context.Context, string) (domain.Payment, error)
+	ListRefundsForAdmin(context.Context, string, int, int) (repository.AdminRefundPage, error)
 	ListRefundsForPaymentAdmin(context.Context, string) ([]domain.Refund, error)
+	ListReconciliationsForAdmin(context.Context, string, int, int) (repository.AdminReconciliationPage, error)
+	GetReconciliationByID(context.Context, string) (domain.PaymentReconciliation, error)
 }
 
 func (h *Handler) handleAdminPayments(w http.ResponseWriter, r *http.Request) {
@@ -84,6 +88,68 @@ func (h *Handler) handleAdminPayments(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"payments": payments, "page": page, "page_size": pageSize, "total": result.Total})
 }
 
+func (h *Handler) handleAdminPaymentDetail(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	if !h.authorizeRefundRequest(r) {
+		writeAPIError(w, http.StatusForbidden, "FORBIDDEN", "Finance admin authorization is required")
+		return
+	}
+	if h.adminQuery == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "PAYMENT_QUERY_UNAVAILABLE", "Payment query is not configured")
+		return
+	}
+	payment, err := h.adminQuery.GetPaymentForAdmin(r.Context(), r.PathValue("payment_id"))
+	if err != nil {
+		h.writeAdminQueryError(w, r, err)
+		return
+	}
+	refunds, err := h.adminQuery.ListRefundsForPaymentAdmin(r.Context(), payment.PaymentID)
+	if err != nil {
+		h.writeAdminQueryError(w, r, err)
+		return
+	}
+	refundResponses := make([]refundResponse, 0, len(refunds))
+	for _, refund := range refunds {
+		refundResponses = append(refundResponses, refundResponseFromDomain(refund, false))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"payment":  adminPaymentResponseFromDomain(payment),
+		"attempts": []any{},
+		"refunds":  refundResponses,
+	})
+}
+
+func (h *Handler) handleAdminRefunds(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	if !h.authorizeRefundRequest(r) {
+		writeAPIError(w, http.StatusForbidden, "FORBIDDEN", "Finance admin authorization is required")
+		return
+	}
+	if h.adminQuery == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "PAYMENT_QUERY_UNAVAILABLE", "Payment query is not configured")
+		return
+	}
+	page, pageSize, err := paymentAdminPagination(r)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+		return
+	}
+	result, err := h.adminQuery.ListRefundsForAdmin(r.Context(), r.URL.Query().Get("status"), pageSize, (page-1)*pageSize)
+	if err != nil {
+		h.writeAdminQueryError(w, r, err)
+		return
+	}
+	refunds := make([]refundResponse, 0, len(result.Refunds))
+	for _, refund := range result.Refunds {
+		refunds = append(refunds, refundResponseFromDomain(refund, false))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"refunds": refunds, "page": page, "page_size": pageSize, "total": result.Total})
+}
+
 func (h *Handler) handleAdminPaymentRefunds(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
@@ -108,19 +174,74 @@ func (h *Handler) handleAdminPaymentRefunds(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, map[string]any{"refunds": responses})
 }
 
+func (h *Handler) handleAdminReconciliations(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	if !h.authorizeRefundRequest(r) {
+		writeAPIError(w, http.StatusForbidden, "FORBIDDEN", "Finance admin authorization is required")
+		return
+	}
+	if h.adminQuery == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "PAYMENT_QUERY_UNAVAILABLE", "Payment query is not configured")
+		return
+	}
+	page, pageSize, err := paymentAdminPagination(r)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+		return
+	}
+	result, err := h.adminQuery.ListReconciliationsForAdmin(r.Context(), r.URL.Query().Get("status"), pageSize, (page-1)*pageSize)
+	if err != nil {
+		h.writeAdminQueryError(w, r, err)
+		return
+	}
+	alerts := make([]map[string]any, 0, len(result.Reconciliations))
+	for _, reconciliation := range result.Reconciliations {
+		alerts = append(alerts, repository.ReconciliationAlertFromDomain(reconciliation))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"alerts": alerts, "page": page, "page_size": pageSize, "total": result.Total})
+}
+
+func (h *Handler) handleAdminReconciliationDetail(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	if !h.authorizeRefundRequest(r) {
+		writeAPIError(w, http.StatusForbidden, "FORBIDDEN", "Finance admin authorization is required")
+		return
+	}
+	if h.adminQuery == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "PAYMENT_QUERY_UNAVAILABLE", "Payment query is not configured")
+		return
+	}
+	reconciliation, err := h.adminQuery.GetReconciliationByID(r.Context(), r.PathValue("reconciliation_id"))
+	if err != nil {
+		h.writeAdminQueryError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"alert": repository.ReconciliationAlertFromDomain(reconciliation)})
+}
+
 type adminPaymentResponse struct {
-	PaymentID string       `json:"payment_id"`
-	OrderID   string       `json:"order_id"`
-	Provider  string       `json:"provider"`
-	Status    string       `json:"status"`
-	Amount    moneyRequest `json:"amount"`
-	CreatedAt *time.Time   `json:"created_at,omitempty"`
-	UpdatedAt *time.Time   `json:"updated_at,omitempty"`
+	PaymentID         string       `json:"payment_id"`
+	OrderID           string       `json:"order_id"`
+	Provider          string       `json:"provider"`
+	ProviderPaymentID string       `json:"provider_payment_id,omitempty"`
+	Status            string       `json:"status"`
+	Amount            moneyRequest `json:"amount"`
+	CapturedAt        *time.Time   `json:"captured_at,omitempty"`
+	CreatedAt         *time.Time   `json:"created_at,omitempty"`
+	UpdatedAt         *time.Time   `json:"updated_at,omitempty"`
 }
 
 func adminPaymentResponseFromDomain(payment domain.Payment) adminPaymentResponse {
 	created, updated := payment.CreatedAt, payment.UpdatedAt
-	return adminPaymentResponse{PaymentID: payment.PaymentID, OrderID: payment.OrderID, Provider: payment.Provider, Status: string(payment.Status), Amount: moneyRequest{Amount: payment.Amount.Amount, Currency: payment.Amount.Currency}, CreatedAt: &created, UpdatedAt: &updated}
+	var capturedAt *time.Time
+	if payment.CapturedAmount > 0 {
+		capturedAt = &updated
+	}
+	return adminPaymentResponse{PaymentID: payment.PaymentID, OrderID: payment.OrderID, Provider: payment.Provider, ProviderPaymentID: payment.ProviderPaymentID, Status: string(payment.Status), Amount: moneyRequest{Amount: payment.Amount.Amount, Currency: payment.Amount.Currency}, CapturedAt: capturedAt, CreatedAt: &created, UpdatedAt: &updated}
 }
 func paymentAdminPagination(r *http.Request) (int, int, error) {
 	page, pageSize := 1, 20
@@ -238,9 +359,13 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/refunds/{refund_id}", h.handleGetRefund)
 	mux.HandleFunc("/internal/v1/refunds/{refund_id}/review", h.handleReviewRefund)
 	mux.HandleFunc("/internal/admin/payments", h.handleAdminPayments)
+	mux.HandleFunc("/internal/admin/payments/{payment_id}", h.handleAdminPaymentDetail)
 	mux.HandleFunc("/internal/admin/payments/{payment_id}/refunds", h.handleAdminPaymentRefunds)
+	mux.HandleFunc("/internal/admin/refunds", h.handleAdminRefunds)
 	mux.HandleFunc("/internal/admin/refunds/{refund_id}", h.handleGetRefund)
 	mux.HandleFunc("/internal/admin/refunds/{refund_id}/review", h.handleReviewRefund)
+	mux.HandleFunc("/internal/admin/payment-reconciliations", h.handleAdminReconciliations)
+	mux.HandleFunc("/internal/admin/payment-reconciliations/{reconciliation_id}", h.handleAdminReconciliationDetail)
 }
 
 func (h *Handler) handleStateMachine(w http.ResponseWriter, r *http.Request) {
@@ -715,6 +840,18 @@ func (h *Handler) writeRefundError(w http.ResponseWriter, r *http.Request, err e
 			return
 		}
 		h.logger.ErrorContext(r.Context(), "payment.refund.http_error", slog.String("error", err.Error()))
+		writeAPIError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+	}
+}
+
+func (h *Handler) writeAdminQueryError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, domain.ErrPaymentRecordNotFound), errors.Is(err, domain.ErrRefundRecordNotFound), errors.Is(err, domain.ErrReconciliationNotFound):
+		writeAPIError(w, http.StatusNotFound, "NOT_FOUND", "Admin payment resource was not found")
+	case errors.Is(err, domain.ErrInvalidPayment), errors.Is(err, domain.ErrInvalidRefund), errors.Is(err, domain.ErrInvalidReconciliation):
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+	default:
+		h.logger.ErrorContext(r.Context(), "payment.admin_query.http_error", slog.String("error", err.Error()))
 		writeAPIError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
 	}
 }

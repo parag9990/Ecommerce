@@ -81,6 +81,14 @@ type createSynonymRequest struct {
 	Reason   string   `json:"reason"`
 }
 
+type deleteSynonymRequest struct {
+	Reason string `json:"reason"`
+}
+
+type successResponse struct {
+	Success bool `json:"success"`
+}
+
 type reindexRequest struct {
 	Mode             string `json:"mode"`
 	BatchSize        int    `json:"batch_size"`

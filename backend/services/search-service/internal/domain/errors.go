@@ -11,6 +11,7 @@ var (
 	ErrInvalidSearchSchema             = errors.New("invalid search schema")
 	ErrInvalidSearchPolicy             = errors.New("invalid search policy")
 	ErrInvalidSynonym                  = errors.New("invalid search synonym")
+	ErrSearchSynonymNotFound           = errors.New("search synonym not found")
 	ErrSchemaUnavailable               = errors.New("search schema unavailable")
 	ErrInvalidSearchRequest            = errors.New("invalid search request")
 	ErrUnsupportedSearchSort           = errors.New("unsupported search sort")

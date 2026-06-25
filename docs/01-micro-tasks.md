@@ -181,7 +181,7 @@ Priority values:
 | S.No | Task Name | Task Detail (simple Hinglish + deep explanation) | Dependencies | Priority | Status |
 |---:|---|---|---|---|---|
 | 1 | Define public routes | Frontend ke REST endpoints map karo: auth, products, cart, checkout, seller, admin. | Platform foundation | P0 | Completed |
-| 2 | gRPC clients setup | Gateway ke andar har microservice ka gRPC client configure karo. | Proto strategy | P0 | Pending |
+| 2 | gRPC clients setup | Gateway ke andar har microservice ka gRPC client configure karo. | Proto strategy | P0 | Completed |
 | 3 | Auth middleware | JWT validate, user context inject, RBAC enforce karo. Public vs protected routes clear rakho. | Auth Service | P0 | Completed |
 | 4 | Rate limiting | IP, user, route based limits Redis se implement karo. Abuse and bots control honge. | Redis | P0 | Completed |
 | 5 | Request validation | DTO validation, size limits, content-type checks add karo. Service ko clean input milega. | Route definitions | P1 | Completed |

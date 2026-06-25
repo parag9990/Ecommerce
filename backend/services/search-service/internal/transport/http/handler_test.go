@@ -173,7 +173,7 @@ func TestHandleCreateSynonym(t *testing.T) {
 		stubSearchUsecase{},
 		stubAutocompleteUsecase{},
 		slog.Default(),
-		WithSynonymUsecases(createUC, stubListSynonymsUsecase{}),
+		WithSynonymUsecases(createUC, stubUpdateSynonymUsecase{}, stubDeleteSynonymUsecase{}, stubListSynonymsUsecase{}),
 	)
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
@@ -209,7 +209,7 @@ func TestHandleCreateSynonymRequiresAdminRole(t *testing.T) {
 		stubSearchUsecase{},
 		stubAutocompleteUsecase{},
 		slog.Default(),
-		WithSynonymUsecases(stubCreateSynonymUsecase{}, stubListSynonymsUsecase{}),
+		WithSynonymUsecases(stubCreateSynonymUsecase{}, stubUpdateSynonymUsecase{}, stubDeleteSynonymUsecase{}, stubListSynonymsUsecase{}),
 	)
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
@@ -236,7 +236,7 @@ func TestHandleListSynonyms(t *testing.T) {
 		stubSearchUsecase{},
 		stubAutocompleteUsecase{},
 		slog.Default(),
-		WithSynonymUsecases(stubCreateSynonymUsecase{}, listUC),
+		WithSynonymUsecases(stubCreateSynonymUsecase{}, stubUpdateSynonymUsecase{}, stubDeleteSynonymUsecase{}, listUC),
 	)
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
@@ -260,6 +260,81 @@ func TestHandleListSynonyms(t *testing.T) {
 		t.Fatalf("decode response: %v", err)
 	}
 	if len(resp.Synonyms) != 1 || resp.Synonyms[0].SynonymID != "syn_mobile" {
+		t.Fatalf("response = %#v", resp)
+	}
+}
+
+func TestHandleUpdateSynonym(t *testing.T) {
+	updateUC := &capturingUpdateSynonymUsecase{
+		resp: domain.SearchSynonym{ID: "syn_cell_phone", Root: "cell phone", Synonyms: []string{"smartphone"}},
+	}
+	handler, err := NewHandler(
+		stubSchemaUsecase{},
+		stubSearchUsecase{},
+		stubAutocompleteUsecase{},
+		slog.Default(),
+		WithSynonymUsecases(stubCreateSynonymUsecase{}, updateUC, stubDeleteSynonymUsecase{}, stubListSynonymsUsecase{}),
+	)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	body := `{"root":"Cell Phone","synonyms":["smartphone"],"reason":"search terminology"}`
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPatch, "/api/v1/admin/search/synonyms/syn_mobile", strings.NewReader(body))
+	req.Header.Set("X-User-ID", "admin_1")
+	req.Header.Set("X-Roles", "catalog_admin")
+	rec := httptest.NewRecorder()
+
+	NewRouter(handler).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if updateUC.synonymID != "syn_mobile" || updateUC.req.Root != "Cell Phone" || updateUC.req.Reason != "search terminology" {
+		t.Fatalf("request = id:%q req:%#v", updateUC.synonymID, updateUC.req)
+	}
+	var resp searchSynonymResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.SynonymID != "syn_cell_phone" {
+		t.Fatalf("response = %#v", resp)
+	}
+}
+
+func TestHandleDeleteSynonym(t *testing.T) {
+	deleteUC := &capturingDeleteSynonymUsecase{
+		resp: domain.SearchSynonym{ID: "syn_mobile", Root: "mobile", Synonyms: []string{"phone"}},
+	}
+	handler, err := NewHandler(
+		stubSchemaUsecase{},
+		stubSearchUsecase{},
+		stubAutocompleteUsecase{},
+		slog.Default(),
+		WithSynonymUsecases(stubCreateSynonymUsecase{}, stubUpdateSynonymUsecase{}, deleteUC, stubListSynonymsUsecase{}),
+	)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodDelete, "/api/v1/admin/search/synonyms/syn_mobile", strings.NewReader(`{"reason":"cleanup"}`))
+	req.Header.Set("X-User-ID", "admin_1")
+	req.Header.Set("X-Roles", "superadmin")
+	rec := httptest.NewRecorder()
+
+	NewRouter(handler).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if deleteUC.synonymID != "syn_mobile" || deleteUC.reason != "cleanup" {
+		t.Fatalf("delete request = id:%q reason:%q", deleteUC.synonymID, deleteUC.reason)
+	}
+	var resp successResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !resp.Success {
 		t.Fatalf("response = %#v", resp)
 	}
 }
@@ -332,6 +407,18 @@ func (stubCreateSynonymUsecase) Execute(context.Context, domain.SearchSynonymInp
 	return domain.SearchSynonym{ID: "syn_mobile", Root: "mobile", Synonyms: []string{"phone"}}, nil
 }
 
+type stubUpdateSynonymUsecase struct{}
+
+func (stubUpdateSynonymUsecase) Execute(context.Context, string, domain.SearchSynonymInput) (domain.SearchSynonym, error) {
+	return domain.SearchSynonym{ID: "syn_mobile", Root: "mobile", Synonyms: []string{"phone"}}, nil
+}
+
+type stubDeleteSynonymUsecase struct{}
+
+func (stubDeleteSynonymUsecase) Execute(context.Context, string, string) (domain.SearchSynonym, error) {
+	return domain.SearchSynonym{ID: "syn_mobile", Root: "mobile", Synonyms: []string{"phone"}}, nil
+}
+
 type stubListSynonymsUsecase struct{}
 
 func (stubListSynonymsUsecase) Execute(context.Context, domain.SearchSynonymPageRequest) ([]domain.SearchSynonym, error) {
@@ -367,6 +454,30 @@ type capturingCreateSynonymUsecase struct {
 
 func (u *capturingCreateSynonymUsecase) Execute(_ context.Context, req domain.SearchSynonymInput) (domain.SearchSynonym, error) {
 	u.req = req
+	return u.resp, nil
+}
+
+type capturingUpdateSynonymUsecase struct {
+	synonymID string
+	req       domain.SearchSynonymInput
+	resp      domain.SearchSynonym
+}
+
+func (u *capturingUpdateSynonymUsecase) Execute(_ context.Context, synonymID string, req domain.SearchSynonymInput) (domain.SearchSynonym, error) {
+	u.synonymID = synonymID
+	u.req = req
+	return u.resp, nil
+}
+
+type capturingDeleteSynonymUsecase struct {
+	synonymID string
+	reason    string
+	resp      domain.SearchSynonym
+}
+
+func (u *capturingDeleteSynonymUsecase) Execute(_ context.Context, synonymID string, reason string) (domain.SearchSynonym, error) {
+	u.synonymID = synonymID
+	u.reason = reason
 	return u.resp, nil
 }
 

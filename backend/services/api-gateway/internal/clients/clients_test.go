@@ -47,6 +47,9 @@ func TestNewWithDialerInitializesAllServiceClients(t *testing.T) {
 	if registry.Auth == nil || registry.Product == nil || registry.Superadmin == nil {
 		t.Fatal("expected typed service client fields to be populated")
 	}
+	if registry.Wishlist == nil {
+		t.Fatal("expected wishlist service client field to be populated")
+	}
 	if healthv1.NewHealthClient(registry.Auth) == nil {
 		t.Fatal("expected typed service clients to satisfy grpc.ClientConnInterface")
 	}

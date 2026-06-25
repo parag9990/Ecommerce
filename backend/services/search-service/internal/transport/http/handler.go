@@ -35,6 +35,14 @@ type CreateSynonymUsecase interface {
 	Execute(ctx context.Context, req domain.SearchSynonymInput) (domain.SearchSynonym, error)
 }
 
+type UpdateSynonymUsecase interface {
+	Execute(ctx context.Context, synonymID string, req domain.SearchSynonymInput) (domain.SearchSynonym, error)
+}
+
+type DeleteSynonymUsecase interface {
+	Execute(ctx context.Context, synonymID string, reason string) (domain.SearchSynonym, error)
+}
+
 type ListSynonymsUsecase interface {
 	Execute(ctx context.Context, req domain.SearchSynonymPageRequest) ([]domain.SearchSynonym, error)
 }
@@ -56,6 +64,8 @@ type Handler struct {
 	searchUsecase       SearchUsecase
 	autocompleteUsecase AutocompleteUsecase
 	createSynonym       CreateSynonymUsecase
+	updateSynonym       UpdateSynonymUsecase
+	deleteSynonym       DeleteSynonymUsecase
 	listSynonyms        ListSynonymsUsecase
 	reindexStarter      ReindexStarter
 	adminAuthorizer     AdminAuthorizer
@@ -87,15 +97,23 @@ func WithReadinessChecker(checker ReadinessChecker) HandlerOption {
 
 type HandlerOption func(*Handler) error
 
-func WithSynonymUsecases(createSynonym CreateSynonymUsecase, listSynonyms ListSynonymsUsecase) HandlerOption {
+func WithSynonymUsecases(createSynonym CreateSynonymUsecase, updateSynonym UpdateSynonymUsecase, deleteSynonym DeleteSynonymUsecase, listSynonyms ListSynonymsUsecase) HandlerOption {
 	return func(h *Handler) error {
 		if createSynonym == nil {
 			return errors.New("create synonym usecase is required")
+		}
+		if updateSynonym == nil {
+			return errors.New("update synonym usecase is required")
+		}
+		if deleteSynonym == nil {
+			return errors.New("delete synonym usecase is required")
 		}
 		if listSynonyms == nil {
 			return errors.New("list synonyms usecase is required")
 		}
 		h.createSynonym = createSynonym
+		h.updateSynonym = updateSynonym
+		h.deleteSynonym = deleteSynonym
 		h.listSynonyms = listSynonyms
 		return nil
 	}
@@ -171,6 +189,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/search/autocomplete", h.handleAutocomplete)
 	mux.HandleFunc("/api/v1/admin/search/reindex", h.handleAdminSearchReindex)
 	mux.HandleFunc("/api/v1/admin/search/synonyms", h.handleAdminSearchSynonyms)
+	mux.HandleFunc("/api/v1/admin/search/synonyms/", h.handleAdminSearchSynonym)
 	mux.HandleFunc("/internal/v1/search/schema/products", h.handleProductSchema)
 	mux.HandleFunc("/readyz", h.handleReady)
 	if h.metricsHandler != nil {
@@ -253,6 +272,23 @@ func (h *Handler) handleAdminSearchSynonyms(w http.ResponseWriter, r *http.Reque
 		h.handleListSynonyms(w, r)
 	default:
 		w.Header().Set("Allow", http.MethodGet+", "+http.MethodPost)
+		writeAPIError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+	}
+}
+
+func (h *Handler) handleAdminSearchSynonym(w http.ResponseWriter, r *http.Request) {
+	synonymID, err := pathSynonymID(r.URL.Path)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "INVALID_SYNONYM", "invalid search synonym")
+		return
+	}
+	switch r.Method {
+	case http.MethodPatch:
+		h.handleUpdateSynonym(w, r, synonymID)
+	case http.MethodDelete:
+		h.handleDeleteSynonym(w, r, synonymID)
+	default:
+		w.Header().Set("Allow", http.MethodPatch+", "+http.MethodDelete)
 		writeAPIError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 	}
 }
@@ -359,6 +395,90 @@ func (h *Handler) handleCreateSynonym(w http.ResponseWriter, r *http.Request) {
 
 	h.logSynonymAudit(ctx, actor, "search.synonym.upsert", req.Reason, result)
 	writeJSON(w, http.StatusOK, searchSynonymResponseDTO(result))
+}
+
+func (h *Handler) handleUpdateSynonym(w http.ResponseWriter, r *http.Request, synonymID string) {
+	requestID := requestIDFrom(r)
+	w.Header().Set("X-Request-ID", requestID)
+	ctx := requestctx.WithRequestID(r.Context(), requestID)
+
+	actor, err := h.authorizeAdmin(ctx, r, adminPermissionSynonymsWrite)
+	if err != nil {
+		h.writeAdminError(w, r.WithContext(ctx), err)
+		return
+	}
+	if !h.adminRateLimiter.Allow(ctx, actor.ID+":search:synonyms:write") {
+		h.logger.Warn("search.admin.rate_limited",
+			slog.String("request_id", requestID),
+			slog.String("actor_id", actor.ID),
+			slog.String("permission", adminPermissionSynonymsWrite),
+		)
+		writeAPIError(w, http.StatusTooManyRequests, "RATE_LIMITED", "too many admin mutation requests")
+		return
+	}
+	if h.updateSynonym == nil {
+		h.writeAdminError(w, r.WithContext(ctx), errors.New("update synonym usecase is not configured"))
+		return
+	}
+
+	var req createSynonymRequest
+	if err := decodeJSONBody(w, r, &req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "INVALID_JSON", "invalid request body")
+		return
+	}
+
+	result, err := h.updateSynonym.Execute(ctx, synonymID, domain.SearchSynonymInput{
+		Root:     req.Root,
+		Synonyms: req.Synonyms,
+		Reason:   req.Reason,
+	})
+	if err != nil {
+		h.writeAdminError(w, r.WithContext(ctx), err)
+		return
+	}
+
+	h.logSynonymAudit(ctx, actor, "search.synonym.update", req.Reason, result)
+	writeJSON(w, http.StatusOK, searchSynonymResponseDTO(result))
+}
+
+func (h *Handler) handleDeleteSynonym(w http.ResponseWriter, r *http.Request, synonymID string) {
+	requestID := requestIDFrom(r)
+	w.Header().Set("X-Request-ID", requestID)
+	ctx := requestctx.WithRequestID(r.Context(), requestID)
+
+	actor, err := h.authorizeAdmin(ctx, r, adminPermissionSynonymsWrite)
+	if err != nil {
+		h.writeAdminError(w, r.WithContext(ctx), err)
+		return
+	}
+	if !h.adminRateLimiter.Allow(ctx, actor.ID+":search:synonyms:write") {
+		h.logger.Warn("search.admin.rate_limited",
+			slog.String("request_id", requestID),
+			slog.String("actor_id", actor.ID),
+			slog.String("permission", adminPermissionSynonymsWrite),
+		)
+		writeAPIError(w, http.StatusTooManyRequests, "RATE_LIMITED", "too many admin mutation requests")
+		return
+	}
+	if h.deleteSynonym == nil {
+		h.writeAdminError(w, r.WithContext(ctx), errors.New("delete synonym usecase is not configured"))
+		return
+	}
+
+	var req deleteSynonymRequest
+	if err := decodeJSONBody(w, r, &req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "INVALID_JSON", "invalid request body")
+		return
+	}
+
+	result, err := h.deleteSynonym.Execute(ctx, synonymID, req.Reason)
+	if err != nil {
+		h.writeAdminError(w, r.WithContext(ctx), err)
+		return
+	}
+
+	h.logSynonymAudit(ctx, actor, "search.synonym.delete", req.Reason, result)
+	writeJSON(w, http.StatusOK, successResponse{Success: true})
 }
 
 func (h *Handler) handleListSynonyms(w http.ResponseWriter, r *http.Request) {
@@ -510,6 +630,10 @@ func (h *Handler) writeAdminError(w http.ResponseWriter, r *http.Request, err er
 		status = http.StatusBadRequest
 		code = "INVALID_SYNONYM"
 		message = "invalid search synonym"
+	case errors.Is(err, domain.ErrSearchSynonymNotFound):
+		status = http.StatusNotFound
+		code = "SYNONYM_NOT_FOUND"
+		message = "search synonym not found"
 	case errors.Is(err, domain.ErrInvalidReindexRequest):
 		status = http.StatusBadRequest
 		code = "INVALID_REINDEX_REQUEST"
@@ -604,6 +728,19 @@ func parseSearchRequest(values url.Values) (domain.SearchRequest, error) {
 		Page:     page,
 		PageSize: pageSize,
 	}, nil
+}
+
+func pathSynonymID(path string) (string, error) {
+	value := strings.TrimPrefix(path, "/api/v1/admin/search/synonyms/")
+	value = strings.Trim(value, "/")
+	if value == "" || strings.Contains(value, "/") {
+		return "", domain.ErrInvalidSynonym
+	}
+	decoded, err := url.PathUnescape(value)
+	if err != nil || strings.TrimSpace(decoded) == "" {
+		return "", domain.ErrInvalidSynonym
+	}
+	return strings.TrimSpace(decoded), nil
 }
 
 func parseAutocompleteRequest(values url.Values) (domain.AutocompleteRequest, error) {

@@ -44,11 +44,23 @@ func NewHTTPOrderServiceClient(baseURL string, token string, timeout time.Durati
 func (c *HTTPOrderServiceClient) ListOrdersForAdmin(ctx context.Context, req domain.AdminOrderListRequest, actor domain.AdminActor) (domain.AdminOrderListResponse, error) {
 	var out domain.AdminOrderListResponse
 	values := listQuery("", string(req.Status), req.Pagination)
+	if req.Query != "" {
+		values.Set("q", req.Query)
+	}
+	if req.ReviewStatus != "" {
+		values.Set("review_status", req.ReviewStatus)
+	}
 	if req.UserID != "" {
 		values.Set("user_id", req.UserID)
 	}
 	if req.SellerID != "" {
 		values.Set("seller_id", req.SellerID)
+	}
+	if req.From != "" {
+		values.Set("from", req.From)
+	}
+	if req.To != "" {
+		values.Set("to", req.To)
 	}
 	if err := c.do(ctx, http.MethodGet, c.endpoint("/orders", values), nil, actor, "", "order", "", &out); err != nil {
 		return domain.AdminOrderListResponse{}, err
@@ -123,6 +135,24 @@ func (c *HTTPPaymentServiceClient) ListPaymentsForAdmin(ctx context.Context, req
 	return out, nil
 }
 
+func (c *HTTPPaymentServiceClient) GetPaymentForAdmin(ctx context.Context, paymentID string, actor domain.AdminActor) (domain.AdminPaymentDetailResponse, error) {
+	var out domain.AdminPaymentDetailResponse
+	path := "/payments/" + url.PathEscape(paymentID)
+	if err := c.do(ctx, http.MethodGet, c.endpoint(path, nil), nil, actor, "", "payment", paymentID, &out); err != nil {
+		return domain.AdminPaymentDetailResponse{}, err
+	}
+	return out, nil
+}
+
+func (c *HTTPPaymentServiceClient) ListRefundsForAdmin(ctx context.Context, req domain.RefundListRequest, actor domain.AdminActor) (domain.RefundListResponse, error) {
+	var out domain.RefundListResponse
+	values := listQuery("", req.Status, req.Pagination)
+	if err := c.do(ctx, http.MethodGet, c.endpoint("/refunds", values), nil, actor, "", "refund", "", &out); err != nil {
+		return domain.RefundListResponse{}, err
+	}
+	return out, nil
+}
+
 func (c *HTTPPaymentServiceClient) ListPaymentsForOrder(ctx context.Context, orderID string, actor domain.AdminActor) ([]domain.PaymentSnapshot, error) {
 	values := url.Values{}
 	values.Set("order_id", orderID)
@@ -162,6 +192,24 @@ func (c *HTTPPaymentServiceClient) ApplyRefundReview(ctx context.Context, refund
 	}{Decision: req.Decision, Reason: req.Reason}
 	if err := c.do(ctx, http.MethodPost, c.endpoint(path, nil), body, mutation.Actor, mutation.Reason, "refund", refundID, &out); err != nil {
 		return domain.RefundSnapshot{}, err
+	}
+	return out, nil
+}
+
+func (c *HTTPPaymentServiceClient) ListReconciliationAlerts(ctx context.Context, req domain.ReconciliationListRequest, actor domain.AdminActor) (domain.ReconciliationListResponse, error) {
+	var out domain.ReconciliationListResponse
+	values := listQuery("", req.Status, req.Pagination)
+	if err := c.do(ctx, http.MethodGet, c.endpoint("/payment-reconciliations", values), nil, actor, "", "payment", "", &out); err != nil {
+		return domain.ReconciliationListResponse{}, err
+	}
+	return out, nil
+}
+
+func (c *HTTPPaymentServiceClient) GetReconciliationAlert(ctx context.Context, reconciliationID string, actor domain.AdminActor) (domain.ReconciliationDetailResponse, error) {
+	var out domain.ReconciliationDetailResponse
+	path := "/payment-reconciliations/" + url.PathEscape(reconciliationID)
+	if err := c.do(ctx, http.MethodGet, c.endpoint(path, nil), nil, actor, "", "payment", reconciliationID, &out); err != nil {
+		return domain.ReconciliationDetailResponse{}, err
 	}
 	return out, nil
 }
@@ -212,6 +260,14 @@ func (c *UnavailablePaymentServiceClient) ListPaymentsForAdmin(ctx context.Conte
 	return domain.AdminPaymentListResponse{}, domain.NewDownstreamUnavailable(c.message, nil)
 }
 
+func (c *UnavailablePaymentServiceClient) GetPaymentForAdmin(ctx context.Context, paymentID string, actor domain.AdminActor) (domain.AdminPaymentDetailResponse, error) {
+	return domain.AdminPaymentDetailResponse{}, domain.NewDownstreamUnavailable(c.message, nil)
+}
+
+func (c *UnavailablePaymentServiceClient) ListRefundsForAdmin(ctx context.Context, req domain.RefundListRequest, actor domain.AdminActor) (domain.RefundListResponse, error) {
+	return domain.RefundListResponse{}, domain.NewDownstreamUnavailable(c.message, nil)
+}
+
 func (c *UnavailablePaymentServiceClient) ListPaymentsForOrder(ctx context.Context, orderID string, actor domain.AdminActor) ([]domain.PaymentSnapshot, error) {
 	return nil, domain.NewDownstreamUnavailable(c.message, nil)
 }
@@ -226,6 +282,14 @@ func (c *UnavailablePaymentServiceClient) GetRefundForAdmin(ctx context.Context,
 
 func (c *UnavailablePaymentServiceClient) ApplyRefundReview(ctx context.Context, refundID string, req domain.RefundReviewRequest, mutation domain.AdminMutationContext) (domain.RefundSnapshot, error) {
 	return domain.RefundSnapshot{}, domain.NewDownstreamUnavailable(c.message, nil)
+}
+
+func (c *UnavailablePaymentServiceClient) ListReconciliationAlerts(ctx context.Context, req domain.ReconciliationListRequest, actor domain.AdminActor) (domain.ReconciliationListResponse, error) {
+	return domain.ReconciliationListResponse{}, domain.NewDownstreamUnavailable(c.message, nil)
+}
+
+func (c *UnavailablePaymentServiceClient) GetReconciliationAlert(ctx context.Context, reconciliationID string, actor domain.AdminActor) (domain.ReconciliationDetailResponse, error) {
+	return domain.ReconciliationDetailResponse{}, domain.NewDownstreamUnavailable(c.message, nil)
 }
 
 func parseServiceBaseURL(baseURL string, serviceName string) (*url.URL, error) {

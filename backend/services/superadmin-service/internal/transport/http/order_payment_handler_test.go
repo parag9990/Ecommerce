@@ -89,11 +89,29 @@ func (s *orderPaymentUsecaseStub) ListOrdersForAdmin(ctx context.Context, req do
 	}, nil
 }
 
+func (s *orderPaymentUsecaseStub) GetOrderForAdmin(ctx context.Context, orderID string) (domain.AdminOrderDetailResponse, error) {
+	return domain.AdminOrderDetailResponse{
+		Order: domain.OrderSnapshot{OrderID: orderID, Status: domain.OrderStatusPaid},
+	}, nil
+}
+
+func (s *orderPaymentUsecaseStub) ListOrderDisputes(ctx context.Context, orderID string) (domain.OrderDisputeListResponse, error) {
+	return domain.OrderDisputeListResponse{Disputes: []domain.OrderDispute{{DisputeID: "disp_1", OrderID: orderID, Type: "status_mismatch", Status: "open", OpenedBy: "system", Summary: "Payment captured but order is pending"}}}, nil
+}
+
 func (s *orderPaymentUsecaseStub) ListPaymentsForAdmin(ctx context.Context, req domain.AdminPaymentListRequest) (domain.AdminPaymentListResponse, error) {
 	s.paymentListReq = req
 	return domain.AdminPaymentListResponse{
 		Payments: []domain.PaymentSnapshot{{PaymentID: "pay_1", Status: domain.PaymentStatusCaptured}},
 	}, nil
+}
+
+func (s *orderPaymentUsecaseStub) GetPaymentForAdmin(ctx context.Context, paymentID string) (domain.AdminPaymentDetailResponse, error) {
+	return domain.AdminPaymentDetailResponse{Payment: domain.PaymentSnapshot{PaymentID: paymentID, Status: domain.PaymentStatusCaptured}}, nil
+}
+
+func (s *orderPaymentUsecaseStub) ListRefundsForAdmin(ctx context.Context, req domain.RefundListRequest) (domain.RefundListResponse, error) {
+	return domain.RefundListResponse{Refunds: []domain.RefundSnapshot{{RefundID: "refund_1", Status: domain.RefundStatusRequested}}}, nil
 }
 
 func (s *orderPaymentUsecaseStub) ReviewRefund(ctx context.Context, refundID string, req domain.RefundReviewRequest) (domain.RefundSnapshot, error) {
@@ -113,4 +131,12 @@ func (s *orderPaymentUsecaseStub) GetOrderDisputeView(ctx context.Context, order
 	return domain.DisputeView{
 		Order: domain.OrderSnapshot{OrderID: orderID, Status: domain.OrderStatusPaid},
 	}, nil
+}
+
+func (s *orderPaymentUsecaseStub) ListReconciliationAlerts(ctx context.Context, req domain.ReconciliationListRequest) (domain.ReconciliationListResponse, error) {
+	return domain.ReconciliationListResponse{Alerts: []domain.ReconciliationAlertSnapshot{{ReconciliationID: "rec_1", Provider: "stripe", Status: domain.ReconciliationStatusMismatch}}}, nil
+}
+
+func (s *orderPaymentUsecaseStub) GetReconciliationAlert(ctx context.Context, reconciliationID string) (domain.ReconciliationDetailResponse, error) {
+	return domain.ReconciliationDetailResponse{Alert: domain.ReconciliationAlertSnapshot{ReconciliationID: reconciliationID, Provider: "stripe", Status: domain.ReconciliationStatusMismatch}}, nil
 }

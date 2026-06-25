@@ -10,6 +10,8 @@ service SearchService {
   rpc SearchProducts(SearchRequest) returns (SearchResponse);
   rpc Autocomplete(AutocompleteRequest) returns (AutocompleteResponse);
   rpc CreateSynonym(CreateSynonymRequest) returns (SearchSynonym);
+  rpc UpdateSynonym(CreateSynonymRequest) returns (SearchSynonym);
+  rpc DeleteSynonym(CreateSynonymRequest) returns (SearchSynonym);
   rpc ListSynonyms(ListSynonymsRequest) returns (ListSynonymsResponse);
 }
 

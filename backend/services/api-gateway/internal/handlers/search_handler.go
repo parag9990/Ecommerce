@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -28,6 +29,8 @@ type SearchClient interface {
 	SearchProducts(context.Context, *searchv1.SearchRequest, ...grpc.CallOption) (*searchv1.SearchResponse, error)
 	Autocomplete(context.Context, *searchv1.AutocompleteRequest, ...grpc.CallOption) (*searchv1.AutocompleteResponse, error)
 	CreateSynonym(context.Context, *searchv1.CreateSynonymRequest, ...grpc.CallOption) (*searchv1.SearchSynonym, error)
+	UpdateSynonym(context.Context, *searchv1.CreateSynonymRequest, ...grpc.CallOption) (*searchv1.SearchSynonym, error)
+	DeleteSynonym(context.Context, *searchv1.CreateSynonymRequest, ...grpc.CallOption) (*searchv1.SearchSynonym, error)
 	ListSynonyms(context.Context, *searchv1.ListSynonymsRequest, ...grpc.CallOption) (*searchv1.ListSynonymsResponse, error)
 }
 
@@ -46,6 +49,10 @@ type createSynonymHTTPRequest struct {
 	Synonyms []string `json:"synonyms"`
 	Reason   string   `json:"reason,omitempty"`
 	Version  int      `json:"version,omitempty"`
+}
+
+type deleteSynonymHTTPRequest struct {
+	Reason string `json:"reason,omitempty"`
 }
 
 func NewSearchHandler(client SearchClient, logger *slog.Logger) *SearchHandler {
@@ -128,6 +135,57 @@ func (h *SearchHandler) CreateSynonym(w http.ResponseWriter, r *http.Request) {
 	writeData(w, r, http.StatusOK, response)
 }
 
+func (h *SearchHandler) UpdateSynonym(w http.ResponseWriter, r *http.Request) {
+	synonymID, err := searchSynonymIDFromPath(r.URL.Path)
+	if err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "INVALID_SYNONYM", "invalid search synonym")
+		return
+	}
+	var input createSynonymHTTPRequest
+	if err := decodeJSON(w, r, &input); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "INVALID_SYNONYM", err.Error())
+		return
+	}
+	ctx, cancel := h.grpcContext(r)
+	defer cancel()
+	ctx = metadata.AppendToOutgoingContext(ctx, "x-synonym-id", synonymID)
+	if reason := strings.TrimSpace(input.Reason); reason != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, "x-audit-reason", reason)
+	}
+	response, err := h.client.UpdateSynonym(ctx, &searchv1.CreateSynonymRequest{
+		Root: input.Root, Synonyms: append([]string(nil), input.Synonyms...),
+	})
+	if err != nil {
+		h.writeGRPCError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusOK, response)
+}
+
+func (h *SearchHandler) DeleteSynonym(w http.ResponseWriter, r *http.Request) {
+	synonymID, err := searchSynonymIDFromPath(r.URL.Path)
+	if err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "INVALID_SYNONYM", "invalid search synonym")
+		return
+	}
+	var input deleteSynonymHTTPRequest
+	if err := decodeJSON(w, r, &input); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "INVALID_SYNONYM", err.Error())
+		return
+	}
+	ctx, cancel := h.grpcContext(r)
+	defer cancel()
+	ctx = metadata.AppendToOutgoingContext(ctx, "x-synonym-id", synonymID)
+	if reason := strings.TrimSpace(input.Reason); reason != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, "x-audit-reason", reason)
+	}
+	if _, err := h.client.DeleteSynonym(ctx, &searchv1.CreateSynonymRequest{Root: synonymID}); err != nil {
+		h.writeGRPCError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusOK, map[string]bool{"success": true})
+}
+
 func (h *SearchHandler) ListSynonyms(w http.ResponseWriter, r *http.Request) {
 	page, err := optionalPositiveInt(r.URL.Query().Get("page"))
 	if err != nil {
@@ -147,6 +205,19 @@ func (h *SearchHandler) ListSynonyms(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, r, http.StatusOK, response)
+}
+
+func searchSynonymIDFromPath(path string) (string, error) {
+	value := strings.TrimPrefix(path, "/api/v1/admin/search/synonyms/")
+	value = strings.Trim(value, "/")
+	if value == "" || strings.Contains(value, "/") {
+		return "", strconv.ErrSyntax
+	}
+	decoded, err := url.PathUnescape(value)
+	if err != nil || strings.TrimSpace(decoded) == "" {
+		return "", strconv.ErrSyntax
+	}
+	return strings.TrimSpace(decoded), nil
 }
 
 func searchGRPCRequest(r *http.Request) (*searchv1.SearchRequest, error) {
@@ -259,6 +330,8 @@ func (h *SearchHandler) writeGRPCError(w http.ResponseWriter, r *http.Request, e
 		writeAPIError(w, r, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "Authentication required")
 	case codes.PermissionDenied:
 		writeAPIError(w, r, http.StatusForbidden, "PERMISSION_DENIED", "Permission denied")
+	case codes.NotFound:
+		writeAPIError(w, r, http.StatusNotFound, "NOT_FOUND", status.Convert(err).Message())
 	case codes.ResourceExhausted:
 		writeAPIError(w, r, http.StatusTooManyRequests, "RATE_LIMITED", "Too many requests")
 	case codes.DeadlineExceeded:

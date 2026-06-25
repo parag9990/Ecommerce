@@ -543,6 +543,7 @@ func (c Config) Validate() error {
 		"USER_GRPC_ADDR":         c.UserGRPCAddr,
 		"PRODUCT_GRPC_ADDR":      c.ProductGRPCAddr,
 		"CART_GRPC_ADDR":         c.CartGRPCAddr,
+		"WISHLIST_GRPC_ADDR":     c.WishlistGRPCAddr,
 		"ORDER_GRPC_ADDR":        c.OrderGRPCAddr,
 		"PAYMENT_GRPC_ADDR":      c.PaymentGRPCAddr,
 		"SEARCH_GRPC_ADDR":       c.SearchGRPCAddr,
