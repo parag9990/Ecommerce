@@ -75,7 +75,7 @@ func TestHTTPPaymentServiceClientReviewBodyMatchesStrictContract(t *testing.T) {
 		if len(body) != 2 {
 			t.Errorf("unexpected body %+v", body)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"refund_id": "refund_1", "status": "approved", "amount": map[string]any{"amount": 100, "currency": "INR"}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"refund_id": "refund_1", "status": "approved", "amount": map[string]any{"amount": 100, "currency": "INR"}, "review_reason": "verified duplicate payment"})
 	}))
 	defer server.Close()
 	client, err := NewHTTPPaymentServiceClient(server.URL, testAdminToken, time.Second, logging.NewNop())
@@ -88,6 +88,9 @@ func TestHTTPPaymentServiceClientReviewBodyMatchesStrictContract(t *testing.T) {
 	}
 	if result.Status != domain.RefundStatusApproved {
 		t.Fatalf("result=%+v", result)
+	}
+	if result.ReviewReason != "verified duplicate payment" {
+		t.Fatalf("review_reason=%q", result.ReviewReason)
 	}
 }
 
@@ -120,6 +123,9 @@ func assertAdminRequest(t *testing.T, r *http.Request) {
 	}
 	if r.Header.Get("X-Admin-Id") != "admin_1" || !strings.Contains(r.Header.Get("X-Admin-Roles"), "superadmin") {
 		t.Errorf("admin headers=%v", r.Header)
+	}
+	if r.Header.Get("X-Actor-Roles") != "superadmin" || r.Header.Get("X-Roles") != "superadmin" {
+		t.Errorf("role compatibility headers=%v", r.Header)
 	}
 }
 func testActor() domain.AdminActor {

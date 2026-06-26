@@ -64,7 +64,7 @@ func removeHopByHop(header http.Header) {
 	}
 }
 func removeForwardedIdentity(header http.Header) {
-	for _, name := range []string{"X-Admin-ID", "X-Actor-ID", "X-User-ID", "X-Admin-Roles", "X-Actor-Role", "X-Roles", "X-User-Roles", "X-Admin-Mask-PII", "X-Admin-Risk-Allowed"} {
+	for _, name := range []string{"X-Admin-ID", "X-Actor-ID", "X-User-ID", "X-Admin-Roles", "X-Actor-Roles", "X-Actor-Role", "X-Roles", "X-User-Roles", "X-Admin-Mask-PII", "X-Admin-Risk-Allowed"} {
 		header.Del(name)
 	}
 }

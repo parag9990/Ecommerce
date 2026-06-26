@@ -210,10 +210,13 @@ func listQuery(query string, status string, pagination domain.Pagination) url.Va
 }
 
 func attachAdminHeaders(header http.Header, actor domain.AdminActor, reason string) {
+	roles := strings.Join(domain.RolesToStrings(actor.Roles), ",")
 	header.Set("X-Admin-Id", actor.AdminID)
 	header.Set("X-Actor-Id", actor.AdminID)
 	header.Set("X-User-Id", actor.UserID)
-	header.Set("X-Admin-Roles", strings.Join(domain.RolesToStrings(actor.Roles), ","))
+	header.Set("X-Admin-Roles", roles)
+	header.Set("X-Actor-Roles", roles)
+	header.Set("X-Roles", roles)
 	if len(actor.Roles) > 0 {
 		header.Set("X-Actor-Role", string(actor.Roles[0]))
 	}

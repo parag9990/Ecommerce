@@ -119,16 +119,17 @@ type adminPaymentDetailDTO struct {
 }
 
 type refundDTO struct {
-	RefundID    string     `json:"refund_id"`
-	PaymentID   string     `json:"payment_id"`
-	OrderID     string     `json:"order_id,omitempty"`
-	Status      string     `json:"status"`
-	Amount      moneyDTO   `json:"amount"`
-	Reason      string     `json:"reason"`
-	RequestedBy string     `json:"requested_by,omitempty"`
-	ReviewedBy  string     `json:"reviewed_by,omitempty"`
-	ReviewedAt  *time.Time `json:"reviewed_at,omitempty"`
-	CreatedAt   *time.Time `json:"created_at,omitempty"`
+	RefundID     string     `json:"refund_id"`
+	PaymentID    string     `json:"payment_id"`
+	OrderID      string     `json:"order_id,omitempty"`
+	Status       string     `json:"status"`
+	Amount       moneyDTO   `json:"amount"`
+	Reason       string     `json:"reason"`
+	RequestedBy  string     `json:"requested_by,omitempty"`
+	ReviewedBy   string     `json:"reviewed_by,omitempty"`
+	ReviewReason string     `json:"review_reason,omitempty"`
+	ReviewedAt   *time.Time `json:"reviewed_at,omitempty"`
+	CreatedAt    *time.Time `json:"created_at,omitempty"`
 }
 
 type refundListDTO struct {
@@ -364,16 +365,17 @@ func refundDTOs(refunds []domain.RefundSnapshot) []refundDTO {
 
 func refundDTOFromDomain(refund domain.RefundSnapshot) refundDTO {
 	return refundDTO{
-		RefundID:    refund.RefundID,
-		PaymentID:   refund.PaymentID,
-		OrderID:     refund.OrderID,
-		Status:      string(refund.Status),
-		Amount:      moneyDTOFromDomain(refund.Amount),
-		Reason:      refund.Reason,
-		RequestedBy: refund.RequestedBy,
-		ReviewedBy:  refund.ReviewedBy,
-		ReviewedAt:  refund.ReviewedAt,
-		CreatedAt:   refund.CreatedAt,
+		RefundID:     refund.RefundID,
+		PaymentID:    refund.PaymentID,
+		OrderID:      refund.OrderID,
+		Status:       string(refund.Status),
+		Amount:       moneyDTOFromDomain(refund.Amount),
+		Reason:       refund.Reason,
+		RequestedBy:  refund.RequestedBy,
+		ReviewedBy:   refund.ReviewedBy,
+		ReviewReason: refund.ReviewReason,
+		ReviewedAt:   refund.ReviewedAt,
+		CreatedAt:    refund.CreatedAt,
 	}
 }
 

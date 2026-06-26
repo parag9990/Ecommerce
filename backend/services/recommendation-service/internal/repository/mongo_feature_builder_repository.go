@@ -168,31 +168,37 @@ func (r *MongoFeatureRepository) upsertProductFeature(ctx context.Context, inter
 		{Key: "$inc", Value: inc},
 		{Key: "$set", Value: set},
 		{Key: "$max", Value: bson.D{{Key: "last_event_at", Value: interaction.OccurredAt}}},
-		{Key: "$setOnInsert", Value: bson.D{
-			{Key: "_id", Value: interaction.ProductID},
-			{Key: "product_id", Value: interaction.ProductID},
-			{Key: "counters.views_24h", Value: int64(0)},
-			{Key: "counters.views_7d", Value: int64(0)},
-			{Key: "counters.views_30d", Value: int64(0)},
-			{Key: "counters.cart_adds_24h", Value: int64(0)},
-			{Key: "counters.cart_adds_7d", Value: int64(0)},
-			{Key: "counters.cart_adds_30d", Value: int64(0)},
-			{Key: "counters.wishlist_adds_24h", Value: int64(0)},
-			{Key: "counters.wishlist_adds_7d", Value: int64(0)},
-			{Key: "counters.wishlist_adds_30d", Value: int64(0)},
-			{Key: "counters.purchases_24h", Value: int64(0)},
-			{Key: "counters.purchases_7d", Value: int64(0)},
-			{Key: "counters.purchases_30d", Value: int64(0)},
-			{Key: "quality_flags", Value: domain.ProductQualityFlags{IsRecommendable: true}},
-			{Key: "embedding_refs", Value: bson.A{}},
-			{Key: "feature_version", Value: domain.FeatureSchemaVersion},
-			{Key: "created_at", Value: updatedAt},
-		}},
+		{Key: "$setOnInsert", Value: productFeatureSetOnInsert(interaction, updatedAt)},
 	}
 	if _, err := r.productFeatures.UpdateOne(ctx, bson.D{{Key: "product_id", Value: interaction.ProductID}}, update, options.UpdateOne().SetUpsert(true)); err != nil {
 		return fmt.Errorf("upsert product features: %w", err)
 	}
 	return nil
+}
+
+func productFeatureSetOnInsert(interaction domain.UserInteraction, createdAt time.Time) bson.D {
+	return bson.D{
+		{Key: "_id", Value: interaction.ProductID},
+		{Key: "product_id", Value: interaction.ProductID},
+		{Key: "status", Value: domain.ProductStatusActive},
+		{Key: "stock_status", Value: domain.ProductStockStatusInStock},
+		{Key: "counters.views_24h", Value: int64(0)},
+		{Key: "counters.views_7d", Value: int64(0)},
+		{Key: "counters.views_30d", Value: int64(0)},
+		{Key: "counters.cart_adds_24h", Value: int64(0)},
+		{Key: "counters.cart_adds_7d", Value: int64(0)},
+		{Key: "counters.cart_adds_30d", Value: int64(0)},
+		{Key: "counters.wishlist_adds_24h", Value: int64(0)},
+		{Key: "counters.wishlist_adds_7d", Value: int64(0)},
+		{Key: "counters.wishlist_adds_30d", Value: int64(0)},
+		{Key: "counters.purchases_24h", Value: int64(0)},
+		{Key: "counters.purchases_7d", Value: int64(0)},
+		{Key: "counters.purchases_30d", Value: int64(0)},
+		{Key: "quality_flags", Value: domain.ProductQualityFlags{IsRecommendable: true}},
+		{Key: "embedding_refs", Value: bson.A{}},
+		{Key: "feature_version", Value: domain.FeatureSchemaVersion},
+		{Key: "created_at", Value: createdAt},
+	}
 }
 
 func (r *MongoFeatureRepository) upsertUserProfile(ctx context.Context, interaction domain.UserInteraction, batch domain.FeatureBatch) error {

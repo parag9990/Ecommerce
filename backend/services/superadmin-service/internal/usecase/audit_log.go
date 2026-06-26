@@ -11,6 +11,7 @@ import (
 
 type AuditLogAuthorizer interface {
 	RequirePermission(ctx context.Context, actor domain.AdminActor, permission domain.Permission) error
+	RequireHighRiskPermission(ctx context.Context, actor domain.AdminActor, permission domain.Permission, reason string) error
 }
 
 type AuditLogRepository interface {
@@ -71,7 +72,7 @@ func (s *AuditLogService) ExportAuditLogs(ctx context.Context, req domain.AuditL
 	if err != nil {
 		return domain.AuditLogListResponse{}, err
 	}
-	if err := s.authorizer.RequirePermission(ctx, actor, domain.PermissionAuditLogsExport); err != nil {
+	if err := s.authorizer.RequireHighRiskPermission(ctx, actor, domain.PermissionAuditLogsExport, normalizedReason); err != nil {
 		return domain.AuditLogListResponse{}, err
 	}
 

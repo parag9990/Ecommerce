@@ -326,17 +326,18 @@ type AdminPaymentDetailResponse struct {
 }
 
 type RefundSnapshot struct {
-	RefundID    string       `json:"refund_id"`
-	PaymentID   string       `json:"payment_id,omitempty"`
-	OrderID     string       `json:"order_id,omitempty"`
-	Status      RefundStatus `json:"status"`
-	Amount      Money        `json:"amount"`
-	Reason      string       `json:"reason,omitempty"`
-	RequestedBy string       `json:"requested_by,omitempty"`
-	ReviewedBy  string       `json:"reviewed_by,omitempty"`
-	ReviewedAt  *time.Time   `json:"reviewed_at,omitempty"`
-	CreatedAt   *time.Time   `json:"created_at,omitempty"`
-	UpdatedAt   *time.Time   `json:"updated_at,omitempty"`
+	RefundID     string       `json:"refund_id"`
+	PaymentID    string       `json:"payment_id,omitempty"`
+	OrderID      string       `json:"order_id,omitempty"`
+	Status       RefundStatus `json:"status"`
+	Amount       Money        `json:"amount"`
+	Reason       string       `json:"reason,omitempty"`
+	RequestedBy  string       `json:"requested_by,omitempty"`
+	ReviewedBy   string       `json:"reviewed_by,omitempty"`
+	ReviewReason string       `json:"review_reason,omitempty"`
+	ReviewedAt   *time.Time   `json:"reviewed_at,omitempty"`
+	CreatedAt    *time.Time   `json:"created_at,omitempty"`
+	UpdatedAt    *time.Time   `json:"updated_at,omitempty"`
 }
 
 type RefundListRequest struct {

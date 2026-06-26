@@ -44,6 +44,9 @@ func TestRefundReviewHandler(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
+	if !strings.Contains(rec.Body.String(), `"review_reason":"duplicate charge verified by finance"`) {
+		t.Fatalf("response body missing review_reason: %s", rec.Body.String())
+	}
 	if controls.reviewedRefundID != "refund_1" || controls.refundReviewReq.Decision != "approved" {
 		t.Fatalf("review request = %s/%+v", controls.reviewedRefundID, controls.refundReviewReq)
 	}
@@ -117,7 +120,7 @@ func (s *orderPaymentUsecaseStub) ListRefundsForAdmin(ctx context.Context, req d
 func (s *orderPaymentUsecaseStub) ReviewRefund(ctx context.Context, refundID string, req domain.RefundReviewRequest) (domain.RefundSnapshot, error) {
 	s.reviewedRefundID = refundID
 	s.refundReviewReq = req
-	return domain.RefundSnapshot{RefundID: refundID, Status: domain.RefundStatusApproved}, nil
+	return domain.RefundSnapshot{RefundID: refundID, Status: domain.RefundStatusApproved, ReviewReason: req.Reason}, nil
 }
 
 func (s *orderPaymentUsecaseStub) MarkOrderManualReview(ctx context.Context, orderID string, req domain.ManualOrderReviewRequest) (*domain.ReviewTask, error) {
