@@ -60,3 +60,40 @@ func TestSuperadminProxyBuildsTrustedAdminContext(t *testing.T) {
 		t.Fatalf("status=%d", response.Code)
 	}
 }
+
+func TestPaymentProxyInjectsInternalBearerAndActorRole(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer payment-internal-token-at-least-32-chars" {
+			t.Errorf("authorization=%q", r.Header.Get("Authorization"))
+		}
+		if r.Header.Get("X-Actor-ID") != "buyer_1" || r.Header.Get("X-Actor-Role") != "buyer" {
+			t.Errorf("actor headers=%v", r.Header)
+		}
+		if r.Header.Get("X-User-ID") != "buyer_1" || r.Header.Get("X-User-Roles") != "buyer" {
+			t.Errorf("user headers=%v", r.Header)
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer upstream.Close()
+
+	proxy, err := NewServiceHTTPProxy(
+		"payment",
+		upstream.URL,
+		upstream.Client(),
+		nil,
+		WithBearerAuth("payment-internal-token-at-least-32-chars"),
+		WithActorRoleHeader(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/payments/pay_1/retry", nil)
+	request.Header.Set("Authorization", "Bearer user-jwt")
+	request.Header.Set("X-Actor-Role", "superadmin")
+	request = request.WithContext(gatewayauth.WithClaims(request.Context(), gatewayauth.AccessClaims{Roles: []string{"buyer"}, RegisteredClaims: jwt.RegisteredClaims{Subject: "buyer_1"}}))
+	response := httptest.NewRecorder()
+	proxy.ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status=%d", response.Code)
+	}
+}

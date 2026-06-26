@@ -38,6 +38,7 @@ type RouterOptions struct {
 	AuthHTTPClient       *http.Client
 	ProductHTTPClient    *http.Client
 	CMSHTTPClient        *http.Client
+	PaymentHTTPClient    *http.Client
 	WishlistHTTPClient   *http.Client
 	SuperadminHTTPClient *http.Client
 }
@@ -146,6 +147,24 @@ func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecas
 			return nil, fmt.Errorf("configure cms HTTP proxy: %w", err)
 		}
 	}
+	var paymentProxy *SessionProxy
+	if strings.TrimSpace(cfg.PaymentHTTPURL) != "" {
+		client := opts.PaymentHTTPClient
+		if client == nil {
+			client = &http.Client{Timeout: cfg.PaymentHTTPTimeout}
+		}
+		paymentProxy, err = NewServiceHTTPProxy(
+			"payment",
+			cfg.PaymentHTTPURL,
+			client,
+			logger,
+			WithBearerAuth(cfg.PaymentInternalAPIToken),
+			WithActorRoleHeader(),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("configure payment HTTP proxy: %w", err)
+		}
+	}
 	var superadminProxy *SessionProxy
 	if strings.TrimSpace(cfg.SuperadminHTTPURL) != "" {
 		client := opts.SuperadminHTTPClient
@@ -186,6 +205,9 @@ func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecas
 		}
 		if cmsProxy != nil && route.Service == "cms-service" {
 			endpoint = cmsProxy.ServeHTTP
+		}
+		if paymentProxy != nil && route.Service == "payment-service" {
+			endpoint = paymentProxy.ServeHTTP
 		}
 		if superadminProxy != nil && route.Service == "superadmin-service" {
 			endpoint = superadminProxy.ServeHTTP

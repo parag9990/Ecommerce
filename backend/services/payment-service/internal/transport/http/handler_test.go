@@ -237,7 +237,7 @@ func TestRetryPaymentEndpointMapsBuyerAndIdempotencyContract(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/payments/pay_failed/retry", strings.NewReader(`{"idempotency_key":"retry_client_123"}`))
 	req.Header.Set("Authorization", "Bearer test-internal-payment-token")
 	req.Header.Set("X-Actor-ID", "usr_123")
-	req.Header.Set("X-Actor-Role", "buyer")
+	req.Header.Set("X-Actor-Role", "buyer,admin")
 	req.Header.Set("Idempotency-Key", "retry_client_123")
 	req.Header.Set("X-Request-ID", "request_123")
 	rr := httptest.NewRecorder()

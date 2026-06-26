@@ -51,6 +51,8 @@ data:
   WISHLIST_HTTP_TIMEOUT: 10s
   ORDER_GRPC_ADDR: order-service:9094
   PAYMENT_GRPC_ADDR: payment-service:8080
+  PAYMENT_HTTP_URL: http://payment-service:8080
+  PAYMENT_HTTP_TIMEOUT: 10s
   SEARCH_GRPC_ADDR: search-service:9085
   CMS_GRPC_ADDR: cms-service:9098
   CMS_HTTP_URL: http://cms-service:8087

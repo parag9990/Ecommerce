@@ -70,6 +70,18 @@ func TestConfigValidateRejectsWildcardCORSOrigin(t *testing.T) {
 	}
 }
 
+func TestConfigValidateRequiresPaymentProxyToken(t *testing.T) {
+	cfg := validConfig(t)
+	cfg.PaymentHTTPURL = "http://payment-service:8080"
+	cfg.PaymentHTTPTimeout = time.Second
+	cfg.PaymentInternalAPIToken = "short"
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "PAYMENT_INTERNAL_API_TOKEN must be at least 32 characters") {
+		t.Fatalf("expected payment token validation error, got %v", err)
+	}
+}
+
 func TestConfigLoadReadsGRPCSettings(t *testing.T) {
 	contractPath := writeTestContract(t)
 	t.Setenv("API_CONTRACT_PATH", contractPath)
@@ -115,6 +127,26 @@ func TestConfigLoadReadsSellerDashboardHTTPTargets(t *testing.T) {
 	}
 	if cfg.CMSInternalAuthHeader != "X-CMS-Token" || cfg.CMSInternalAuthToken != "change-me" {
 		t.Fatalf("unexpected cms auth config: header=%q token=%q", cfg.CMSInternalAuthHeader, cfg.CMSInternalAuthToken)
+	}
+}
+
+func TestConfigLoadReadsPaymentHTTPTarget(t *testing.T) {
+	contractPath := writeTestContract(t)
+	t.Setenv("API_CONTRACT_PATH", contractPath)
+	t.Setenv("PAYMENT_HTTP_URL", "http://payment-service:8080")
+	t.Setenv("PAYMENT_HTTP_TIMEOUT", "2500ms")
+	t.Setenv("PAYMENT_INTERNAL_API_TOKEN", "payment-internal-token-at-least-32-chars")
+	setGRPCTargetEnv(t)
+
+	cfg, err := Load(context.Background())
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.PaymentHTTPURL != "http://payment-service:8080" || cfg.PaymentHTTPTimeout != 2500*time.Millisecond {
+		t.Fatalf("unexpected payment http config: url=%q timeout=%s", cfg.PaymentHTTPURL, cfg.PaymentHTTPTimeout)
+	}
+	if cfg.PaymentInternalAPIToken != "payment-internal-token-at-least-32-chars" {
+		t.Fatalf("unexpected payment internal token %q", cfg.PaymentInternalAPIToken)
 	}
 }
 

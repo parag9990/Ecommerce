@@ -85,32 +85,35 @@ type Config struct {
 
 	WebhookSignatureHeader string
 
-	AuthGRPCAddr          string
-	AuthHTTPURL           string
-	AuthHTTPTimeout       time.Duration
-	UserGRPCAddr          string
-	ProductGRPCAddr       string
-	ProductHTTPURL        string
-	ProductHTTPTimeout    time.Duration
-	CartGRPCAddr          string
-	WishlistGRPCAddr      string
-	WishlistHTTPURL       string
-	WishlistHTTPTimeout   time.Duration
-	OrderGRPCAddr         string
-	PaymentGRPCAddr       string
-	SearchGRPCAddr        string
-	CMSGRPCAddr           string
-	CMSHTTPURL            string
-	CMSHTTPTimeout        time.Duration
-	CMSInternalAuthHeader string
-	CMSInternalAuthToken  string
-	SessionGRPCAddr       string
-	SessionHTTPURL        string
-	SessionHTTPTimeout    time.Duration
-	NotificationGRPCAddr  string
-	SuperadminGRPCAddr    string
-	SuperadminHTTPURL     string
-	SuperadminHTTPTimeout time.Duration
+	AuthGRPCAddr            string
+	AuthHTTPURL             string
+	AuthHTTPTimeout         time.Duration
+	UserGRPCAddr            string
+	ProductGRPCAddr         string
+	ProductHTTPURL          string
+	ProductHTTPTimeout      time.Duration
+	CartGRPCAddr            string
+	WishlistGRPCAddr        string
+	WishlistHTTPURL         string
+	WishlistHTTPTimeout     time.Duration
+	OrderGRPCAddr           string
+	PaymentGRPCAddr         string
+	PaymentHTTPURL          string
+	PaymentHTTPTimeout      time.Duration
+	PaymentInternalAPIToken string
+	SearchGRPCAddr          string
+	CMSGRPCAddr             string
+	CMSHTTPURL              string
+	CMSHTTPTimeout          time.Duration
+	CMSInternalAuthHeader   string
+	CMSInternalAuthToken    string
+	SessionGRPCAddr         string
+	SessionHTTPURL          string
+	SessionHTTPTimeout      time.Duration
+	NotificationGRPCAddr    string
+	SuperadminGRPCAddr      string
+	SuperadminHTTPURL       string
+	SuperadminHTTPTimeout   time.Duration
 }
 
 func Load(ctx context.Context) (Config, error) {
@@ -155,6 +158,10 @@ func Load(ctx context.Context) (Config, error) {
 		return Config{}, err
 	}
 	cmsHTTPTimeout, err := getDuration("CMS_HTTP_TIMEOUT", 10*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	paymentHTTPTimeout, err := getDuration("PAYMENT_HTTP_TIMEOUT", 10*time.Second)
 	if err != nil {
 		return Config{}, err
 	}
@@ -327,41 +334,44 @@ func Load(ctx context.Context) (Config, error) {
 			MaxReceiveMsgBytes: grpcWebMaxReceiveMsgBytes,
 			MaxSendMsgBytes:    grpcWebMaxSendMsgBytes,
 		},
-		Observability:          observabilityConfig,
-		JWTIssuer:              getenv("JWT_ISSUER", "ecommerce-auth"),
-		JWTAudience:            getenv("JWT_AUDIENCE", "ecommerce-api"),
-		JWTAllowedAlgs:         getCSV("JWT_ALLOWED_ALGS", []string{"RS256"}),
-		JWTJWKSURL:             getenv("JWT_JWKS_URL", ""),
-		JWTJWKSCacheTTL:        jwksCacheTTL,
-		JWTJWKSFetchTimeout:    jwksFetchTimeout,
-		JWTClockSkew:           jwtClockSkew,
-		WebhookSignatureHeader: getenv("WEBHOOK_SIGNATURE_HEADER", "X-Provider-Signature"),
-		AuthGRPCAddr:           getenv("AUTH_GRPC_ADDR", ""),
-		AuthHTTPURL:            getenv("AUTH_HTTP_URL", "http://auth-service:8081"),
-		AuthHTTPTimeout:        authHTTPTimeout,
-		UserGRPCAddr:           getenv("USER_GRPC_ADDR", ""),
-		ProductGRPCAddr:        getenv("PRODUCT_GRPC_ADDR", ""),
-		ProductHTTPURL:         getenv("PRODUCT_HTTP_URL", "http://product-service:8082"),
-		ProductHTTPTimeout:     productHTTPTimeout,
-		CartGRPCAddr:           getenv("CART_GRPC_ADDR", ""),
-		WishlistGRPCAddr:       getenv("WISHLIST_GRPC_ADDR", ""),
-		WishlistHTTPURL:        getenv("WISHLIST_HTTP_URL", "http://wishlist-service:8084"),
-		WishlistHTTPTimeout:    wishlistHTTPTimeout,
-		OrderGRPCAddr:          getenv("ORDER_GRPC_ADDR", ""),
-		PaymentGRPCAddr:        getenv("PAYMENT_GRPC_ADDR", ""),
-		SearchGRPCAddr:         getenv("SEARCH_GRPC_ADDR", ""),
-		CMSGRPCAddr:            getenv("CMS_GRPC_ADDR", ""),
-		CMSHTTPURL:             getenv("CMS_HTTP_URL", "http://cms-service:8087"),
-		CMSHTTPTimeout:         cmsHTTPTimeout,
-		CMSInternalAuthHeader:  getenv("CMS_INTERNAL_AUTH_HEADER", "X-Internal-Token"),
-		CMSInternalAuthToken:   getenv("CMS_INTERNAL_AUTH_TOKEN", ""),
-		SessionGRPCAddr:        getenv("SESSION_GRPC_ADDR", ""),
-		SessionHTTPURL:         getenv("SESSION_HTTP_URL", "http://session-service:8086"),
-		SessionHTTPTimeout:     sessionHTTPTimeout,
-		NotificationGRPCAddr:   getenv("NOTIFICATION_GRPC_ADDR", ""),
-		SuperadminGRPCAddr:     getenv("SUPERADMIN_GRPC_ADDR", ""),
-		SuperadminHTTPURL:      getenv("SUPERADMIN_HTTP_URL", "http://superadmin-service:8088"),
-		SuperadminHTTPTimeout:  superadminHTTPTimeout,
+		Observability:           observabilityConfig,
+		JWTIssuer:               getenv("JWT_ISSUER", "ecommerce-auth"),
+		JWTAudience:             getenv("JWT_AUDIENCE", "ecommerce-api"),
+		JWTAllowedAlgs:          getCSV("JWT_ALLOWED_ALGS", []string{"RS256"}),
+		JWTJWKSURL:              getenv("JWT_JWKS_URL", ""),
+		JWTJWKSCacheTTL:         jwksCacheTTL,
+		JWTJWKSFetchTimeout:     jwksFetchTimeout,
+		JWTClockSkew:            jwtClockSkew,
+		WebhookSignatureHeader:  getenv("WEBHOOK_SIGNATURE_HEADER", "X-Provider-Signature"),
+		AuthGRPCAddr:            getenv("AUTH_GRPC_ADDR", ""),
+		AuthHTTPURL:             getenv("AUTH_HTTP_URL", "http://auth-service:8081"),
+		AuthHTTPTimeout:         authHTTPTimeout,
+		UserGRPCAddr:            getenv("USER_GRPC_ADDR", ""),
+		ProductGRPCAddr:         getenv("PRODUCT_GRPC_ADDR", ""),
+		ProductHTTPURL:          getenv("PRODUCT_HTTP_URL", "http://product-service:8082"),
+		ProductHTTPTimeout:      productHTTPTimeout,
+		CartGRPCAddr:            getenv("CART_GRPC_ADDR", ""),
+		WishlistGRPCAddr:        getenv("WISHLIST_GRPC_ADDR", ""),
+		WishlistHTTPURL:         getenv("WISHLIST_HTTP_URL", "http://wishlist-service:8084"),
+		WishlistHTTPTimeout:     wishlistHTTPTimeout,
+		OrderGRPCAddr:           getenv("ORDER_GRPC_ADDR", ""),
+		PaymentGRPCAddr:         getenv("PAYMENT_GRPC_ADDR", ""),
+		PaymentHTTPURL:          getenv("PAYMENT_HTTP_URL", ""),
+		PaymentHTTPTimeout:      paymentHTTPTimeout,
+		PaymentInternalAPIToken: getenv("PAYMENT_INTERNAL_API_TOKEN", ""),
+		SearchGRPCAddr:          getenv("SEARCH_GRPC_ADDR", ""),
+		CMSGRPCAddr:             getenv("CMS_GRPC_ADDR", ""),
+		CMSHTTPURL:              getenv("CMS_HTTP_URL", "http://cms-service:8087"),
+		CMSHTTPTimeout:          cmsHTTPTimeout,
+		CMSInternalAuthHeader:   getenv("CMS_INTERNAL_AUTH_HEADER", "X-Internal-Token"),
+		CMSInternalAuthToken:    getenv("CMS_INTERNAL_AUTH_TOKEN", ""),
+		SessionGRPCAddr:         getenv("SESSION_GRPC_ADDR", ""),
+		SessionHTTPURL:          getenv("SESSION_HTTP_URL", "http://session-service:8086"),
+		SessionHTTPTimeout:      sessionHTTPTimeout,
+		NotificationGRPCAddr:    getenv("NOTIFICATION_GRPC_ADDR", ""),
+		SuperadminGRPCAddr:      getenv("SUPERADMIN_GRPC_ADDR", ""),
+		SuperadminHTTPURL:       getenv("SUPERADMIN_HTTP_URL", "http://superadmin-service:8088"),
+		SuperadminHTTPTimeout:   superadminHTTPTimeout,
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -556,6 +566,17 @@ func (c Config) Validate() error {
 		}
 		if strings.TrimSpace(c.CMSInternalAuthToken) != "" && strings.TrimSpace(c.CMSInternalAuthHeader) == "" {
 			errs = append(errs, errors.New("CMS_INTERNAL_AUTH_HEADER is required when CMS_INTERNAL_AUTH_TOKEN is set"))
+		}
+	}
+	if strings.TrimSpace(c.PaymentHTTPURL) != "" {
+		if err := validateHTTPURL(c.PaymentHTTPURL); err != nil {
+			errs = append(errs, fmt.Errorf("PAYMENT_HTTP_URL is invalid: %w", err))
+		}
+		if c.PaymentHTTPTimeout <= 0 {
+			errs = append(errs, errors.New("PAYMENT_HTTP_TIMEOUT must be positive"))
+		}
+		if len(strings.TrimSpace(c.PaymentInternalAPIToken)) < 32 {
+			errs = append(errs, errors.New("PAYMENT_INTERNAL_API_TOKEN must be at least 32 characters when PAYMENT_HTTP_URL is configured"))
 		}
 	}
 	if c.JWTJWKSCacheTTL <= 0 {

@@ -19,6 +19,8 @@ type SessionProxy struct {
 	service            string
 	internalAuthHeader string
 	internalAuthToken  string
+	bearerAuthToken    string
+	actorRoleHeader    bool
 }
 
 func NewSessionProxy(rawTarget string, client *http.Client, logger *slog.Logger) (*SessionProxy, error) {
@@ -31,6 +33,18 @@ func WithInternalAuth(header string, token string) ServiceHTTPProxyOption {
 	return func(proxy *SessionProxy) {
 		proxy.internalAuthHeader = strings.TrimSpace(header)
 		proxy.internalAuthToken = strings.TrimSpace(token)
+	}
+}
+
+func WithBearerAuth(token string) ServiceHTTPProxyOption {
+	return func(proxy *SessionProxy) {
+		proxy.bearerAuthToken = strings.TrimSpace(token)
+	}
+}
+
+func WithActorRoleHeader() ServiceHTTPProxyOption {
+	return func(proxy *SessionProxy) {
+		proxy.actorRoleHeader = true
 	}
 }
 
@@ -77,6 +91,9 @@ func (p *SessionProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		request.Header.Set("X-Seller-ID", claims.SellerID)
 		request.Header.Set("X-Session-ID", claims.SessionID)
 		request.Header.Set("X-Request-ID", RequestIDFromContext(r.Context()))
+		if p.actorRoleHeader {
+			request.Header.Set("X-Actor-Role", strings.Join(claims.Roles, ","))
+		}
 		if p.service == "superadmin" {
 			request.Header.Set("X-Admin-ID", claims.UserID())
 			request.Header.Set("X-Admin-Roles", strings.Join(claims.Roles, ","))
@@ -85,6 +102,9 @@ func (p *SessionProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if p.internalAuthHeader != "" && p.internalAuthToken != "" {
 		request.Header.Set(p.internalAuthHeader, p.internalAuthToken)
+	}
+	if p.bearerAuthToken != "" {
+		request.Header.Set("Authorization", "Bearer "+p.bearerAuthToken)
 	}
 	request.Host = p.target.Host
 
@@ -108,7 +128,7 @@ func (p *SessionProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func removeIdentityHeaders(header http.Header) {
-	for _, name := range []string{"X-User-ID", "X-Authenticated-User-ID", "X-Auth-User-ID", "X-Actor-ID", "X-Admin-ID", "X-User-Roles", "X-User-Role", "X-Authenticated-Roles", "X-Auth-Roles", "X-Roles", "X-Actor-Roles", "X-Admin-Roles", "X-MFA-Verified", "X-Session-ID", "X-Seller-ID", "X-Tenant-ID", "X-Permissions", "X-Staff-Status"} {
+	for _, name := range []string{"X-User-ID", "X-Authenticated-User-ID", "X-Auth-User-ID", "X-Actor-ID", "X-Admin-ID", "X-User-Roles", "X-User-Role", "X-Authenticated-Roles", "X-Auth-Roles", "X-Roles", "X-Actor-Role", "X-Actor-Roles", "X-Admin-Roles", "X-MFA-Verified", "X-Session-ID", "X-Seller-ID", "X-Tenant-ID", "X-Permissions", "X-Staff-Status"} {
 		header.Del(name)
 	}
 }

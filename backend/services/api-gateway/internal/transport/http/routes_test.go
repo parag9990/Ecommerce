@@ -573,6 +573,53 @@ func TestWebhookRouteAllowsConfiguredSignatureHeader(t *testing.T) {
 	assertErrorCode(t, rec, "ROUTE_BRIDGE_NOT_CONFIGURED")
 }
 
+func TestPaymentRetryRouteProxiesWithInternalPaymentAuth(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/payments/pay_123/retry" {
+			t.Fatalf("path=%s", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer payment-internal-token-at-least-32-chars" {
+			t.Fatalf("authorization=%q", r.Header.Get("Authorization"))
+		}
+		if r.Header.Get("X-Actor-ID") != "user_buyer" || r.Header.Get("X-Actor-Role") != "buyer" {
+			t.Fatalf("actor headers=%v", r.Header)
+		}
+		if r.Header.Get("Idempotency-Key") != "retry-key-1" {
+			t.Fatalf("idempotency key=%q", r.Header.Get("Idempotency-Key"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"payment_id":"pay_retry_1","status":"requires_action"}`)
+	}))
+	defer upstream.Close()
+
+	path := writeAuthTestContract(t)
+	cfg := authTestConfig(path)
+	cfg.PaymentHTTPURL = upstream.URL
+	cfg.PaymentHTTPTimeout = time.Second
+	cfg.PaymentInternalAPIToken = "payment-internal-token-at-least-32-chars"
+	repo := repository.NewJSONRouteRepository(path)
+	catalog := usecase.NewRouteCatalogService(repo, cfg.APIBasePath)
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	router, err := NewRouterWithOptions(context.Background(), cfg, catalog, logger, nil, RouterOptions{
+		TokenVerifier: stubTokenVerifier{},
+	})
+	if err != nil {
+		t.Fatalf("new router: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/payments/pay_123/retry", strings.NewReader(`{"idempotency_key":"retry-key-1"}`))
+	req.Header.Set("Authorization", "Bearer buyer-token")
+	req.Header.Set("Idempotency-Key", "retry-key-1")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestRouterValidationRejectsInvalidPublicBodyBeforeBridge(t *testing.T) {
 	router := newValidationTestRouter(t)
 
@@ -771,6 +818,16 @@ func writeAuthTestContract(t *testing.T) string {
 				"auth": "webhook",
 				"request_schema": "PaymentWebhookRequest",
 				"response_schema": "SuccessResponse"
+			},
+			{
+				"id": "payment.retry",
+				"method": "POST",
+				"path": "/api/v1/payments/{payment_id}/retry",
+				"service": "payment-service",
+				"grpc": "PaymentService.CreatePaymentIntent",
+				"auth": "buyer",
+				"request_schema": "RetryPaymentRequest",
+				"response_schema": "PaymentIntentResponse"
 			}
 		]
 	}`

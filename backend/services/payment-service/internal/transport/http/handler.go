@@ -689,16 +689,7 @@ func (h *Handler) authorizeRefundRequest(r *http.Request) bool {
 	if !h.authorizePaymentIntentRequest(r) || actorID == "" {
 		return false
 	}
-	roles := []string{r.Header.Get("X-Actor-Role"), r.Header.Get("X-Admin-Roles")}
-	for _, raw := range roles {
-		for _, role := range strings.Split(raw, ",") {
-			switch strings.ToLower(strings.TrimSpace(role)) {
-			case "admin", "finance_admin", "superadmin":
-				return true
-			}
-		}
-	}
-	return false
+	return headerHasAnyRole(r.Header, []string{"admin", "finance_admin", "superadmin"}, "X-Actor-Role", "X-Admin-Roles")
 }
 
 func firstNonEmptyHeader(header http.Header, names ...string) string {
@@ -714,7 +705,22 @@ func (h *Handler) authorizeBuyerRequest(r *http.Request) bool {
 	if !h.authorizePaymentIntentRequest(r) || strings.TrimSpace(r.Header.Get("X-Actor-ID")) == "" {
 		return false
 	}
-	return strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Actor-Role")), "buyer")
+	return headerHasAnyRole(r.Header, []string{"buyer"}, "X-Actor-Role", "X-User-Roles", "X-Roles")
+}
+
+func headerHasAnyRole(header http.Header, allowed []string, names ...string) bool {
+	allowedSet := make(map[string]struct{}, len(allowed))
+	for _, role := range allowed {
+		allowedSet[strings.ToLower(strings.TrimSpace(role))] = struct{}{}
+	}
+	for _, name := range names {
+		for _, role := range strings.Split(header.Get(name), ",") {
+			if _, ok := allowedSet[strings.ToLower(strings.TrimSpace(role))]; ok {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (h *Handler) writeUsecaseError(w http.ResponseWriter, r *http.Request, err error) {
