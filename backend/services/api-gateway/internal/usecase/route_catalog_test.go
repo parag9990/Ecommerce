@@ -18,7 +18,7 @@ func TestRouteCatalogLoadsMasterAPIContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list routes: %v", err)
 	}
-	if got, want := len(routes), 96; got != want {
+	if got, want := len(routes), 97; got != want {
 		t.Fatalf("expected %d routes from master-api.json, got %d", want, got)
 	}
 

@@ -44,7 +44,7 @@ func TestNewWithDialerInitializesAllServiceClients(t *testing.T) {
 			t.Fatalf("expected %s connection to be stored", service)
 		}
 	}
-	if registry.Auth == nil || registry.Product == nil || registry.Superadmin == nil {
+	if registry.Auth == nil || registry.Product == nil || registry.Recommendation == nil || registry.Superadmin == nil {
 		t.Fatal("expected typed service client fields to be populated")
 	}
 	if registry.Wishlist == nil {
@@ -106,10 +106,10 @@ func TestNewWithDialerRejectsInvalidDescriptorSetBeforeDialing(t *testing.T) {
 		{
 			name: "unsupported",
 			descriptors: func(descriptors []ServiceDescriptor) []ServiceDescriptor {
-				descriptors[0].Name = "recommendation"
+				descriptors[0].Name = "unsupported"
 				return descriptors
 			},
-			wantError: `unsupported downstream service "recommendation"`,
+			wantError: `unsupported downstream service "unsupported"`,
 		},
 	}
 
@@ -153,10 +153,11 @@ func TestWithMetadataPropagatesAllowedHeadersOnly(t *testing.T) {
 
 func TestTimeoutForUsesServiceStrategy(t *testing.T) {
 	tests := map[Downstream]time.Duration{
-		DownstreamSearch:  300 * time.Millisecond,
-		DownstreamProduct: 500 * time.Millisecond,
-		DownstreamOrder:   1500 * time.Millisecond,
-		DownstreamCart:    700 * time.Millisecond,
+		DownstreamSearch:         300 * time.Millisecond,
+		DownstreamRecommendation: 800 * time.Millisecond,
+		DownstreamProduct:        500 * time.Millisecond,
+		DownstreamOrder:          1500 * time.Millisecond,
+		DownstreamCart:           700 * time.Millisecond,
 	}
 	for service, want := range tests {
 		if got := TimeoutFor(service); got != want {
@@ -247,26 +248,27 @@ func downstreamNames(services []Downstream) []string {
 func testClientConfig(t *testing.T) config.Config {
 	t.Helper()
 	return config.Config{
-		ServiceName:          "api-gateway",
-		Environment:          "test",
-		HTTPAddress:          ":0",
-		APIBasePath:          "/api/v1",
-		APIContractPath:      "testdata/master-api.json",
-		ReadHeaderTimeout:    time.Second,
-		ShutdownTimeout:      time.Second,
-		GRPCDialTimeout:      time.Second,
-		AuthGRPCAddr:         "auth-service:9090",
-		UserGRPCAddr:         "user-service:9090",
-		ProductGRPCAddr:      "product-service:9090",
-		CartGRPCAddr:         "cart-service:9090",
-		WishlistGRPCAddr:     "wishlist-service:9090",
-		OrderGRPCAddr:        "order-service:9090",
-		PaymentGRPCAddr:      "payment-service:9090",
-		SearchGRPCAddr:       "search-service:9090",
-		CMSGRPCAddr:          "cms-service:9090",
-		SessionGRPCAddr:      "session-service:9090",
-		NotificationGRPCAddr: "notification-service:9090",
-		SuperadminGRPCAddr:   "superadmin-service:9090",
+		ServiceName:            "api-gateway",
+		Environment:            "test",
+		HTTPAddress:            ":0",
+		APIBasePath:            "/api/v1",
+		APIContractPath:        "testdata/master-api.json",
+		ReadHeaderTimeout:      time.Second,
+		ShutdownTimeout:        time.Second,
+		GRPCDialTimeout:        time.Second,
+		AuthGRPCAddr:           "auth-service:9090",
+		UserGRPCAddr:           "user-service:9090",
+		ProductGRPCAddr:        "product-service:9090",
+		CartGRPCAddr:           "cart-service:9090",
+		WishlistGRPCAddr:       "wishlist-service:9090",
+		OrderGRPCAddr:          "order-service:9090",
+		PaymentGRPCAddr:        "payment-service:9090",
+		SearchGRPCAddr:         "search-service:9090",
+		RecommendationGRPCAddr: "recommendation-service:9090",
+		CMSGRPCAddr:            "cms-service:9090",
+		SessionGRPCAddr:        "session-service:9090",
+		NotificationGRPCAddr:   "notification-service:9090",
+		SuperadminGRPCAddr:     "superadmin-service:9090",
 	}
 }
 

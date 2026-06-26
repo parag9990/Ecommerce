@@ -12,7 +12,9 @@ export type PublicEnv = Readonly<{
 
 const DEFAULT_API_BASE_URL = 'http://localhost:8080';
 const DEFAULT_APP_ENV: AppEnv = 'local';
-const DEFAULT_GRPC_WEB_BASE_URL = 'http://localhost:8082';
+// Docker Compose exposes the API Gateway's browser-safe gRPC-Web listener on
+// 8099. Port 8082 is the Product Service HTTP API and cannot serve gRPC-Web.
+const DEFAULT_GRPC_WEB_BASE_URL = 'http://localhost:8099';
 const DEFAULT_GRPC_WEB_TIMEOUT_MS = 5000;
 const DEFAULT_PAYMENT_PROVIDERS = ['stripe', 'razorpay'] as const;
 

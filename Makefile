@@ -1,4 +1,4 @@
-.PHONY: setup env infra-up infra-down backend-up frontend-up analytics-up analytics-build analytics-test docker-up docker-down docker-reset docker-logs session-retention-once test-go test-frontend test k8s-check k8s-up k8s-down tilt-up tilt-down
+.PHONY: setup env infra-up infra-down backend-up frontend-up analytics-up analytics-build analytics-test docker-up docker-down docker-reset docker-logs session-retention-once test-go test-frontend test proto-lint proto-generate k8s-check k8s-up k8s-down tilt-up tilt-down
 
 INFRA = mysql mongodb redis rabbitmq kafka typesense mailpit jaeger prometheus
 BACKEND = auth-service user-service product-service cart-service wishlist-service search-service session-service session-retention-worker cms-service recommendation-service order-service payment-service notification-service superadmin-service api-gateway
@@ -53,6 +53,12 @@ test-frontend:
 	cd frontend && corepack pnpm install --frozen-lockfile && corepack pnpm --workspace-concurrency=1 -r --if-present test
 
 test: test-go test-frontend
+
+proto-lint:
+	buf lint
+
+proto-generate:
+	buf generate
 
 k8s-check:
 	kubectl apply --dry-run=client -k deployments/k8s/local

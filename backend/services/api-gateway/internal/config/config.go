@@ -102,6 +102,7 @@ type Config struct {
 	PaymentHTTPTimeout      time.Duration
 	PaymentInternalAPIToken string
 	SearchGRPCAddr          string
+	RecommendationGRPCAddr  string
 	CMSGRPCAddr             string
 	CMSHTTPURL              string
 	CMSHTTPTimeout          time.Duration
@@ -360,6 +361,7 @@ func Load(ctx context.Context) (Config, error) {
 		PaymentHTTPTimeout:      paymentHTTPTimeout,
 		PaymentInternalAPIToken: getenv("PAYMENT_INTERNAL_API_TOKEN", ""),
 		SearchGRPCAddr:          getenv("SEARCH_GRPC_ADDR", ""),
+		RecommendationGRPCAddr:  getenv("RECOMMENDATION_GRPC_ADDR", ""),
 		CMSGRPCAddr:             getenv("CMS_GRPC_ADDR", ""),
 		CMSHTTPURL:              getenv("CMS_HTTP_URL", "http://cms-service:8087"),
 		CMSHTTPTimeout:          cmsHTTPTimeout,
@@ -599,18 +601,19 @@ func (c Config) Validate() error {
 		errs = append(errs, errors.New("WEBHOOK_SIGNATURE_HEADER must be a valid header name"))
 	}
 	requiredTargets := map[string]string{
-		"AUTH_GRPC_ADDR":         c.AuthGRPCAddr,
-		"USER_GRPC_ADDR":         c.UserGRPCAddr,
-		"PRODUCT_GRPC_ADDR":      c.ProductGRPCAddr,
-		"CART_GRPC_ADDR":         c.CartGRPCAddr,
-		"WISHLIST_GRPC_ADDR":     c.WishlistGRPCAddr,
-		"ORDER_GRPC_ADDR":        c.OrderGRPCAddr,
-		"PAYMENT_GRPC_ADDR":      c.PaymentGRPCAddr,
-		"SEARCH_GRPC_ADDR":       c.SearchGRPCAddr,
-		"CMS_GRPC_ADDR":          c.CMSGRPCAddr,
-		"SESSION_GRPC_ADDR":      c.SessionGRPCAddr,
-		"NOTIFICATION_GRPC_ADDR": c.NotificationGRPCAddr,
-		"SUPERADMIN_GRPC_ADDR":   c.SuperadminGRPCAddr,
+		"AUTH_GRPC_ADDR":           c.AuthGRPCAddr,
+		"USER_GRPC_ADDR":           c.UserGRPCAddr,
+		"PRODUCT_GRPC_ADDR":        c.ProductGRPCAddr,
+		"CART_GRPC_ADDR":           c.CartGRPCAddr,
+		"WISHLIST_GRPC_ADDR":       c.WishlistGRPCAddr,
+		"ORDER_GRPC_ADDR":          c.OrderGRPCAddr,
+		"PAYMENT_GRPC_ADDR":        c.PaymentGRPCAddr,
+		"SEARCH_GRPC_ADDR":         c.SearchGRPCAddr,
+		"RECOMMENDATION_GRPC_ADDR": c.RecommendationGRPCAddr,
+		"CMS_GRPC_ADDR":            c.CMSGRPCAddr,
+		"SESSION_GRPC_ADDR":        c.SessionGRPCAddr,
+		"NOTIFICATION_GRPC_ADDR":   c.NotificationGRPCAddr,
+		"SUPERADMIN_GRPC_ADDR":     c.SuperadminGRPCAddr,
 	}
 	for name, target := range requiredTargets {
 		if strings.TrimSpace(target) == "" {

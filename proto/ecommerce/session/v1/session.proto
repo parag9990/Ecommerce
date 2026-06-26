@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package ecommerce.session.v1;
+
+option go_package = "github.com/parag/ecommerce/backend/shared/gen/go/ecommerce/session/v1;sessionv1";
+
+service SessionService {
+  rpc IngestEvent(IngestEventRequest) returns (IngestEventResponse);
+}
+
+message IngestEventRequest {
+  string event_name = 1;
+  string page_url = 2;
+  string product_id = 3;
+  string cart_id = 4;
+  map<string, string> metadata = 5;
+  string occurred_at = 6;
+  string anonymous_id = 7;
+  string session_id = 8;
+}
+
+message IngestEventResponse {
+  string event_id = 1;
+  bool accepted = 2;
+}

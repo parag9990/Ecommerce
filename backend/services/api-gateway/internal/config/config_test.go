@@ -23,6 +23,7 @@ func TestConfigValidateRequiresDownstreamGRPCTargets(t *testing.T) {
 		{name: "order", clear: func(cfg *Config) { cfg.OrderGRPCAddr = "" }, wantErr: "ORDER_GRPC_ADDR is required"},
 		{name: "payment", clear: func(cfg *Config) { cfg.PaymentGRPCAddr = "" }, wantErr: "PAYMENT_GRPC_ADDR is required"},
 		{name: "search", clear: func(cfg *Config) { cfg.SearchGRPCAddr = "" }, wantErr: "SEARCH_GRPC_ADDR is required"},
+		{name: "recommendation", clear: func(cfg *Config) { cfg.RecommendationGRPCAddr = "" }, wantErr: "RECOMMENDATION_GRPC_ADDR is required"},
 		{name: "cms", clear: func(cfg *Config) { cfg.CMSGRPCAddr = "" }, wantErr: "CMS_GRPC_ADDR is required"},
 		{name: "session", clear: func(cfg *Config) { cfg.SessionGRPCAddr = "" }, wantErr: "SESSION_GRPC_ADDR is required"},
 		{name: "notification", clear: func(cfg *Config) { cfg.NotificationGRPCAddr = "" }, wantErr: "NOTIFICATION_GRPC_ADDR is required"},
@@ -396,6 +397,7 @@ func validConfig(t *testing.T) Config {
 		OrderGRPCAddr:          "order-service:9090",
 		PaymentGRPCAddr:        "payment-service:9090",
 		SearchGRPCAddr:         "search-service:9090",
+		RecommendationGRPCAddr: "recommendation-service:9090",
 		CMSGRPCAddr:            "cms-service:9090",
 		SessionGRPCAddr:        "session-service:9090",
 		NotificationGRPCAddr:   "notification-service:9090",
@@ -415,18 +417,19 @@ func writeTestContract(t *testing.T) string {
 func setGRPCTargetEnv(t *testing.T) {
 	t.Helper()
 	targets := map[string]string{
-		"AUTH_GRPC_ADDR":         "auth-service:9090",
-		"USER_GRPC_ADDR":         "user-service:9090",
-		"PRODUCT_GRPC_ADDR":      "product-service:9090",
-		"CART_GRPC_ADDR":         "cart-service:9090",
-		"WISHLIST_GRPC_ADDR":     "wishlist-service:9090",
-		"ORDER_GRPC_ADDR":        "order-service:9090",
-		"PAYMENT_GRPC_ADDR":      "payment-service:9090",
-		"SEARCH_GRPC_ADDR":       "search-service:9090",
-		"CMS_GRPC_ADDR":          "cms-service:9090",
-		"SESSION_GRPC_ADDR":      "session-service:9090",
-		"NOTIFICATION_GRPC_ADDR": "notification-service:9090",
-		"SUPERADMIN_GRPC_ADDR":   "superadmin-service:9090",
+		"AUTH_GRPC_ADDR":           "auth-service:9090",
+		"USER_GRPC_ADDR":           "user-service:9090",
+		"PRODUCT_GRPC_ADDR":        "product-service:9090",
+		"CART_GRPC_ADDR":           "cart-service:9090",
+		"WISHLIST_GRPC_ADDR":       "wishlist-service:9090",
+		"ORDER_GRPC_ADDR":          "order-service:9090",
+		"PAYMENT_GRPC_ADDR":        "payment-service:9090",
+		"SEARCH_GRPC_ADDR":         "search-service:9090",
+		"RECOMMENDATION_GRPC_ADDR": "recommendation-service:9090",
+		"CMS_GRPC_ADDR":            "cms-service:9090",
+		"SESSION_GRPC_ADDR":        "session-service:9090",
+		"NOTIFICATION_GRPC_ADDR":   "notification-service:9090",
+		"SUPERADMIN_GRPC_ADDR":     "superadmin-service:9090",
 	}
 	for key, value := range targets {
 		t.Setenv(key, value)

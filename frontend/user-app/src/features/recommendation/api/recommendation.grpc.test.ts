@@ -1,6 +1,10 @@
 import type {
   GetRecommendationsResponse,
 } from '@ecommerce/proto-client/gen/ecommerce/recommendation/v1/recommendation_pb';
+import {
+  RecommendationContext,
+  RecommendationType,
+} from '@ecommerce/proto-client/gen/ecommerce/recommendation/v1/recommendation_pb';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { GrpcClients } from '../../../lib/grpc-client';
@@ -15,14 +19,16 @@ describe('getRecommendations', () => {
         items: [
           {
             $typeName: 'ecommerce.recommendation.v1.RecommendationItem',
-            imageUrl: '/products/related.jpg',
-            priceDisplay: '$49.00',
             productId: 'prod_related',
+            rank: 1,
             reason: 'Frequently viewed together',
-            title: 'Related product',
+            score: 0.92,
           },
         ],
-        requestId: 'req_test',
+        cacheTtlSeconds: 300n,
+        recommendationId: 'rec_test',
+        strategyId: 'frequently_bought_together',
+        type: RecommendationType.FREQUENTLY_BOUGHT_TOGETHER,
       } satisfies GetRecommendationsResponse);
     const client: Pick<GrpcClients['recommendation'], 'getRecommendations'> = {
       getRecommendations: getRecommendationsRpc,
@@ -40,13 +46,15 @@ describe('getRecommendations', () => {
     expect(response.items[0]?.productId).toBe('prod_related');
     expect(getRecommendationsRpc).toHaveBeenCalledWith(
       {
-        context: {
-          categoryId: 'cat_shoes',
-          pageType: 'product_detail',
-          productId: 'prod_123',
-          userId: '',
-        },
+        anonymousId: '',
+        cartProductIds: [],
+        categoryId: 'cat_shoes',
+        context: RecommendationContext.PRODUCT_DETAIL,
         limit: 12,
+        productId: 'prod_123',
+        sellerId: '',
+        type: RecommendationType.UNSPECIFIED,
+        userId: '',
       },
       {},
     );

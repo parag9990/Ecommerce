@@ -1,5 +1,9 @@
 import type { CallOptions } from '@connectrpc/connect';
-import type { GetRecommendationsResponse } from '@ecommerce/proto-client/gen/ecommerce/recommendation/v1/recommendation_pb';
+import {
+  RecommendationContext,
+  RecommendationType,
+  type GetRecommendationsResponse,
+} from '@ecommerce/proto-client/gen/ecommerce/recommendation/v1/recommendation_pb';
 
 import { grpcClients, type GrpcClients } from '../../../lib/grpc-client';
 import { normalizeGrpcError } from '../../../lib/grpc-errors';
@@ -8,9 +12,13 @@ import { ApiError } from '../../../lib/http';
 export type RecommendationPageType = 'cart' | 'home' | 'product_detail';
 
 export type RecommendationContextInput = Readonly<{
+  anonymousId?: string | undefined;
+  cartProductIds?: readonly string[] | undefined;
   categoryId?: string | undefined;
   pageType: RecommendationPageType;
   productId?: string | undefined;
+  sellerId?: string | undefined;
+  type?: RecommendationType | undefined;
   userId?: string | undefined;
 }>;
 
@@ -23,6 +31,15 @@ type RecommendationOptions = Readonly<{
 
 export const DEFAULT_RECOMMENDATION_LIMIT = 12;
 export const MAX_RECOMMENDATION_LIMIT = 48;
+
+const recommendationContextByPageType: Record<
+  RecommendationPageType,
+  RecommendationContext
+> = {
+  cart: RecommendationContext.CART,
+  home: RecommendationContext.HOME_FEED,
+  product_detail: RecommendationContext.PRODUCT_DETAIL,
+};
 
 function normalizeLimit(limit: number | undefined): number {
   const resolvedLimit = limit ?? DEFAULT_RECOMMENDATION_LIMIT;
@@ -65,13 +82,15 @@ export async function getRecommendations(
   try {
     return await client.getRecommendations(
       {
-        context: {
-          categoryId: context.categoryId ?? '',
-          pageType: context.pageType,
-          productId: context.productId ?? '',
-          userId: context.userId ?? '',
-        },
+        anonymousId: context.anonymousId ?? '',
+        cartProductIds: [...(context.cartProductIds ?? [])],
+        categoryId: context.categoryId ?? '',
+        context: recommendationContextByPageType[context.pageType],
         limit: normalizeLimit(options.limit),
+        productId: context.productId ?? '',
+        sellerId: context.sellerId ?? '',
+        type: context.type ?? RecommendationType.UNSPECIFIED,
+        userId: context.userId ?? '',
       },
       buildCallOptions(options),
     );

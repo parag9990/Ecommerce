@@ -35,9 +35,18 @@ func TestProjectGRPCWebPolicyFileLoads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load project grpc-web policies: %v", err)
 	}
-	if len(policies) != 6 {
-		t.Fatalf("expected six project grpc-web policies, got %d", len(policies))
+	if len(policies) != 7 {
+		t.Fatalf("expected seven project grpc-web policies, got %d", len(policies))
 	}
+	for _, policy := range policies {
+		if policy.FullMethod == "/ecommerce.recommendation.v1.RecommendationService/GetRecommendations" &&
+			policy.Downstream == "recommendation" &&
+			policy.AuthMode == domain.GRPCWebAuthOptional &&
+			policy.Timeout == 800*time.Millisecond {
+			return
+		}
+	}
+	t.Fatal("expected recommendation grpc-web policy")
 }
 
 func TestJSONGRPCWebPolicyRepositoryRejectsUnknownFields(t *testing.T) {

@@ -23,7 +23,7 @@ data:
   GRPC_WEB_ENABLED: "true"
   GRPC_ADDR: :9090
   GRPC_WEB_POLICY_PATH: /app/config/grpcweb-policies.json
-  GRPC_WEB_EXPOSED_SERVICES: ecommerce.search.v1.SearchService,ecommerce.session.v1.SessionService,ecommerce.superadmin.v1.SuperadminService,ecommerce.cms.v1.CMSService
+  GRPC_WEB_EXPOSED_SERVICES: ecommerce.search.v1.SearchService,ecommerce.recommendation.v1.RecommendationService,ecommerce.session.v1.SessionService,ecommerce.superadmin.v1.SuperadminService,ecommerce.cms.v1.CMSService
   GRPC_TLS_ENABLED: "false"
   GRPC_ALLOW_UNAVAILABLE_DOWNSTREAMS: "true"
   REDIS_ADDR: redis.data.svc.cluster.local:6379
@@ -45,6 +45,7 @@ data:
   PAYMENT_HTTP_URL: http://payment-service.core.svc.cluster.local:8080
   PAYMENT_HTTP_TIMEOUT: 10s
   SEARCH_GRPC_ADDR: search-service.core.svc.cluster.local:9085
+  RECOMMENDATION_GRPC_ADDR: recommendation-service.core.svc.cluster.local:9088
   CMS_GRPC_ADDR: cms-service.core.svc.cluster.local:9098
   SESSION_GRPC_ADDR: session-service.core.svc.cluster.local:8086
   SESSION_HTTP_URL: http://session-service.core.svc.cluster.local:8086

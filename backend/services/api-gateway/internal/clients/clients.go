@@ -14,18 +14,19 @@ import (
 )
 
 type Clients struct {
-	Auth         AuthServiceClient
-	User         UserServiceClient
-	Product      ProductServiceClient
-	Cart         CartServiceClient
-	Wishlist     WishlistServiceClient
-	Order        OrderServiceClient
-	Payment      PaymentServiceClient
-	Search       SearchServiceClient
-	CMS          CMSServiceClient
-	Session      SessionServiceClient
-	Notification NotificationServiceClient
-	Superadmin   SuperadminServiceClient
+	Auth           AuthServiceClient
+	User           UserServiceClient
+	Product        ProductServiceClient
+	Cart           CartServiceClient
+	Wishlist       WishlistServiceClient
+	Order          OrderServiceClient
+	Payment        PaymentServiceClient
+	Search         SearchServiceClient
+	Recommendation RecommendationServiceClient
+	CMS            CMSServiceClient
+	Session        SessionServiceClient
+	Notification   NotificationServiceClient
+	Superadmin     SuperadminServiceClient
 
 	conns       map[Downstream]*grpc.ClientConn
 	descriptors map[Downstream]ServiceDescriptor
@@ -154,6 +155,8 @@ func (c *Clients) Client(service Downstream) (OutboundClient, bool) {
 		return c.Payment, c.Payment != nil
 	case DownstreamSearch:
 		return c.Search, c.Search != nil
+	case DownstreamRecommendation:
+		return c.Recommendation, c.Recommendation != nil
 	case DownstreamCMS:
 		return c.CMS, c.CMS != nil
 	case DownstreamSession:
@@ -221,6 +224,8 @@ func (c *Clients) attach(descriptor ServiceDescriptor, conn *grpc.ClientConn) er
 		c.Payment = newPaymentServiceClient(descriptor, conn)
 	case DownstreamSearch:
 		c.Search = newSearchServiceClient(descriptor, conn)
+	case DownstreamRecommendation:
+		c.Recommendation = newRecommendationServiceClient(descriptor, conn)
 	case DownstreamCMS:
 		c.CMS = newCMSServiceClient(descriptor, conn)
 	case DownstreamSession:

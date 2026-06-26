@@ -2,28 +2,30 @@ import { createBrowserRouter } from 'react-router-dom';
 
 import { AppShell } from '../app-shell/app-shell';
 import { AccountLayout } from '../features/account/components/account-layout';
-import { AccountOverviewPage } from '../features/account/pages/account-overview-page';
-import { AddressesPage } from '../features/addresses/pages/addresses-page';
-import { ForgotPasswordPage } from '../features/auth/pages/forgot-password-page';
-import { LoginPage } from '../features/auth/pages/login-page';
-import { OtpPage } from '../features/auth/pages/otp-page';
-import { ResetPasswordPage } from '../features/auth/pages/reset-password-page';
-import { SignupPage } from '../features/auth/pages/signup-page';
-import { CartPage } from '../features/cart/pages/cart-page';
-import { CheckoutPage } from '../features/checkout/pages/checkout-page';
-import { PaymentResultPage } from '../features/checkout/pages/payment-result-page';
-import { OrderDetailPage } from '../features/orders/pages/order-detail-page';
-import { OrderListPage } from '../features/orders/pages/order-list-page';
-import { CategoriesPage } from '../features/product/pages/categories-page';
-import { CategoryPage } from '../features/product/pages/category-page';
-import { HomePage } from '../features/product/pages/home-page';
-import { ProductDetailPage } from '../features/product/pages/product-detail-page';
-import { NotificationPreferencesPage } from '../features/profile/pages/notification-preferences-page';
-import { ProfilePage } from '../features/profile/pages/profile-page';
-import { SearchPage } from '../features/search/pages/search-page';
-import { WishlistPage } from '../features/wishlist/pages/wishlist-page';
-import { PlaceholderPage } from './placeholder-page';
 import { ProtectedRoute } from './protected-route';
+import {
+  AccountOverviewPage,
+  AddressesPage,
+  CartPage,
+  CategoriesPage,
+  CategoryPage,
+  CheckoutPage,
+	DealsPage,
+  ForgotPasswordPage,
+  HomePage,
+  LoginPage,
+  NotificationPreferencesPage,
+  OrderDetailPage,
+  OrderListPage,
+  OtpPage,
+  PaymentResultPage,
+  ProductDetailPage,
+  ProfilePage,
+  ResetPasswordPage,
+  SearchPage,
+  SignupPage,
+  WishlistPage,
+} from './lazy-pages';
 import { routePaths } from './route-paths';
 
 export const router = createBrowserRouter([
@@ -36,7 +38,7 @@ export const router = createBrowserRouter([
         element: <CategoriesPage />,
       },
       { path: routePaths.categoryPattern, element: <CategoryPage /> },
-      { path: routePaths.deals, element: <PlaceholderPage title="Deals" /> },
+      { path: routePaths.deals, element: <DealsPage /> },
       {
         path: routePaths.wishlist,
         element: (

@@ -12,18 +12,19 @@ import (
 type Downstream string
 
 const (
-	DownstreamAuth         Downstream = "auth"
-	DownstreamUser         Downstream = "user"
-	DownstreamProduct      Downstream = "product"
-	DownstreamCart         Downstream = "cart"
-	DownstreamWishlist     Downstream = "wishlist"
-	DownstreamOrder        Downstream = "order"
-	DownstreamPayment      Downstream = "payment"
-	DownstreamSearch       Downstream = "search"
-	DownstreamCMS          Downstream = "cms"
-	DownstreamSession      Downstream = "session"
-	DownstreamNotification Downstream = "notification"
-	DownstreamSuperadmin   Downstream = "superadmin"
+	DownstreamAuth           Downstream = "auth"
+	DownstreamUser           Downstream = "user"
+	DownstreamProduct        Downstream = "product"
+	DownstreamCart           Downstream = "cart"
+	DownstreamWishlist       Downstream = "wishlist"
+	DownstreamOrder          Downstream = "order"
+	DownstreamPayment        Downstream = "payment"
+	DownstreamSearch         Downstream = "search"
+	DownstreamRecommendation Downstream = "recommendation"
+	DownstreamCMS            Downstream = "cms"
+	DownstreamSession        Downstream = "session"
+	DownstreamNotification   Downstream = "notification"
+	DownstreamSuperadmin     Downstream = "superadmin"
 )
 
 var serviceOrder = []Downstream{
@@ -35,6 +36,7 @@ var serviceOrder = []Downstream{
 	DownstreamOrder,
 	DownstreamPayment,
 	DownstreamSearch,
+	DownstreamRecommendation,
 	DownstreamCMS,
 	DownstreamSession,
 	DownstreamNotification,
@@ -77,6 +79,7 @@ func ServiceDescriptorsFromConfig(cfg config.Config) []ServiceDescriptor {
 		newServiceDescriptor(DownstreamOrder, cfg.OrderGRPCAddr, "ecommerce.order.v1.OrderService"),
 		newServiceDescriptor(DownstreamPayment, cfg.PaymentGRPCAddr, "ecommerce.payment.v1.PaymentService"),
 		newServiceDescriptor(DownstreamSearch, cfg.SearchGRPCAddr, "ecommerce.search.v1.SearchService"),
+		newServiceDescriptor(DownstreamRecommendation, cfg.RecommendationGRPCAddr, "ecommerce.recommendation.v1.RecommendationService"),
 		newServiceDescriptor(DownstreamCMS, cfg.CMSGRPCAddr, "ecommerce.cms.v1.CMSService"),
 		newServiceDescriptor(DownstreamSession, cfg.SessionGRPCAddr, "ecommerce.session.v1.SessionService"),
 		newServiceDescriptor(DownstreamNotification, cfg.NotificationGRPCAddr, "ecommerce.notification.v1.NotificationService"),
