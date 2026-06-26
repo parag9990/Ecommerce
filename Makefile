@@ -1,4 +1,4 @@
-.PHONY: setup env infra-up infra-down backend-up frontend-up analytics-up analytics-build analytics-test docker-up docker-down docker-reset docker-logs session-retention-once test-go test-frontend test proto-lint proto-generate k8s-check k8s-up k8s-down tilt-up tilt-down
+.PHONY: setup env infra-up infra-down backend-up frontend-up analytics-up analytics-build analytics-test docker-up docker-down docker-reset docker-logs session-retention-once test-go test-frontend test proto-lint proto-generate ci-generated ci-docker-build k8s-check k8s-up k8s-down tilt-up tilt-down
 
 INFRA = mysql mongodb redis rabbitmq kafka typesense mailpit jaeger prometheus
 BACKEND = auth-service user-service product-service cart-service wishlist-service search-service session-service session-retention-worker cms-service recommendation-service order-service payment-service notification-service superadmin-service api-gateway
@@ -60,14 +60,20 @@ proto-lint:
 proto-generate:
 	buf generate
 
+ci-generated:
+	bash infra/ci/scripts/check-generated.sh
+
+ci-docker-build:
+	bash infra/ci/scripts/docker-build-all.sh
+
 k8s-check:
-	kubectl apply --dry-run=client -k deployments/k8s/local
+	kubectl apply --dry-run=client -k infra/k8s/overlays/dev
 
 k8s-up:
-	kubectl apply -k deployments/k8s/local
+	kubectl apply -k infra/k8s/overlays/dev
 
 k8s-down:
-	kubectl delete namespace ecommerce-local --ignore-not-found
+	kubectl delete -k infra/k8s/overlays/dev --ignore-not-found
 
 tilt-up:
 	tilt up

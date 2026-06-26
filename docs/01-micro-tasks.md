@@ -13,12 +13,12 @@ Priority values:
 |---:|---|---|---|---|---|
 | 1 | Define repo standards | Naming, folder, branching, commit rules decide karo. Ye future team ko same style me kaam karne me help karega. | None | P0 | Completed |
 | 2 | Create proto strategy | Har service ke gRPC contract ke liye `proto` folder aur versioning rule define karo. Contract pehle stable hoga to services loosely coupled rahengi. | Repo standards | P0 | Completed |
-| 3 | Create shared Go libs | Logger, config, errors, middleware, tracing, validation jaise reusable packages banao. Har service me duplicate code kam hoga. | Repo standards | P0 | Pending |
+| 3 | Create shared Go libs | Logger, config, errors, middleware, tracing, validation jaise reusable packages banao. Har service me duplicate code kam hoga. | Repo standards | P0 | Completed |
 | 4 | Docker Compose local stack | MySQL, MongoDB, Redis, Typesense, Kafka/RabbitMQ, Jaeger, Prometheus local run karne ke liye compose banao. | Repo standards | P0 | Completed |
 | 5 | API gateway base | Gateway REST request receive karega, auth check karega, gRPC service call karega. Ye public entry point hoga. | Proto strategy | P0 | Completed |
-| 6 | Observability baseline | Logs, metrics, traces ka format decide karo. Pehle din se monitoring ready rahegi. | Shared Go libs | P1 | Pending |
-| 7 | CI pipeline skeleton | Lint, test, build, Docker image scan automatic banao. Team ke merge se pehle quality check hoga. | Repo standards | P1 | Pending |
-| 8 | Kubernetes base manifests | Namespace, config map, secret, deployment, service, ingress templates banao. Later services fast deploy hongi. | Docker setup | P1 | Pending |
+| 6 | Observability baseline | Logs, metrics, traces ka format decide karo. Pehle din se monitoring ready rahegi. | Shared Go libs | P1 | Completed |
+| 7 | CI pipeline skeleton | Lint, test, build, Docker image scan automatic banao. Team ke merge se pehle quality check hoga. | Repo standards | P1 | Completed |
+| 8 | Kubernetes base manifests | Namespace, config map, secret, deployment, service, ingress templates banao. Later services fast deploy hongi. | Docker setup | P1 | Completed |
 
 ## User Service
 

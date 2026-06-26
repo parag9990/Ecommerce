@@ -89,9 +89,7 @@ jobs:
       - run: buf lint
       - run: buf breaking --against "https://github.com/${GITHUB_REPOSITORY}.git#branch=dev"
       - name: Verify generated clients are current
-        run: |
-          buf generate
-          git diff --exit-code -- backend/shared/gen/go
+        run: bash infra/ci/scripts/check-generated.sh
 
   containers:
     runs-on: ubuntu-latest

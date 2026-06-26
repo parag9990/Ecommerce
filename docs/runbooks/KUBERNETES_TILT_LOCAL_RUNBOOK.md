@@ -18,8 +18,8 @@ Prerequisites: Docker, `kubectl`, and kind/minikube.
 ```bash
 minikube start
 kubectl get nodes
-kubectl apply --dry-run=client -k deployments/k8s/local
-kubectl apply -k deployments/k8s/local
+kubectl apply --dry-run=client -k infra/k8s/overlays/dev
+kubectl apply -k infra/k8s/overlays/dev
 kubectl get all -n ecommerce-local
 kubectl delete namespace ecommerce-local
 ```

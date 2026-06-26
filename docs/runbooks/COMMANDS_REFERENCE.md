@@ -15,7 +15,7 @@
 | Reset data | `docker compose down -v` |
 | Go tests | `make test-go` |
 | Frontend tests | `make test-frontend` |
-| K8s manifest check | `kubectl apply --dry-run=client -k deployments/k8s/local` |
+| K8s manifest check | `kubectl apply --dry-run=client -k infra/k8s/overlays/dev` |
 | Tilt Compose UI | `tilt up` |
 
 On Windows, run Make commands from a shell where GNU Make works; the underlying Docker commands work directly in PowerShell.
