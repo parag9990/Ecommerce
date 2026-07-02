@@ -16,8 +16,11 @@ func (s AccountStatus) CanAuthenticate() bool {
 
 type AuthAccount struct {
 	AccountID     string
+	UserID        string
 	Email         *string
 	Phone         *string
+	SellerID      string
+	TenantID      string
 	EmailVerified bool
 	PhoneVerified bool
 	Status        AccountStatus

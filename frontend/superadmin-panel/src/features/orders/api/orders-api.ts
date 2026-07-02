@@ -153,7 +153,7 @@ export function toAdminOrdersQueryString(filters: AdminOrderFilters): string {
     from: filters.from,
     to: filters.to,
     page: filters.page,
-    limit: filters.limit
+    page_size: filters.limit
   });
 }
 
@@ -165,7 +165,7 @@ export async function listAdminOrders(filters: AdminOrderFilters): Promise<Admin
     ...response,
     orders: (response.orders ?? []).map((order) => normalizeOrder(order)),
     page: response.page ?? filters.page,
-    limit: response.limit ?? filters.limit
+    limit: response.page_size ?? response.limit ?? filters.limit
   };
 }
 

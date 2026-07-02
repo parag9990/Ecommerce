@@ -19,6 +19,7 @@ import (
 	grpctransport "github.com/example/ecommerce-platform/backend/services/recommendation-service/internal/transport/grpc"
 	httptransport "github.com/example/ecommerce-platform/backend/services/recommendation-service/internal/transport/http"
 	"github.com/example/ecommerce-platform/backend/services/recommendation-service/internal/usecase"
+	platformmiddleware "github.com/parag/ecommerce/backend/shared/platform/middleware"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
@@ -156,7 +157,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:         cfg.HTTP.Address,
-		Handler:      httptransport.NewRouter(handler),
+		Handler:      platformmiddleware.CORS(platformmiddleware.DefaultCORSConfig())(httptransport.NewRouter(handler)),
 		ReadTimeout:  cfg.HTTP.ReadTimeout,
 		WriteTimeout: cfg.HTTP.WriteTimeout,
 		IdleTimeout:  cfg.HTTP.IdleTimeout,

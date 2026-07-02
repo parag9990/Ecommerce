@@ -18,6 +18,7 @@ import (
 	"ecommerce/superadmin-service/internal/repository"
 	transporthttp "ecommerce/superadmin-service/internal/transport/http"
 	"ecommerce/superadmin-service/internal/usecase"
+	platformmiddleware "github.com/parag/ecommerce/backend/shared/platform/middleware"
 )
 
 func main() {
@@ -128,7 +129,7 @@ func main() {
 	auditLogHandler := transporthttp.NewAuditLogHandler(auditLogs, logger)
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           transporthttp.NewServeMux(rbacHandler, controlHandler, orderPaymentHandler, sessionVisibilityHandler, sessionAnalyticsProxyHandler, settingsHandler, auditLogHandler),
+		Handler:           platformmiddleware.CORS(platformmiddleware.DefaultCORSConfig())(transporthttp.NewServeMux(rbacHandler, controlHandler, orderPaymentHandler, sessionVisibilityHandler, sessionAnalyticsProxyHandler, settingsHandler, auditLogHandler)),
 		ReadHeaderTimeout: cfg.HTTPReadHeaderTimeout,
 	}
 

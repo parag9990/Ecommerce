@@ -57,9 +57,6 @@ func (v Variant) Validate(field string, options ValidationOptions, schema []Attr
 	if !requiredString(v.SKU) {
 		report.AddError(CodeSKURequired, fieldPath(field, "sku"), "variant SKU is required")
 	}
-	if len(v.Attributes) == 0 {
-		report.AddError(CodeRequiredAttributeMissing, fieldPath(field, "attributes"), "variant attributes are required")
-	}
 	report.Merge(v.Price.Validate(fieldPath(field, "price")))
 	if v.MRP != nil {
 		report.Merge(v.MRP.Validate(fieldPath(field, "mrp")))

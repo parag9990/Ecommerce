@@ -23,6 +23,7 @@ import (
 	httptransport "github.com/example/ecommerce-platform/backend/services/search-service/internal/transport/http"
 	"github.com/example/ecommerce-platform/backend/services/search-service/internal/usecase"
 	searchv1 "github.com/parag/ecommerce/backend/shared/gen/go/ecommerce/search/v1"
+	platformmiddleware "github.com/parag/ecommerce/backend/shared/platform/middleware"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/typesense/typesense-go/v2/typesense"
@@ -306,7 +307,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:         cfg.HTTP.Address,
-		Handler:      httptransport.NewRouter(handler),
+		Handler:      platformmiddleware.CORS(platformmiddleware.DefaultCORSConfig())(httptransport.NewRouter(handler)),
 		ReadTimeout:  cfg.HTTP.ReadTimeout,
 		WriteTimeout: cfg.HTTP.WriteTimeout,
 		IdleTimeout:  cfg.HTTP.IdleTimeout,

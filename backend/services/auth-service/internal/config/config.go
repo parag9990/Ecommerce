@@ -28,6 +28,7 @@ type Config struct {
 	OTP          OTPConfig
 	RBAC         RBACConfig
 	Notification NotificationConfig
+	User         UserConfig
 	SessionLink  SessionLinkConfig
 }
 
@@ -92,6 +93,11 @@ type RBACConfig struct {
 }
 
 type NotificationConfig struct {
+	GRPCAddress string
+	Timeout     time.Duration
+}
+
+type UserConfig struct {
 	GRPCAddress string
 	Timeout     time.Duration
 }
@@ -189,6 +195,10 @@ func Load() (Config, error) {
 			GRPCAddress: envString("NOTIFICATION_GRPC_ADDR", "localhost:9090"),
 			Timeout:     envDuration("NOTIFICATION_TIMEOUT", 3*time.Second),
 		},
+		User: UserConfig{
+			GRPCAddress: envString("USER_GRPC_ADDR", "localhost:50052"),
+			Timeout:     envDuration("USER_GRPC_TIMEOUT", 3*time.Second),
+		},
 		SessionLink: SessionLinkConfig{
 			Mode:                strings.ToLower(strings.TrimSpace(envString("SESSION_LINK_MODE", "outbox"))),
 			AuthEventsTopic:     envString("AUTH_EVENTS_TOPIC", "auth.events"),
@@ -272,6 +282,9 @@ func (c Config) Validate() error {
 	}
 	if err := c.Notification.Validate(); err != nil {
 		return fmt.Errorf("invalid notification config: %w", err)
+	}
+	if err := c.User.Validate(); err != nil {
+		return fmt.Errorf("invalid user config: %w", err)
 	}
 	if err := c.SessionLink.Validate(); err != nil {
 		return fmt.Errorf("invalid session link config: %w", err)
@@ -362,6 +375,16 @@ func (c NotificationConfig) Validate() error {
 	}
 	if c.Timeout <= 0 {
 		return errors.New("NOTIFICATION_TIMEOUT must be greater than zero")
+	}
+	return nil
+}
+
+func (c UserConfig) Validate() error {
+	if strings.TrimSpace(c.GRPCAddress) == "" {
+		return errors.New("USER_GRPC_ADDR cannot be empty")
+	}
+	if c.Timeout <= 0 {
+		return errors.New("USER_GRPC_TIMEOUT must be greater than zero")
 	}
 	return nil
 }

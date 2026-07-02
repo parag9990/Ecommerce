@@ -13,6 +13,7 @@ import (
 	"github.com/example/ecommerce-platform/backend/services/cart-service/internal/repository"
 	httptransport "github.com/example/ecommerce-platform/backend/services/cart-service/internal/transport/http"
 	"github.com/example/ecommerce-platform/backend/services/cart-service/internal/usecase"
+	platformmiddleware "github.com/parag/ecommerce/backend/shared/platform/middleware"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -191,7 +192,7 @@ func main() {
 	}
 	server := &http.Server{
 		Addr:         cfg.HTTP.Address,
-		Handler:      httptransport.NewRouter(handler),
+		Handler:      platformmiddleware.CORS(platformmiddleware.DefaultCORSConfig())(httptransport.NewRouter(handler)),
 		ReadTimeout:  cfg.HTTP.ReadTimeout,
 		WriteTimeout: cfg.HTTP.WriteTimeout,
 		IdleTimeout:  cfg.HTTP.IdleTimeout,

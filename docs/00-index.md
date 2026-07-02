@@ -4,6 +4,18 @@ This repository is starting as a production blueprint for a microservices-based 
 
 Language style: simple Hinglish with professional technical clarity.
 
+## Local Runbook
+
+For local setup and beginner-friendly run steps, use the dedicated local runbook:
+
+| Guide | Purpose |
+|---|---|
+| [Local Runbook Index](../LOCAL_RUNBOOK_INDEX.md) | Canonical local documentation entry point |
+| [Full Local Runbook](../runbook/05_FULL_LOCAL_RUNBOOK.md) | Step-by-step local run guide |
+| [Runbook README](../runbook/README.md) | Service inventory, source-of-truth notes, and known blockers |
+
+Root `docker-compose.yml` is the local runtime source of truth. The older `docs/runbooks/` area is kept only for non-local workflow runbooks such as branch merge guidance.
+
 ## Step Mapping
 
 | Step | Requirement | File |

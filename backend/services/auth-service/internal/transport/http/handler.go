@@ -28,6 +28,10 @@ type AuthUsecase interface {
 	Login(ctx context.Context, input usecase.LoginInput) (usecase.AuthSession, error)
 }
 
+type SignupUsecase interface {
+	Signup(ctx context.Context, input usecase.SignupInput) (usecase.AuthSession, error)
+}
+
 type TokenUsecase interface {
 	IssueTokenPair(ctx context.Context, input usecase.IssueTokenPairInput) (usecase.TokenPair, error)
 	RefreshToken(ctx context.Context, input usecase.RefreshTokenInput) (usecase.TokenPair, error)
@@ -51,18 +55,22 @@ type RoleUsecase interface {
 type Handler struct {
 	passwordUsecase PasswordUsecase
 	authUsecase     AuthUsecase
+	signupUsecase   SignupUsecase
 	tokenUsecase    TokenUsecase
 	otpUsecase      OTPUsecase
 	roleUsecase     RoleUsecase
 	logger          *slog.Logger
 }
 
-func NewHandler(passwordUsecase PasswordUsecase, authUsecase AuthUsecase, tokenUsecase TokenUsecase, otpUsecase OTPUsecase, roleUsecase RoleUsecase, logger *slog.Logger) (*Handler, error) {
+func NewHandler(passwordUsecase PasswordUsecase, authUsecase AuthUsecase, signupUsecase SignupUsecase, tokenUsecase TokenUsecase, otpUsecase OTPUsecase, roleUsecase RoleUsecase, logger *slog.Logger) (*Handler, error) {
 	if passwordUsecase == nil {
 		return nil, errors.New("password usecase is required")
 	}
 	if authUsecase == nil {
 		return nil, errors.New("auth usecase is required")
+	}
+	if signupUsecase == nil {
+		return nil, errors.New("signup usecase is required")
 	}
 	if tokenUsecase == nil {
 		return nil, errors.New("token usecase is required")
@@ -79,6 +87,7 @@ func NewHandler(passwordUsecase PasswordUsecase, authUsecase AuthUsecase, tokenU
 	return &Handler{
 		passwordUsecase: passwordUsecase,
 		authUsecase:     authUsecase,
+		signupUsecase:   signupUsecase,
 		tokenUsecase:    tokenUsecase,
 		otpUsecase:      otpUsecase,
 		roleUsecase:     roleUsecase,
@@ -87,6 +96,7 @@ func NewHandler(passwordUsecase PasswordUsecase, authUsecase AuthUsecase, tokenU
 }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/api/v1/auth/signup", h.handleSignup)
 	mux.HandleFunc("/api/v1/auth/login", h.handleLogin)
 	mux.HandleFunc("/api/v1/auth/refresh", h.handleRefreshToken)
 	mux.HandleFunc("/api/v1/auth/logout", h.handleLogout)
@@ -102,6 +112,44 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("/internal/v1/auth/roles/assign", h.AuthRequired(h.RequireRoles(roleMutationRoles()...)(http.HandlerFunc(h.handleAssignRole))))
 	mux.Handle("/internal/v1/auth/roles/revoke", h.AuthRequired(h.RequireRoles(roleMutationRoles()...)(http.HandlerFunc(h.handleRevokeRole))))
 	mux.HandleFunc("/.well-known/jwks.json", h.handleJWKS)
+}
+
+func (h *Handler) handleSignup(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+
+	var req signupRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+		return
+	}
+
+	session, err := h.signupUsecase.Signup(r.Context(), usecase.SignupInput{
+		Email:    req.Email,
+		Phone:    req.Phone,
+		FullName: req.FullName,
+		Password: req.Password,
+		Role:     req.Role,
+		TraceID:  traceID(r),
+		Device:   sessionDeviceInput(r, req.Device),
+		Network:  sessionNetworkInput(r),
+	})
+	if err != nil {
+		h.writeUsecaseError(w, r, err)
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, authSessionResponse{
+		User: authUserResponse{
+			UserID:   session.User.UserID,
+			Roles:    session.User.Roles,
+			SellerID: session.User.SellerID,
+			TenantID: session.User.TenantID,
+		},
+		Tokens:    tokenResponseFromPair(session.Tokens),
+		SessionID: session.SessionID,
+	})
 }
 
 func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -542,6 +590,10 @@ func (h *Handler) writeUsecaseError(w http.ResponseWriter, r *http.Request, err 
 		writeAPIError(w, http.StatusUnauthorized, "INVALID_CREDENTIALS", "Invalid credentials")
 	case errors.Is(err, domain.ErrCredentialNotFound):
 		writeAPIError(w, http.StatusUnauthorized, "INVALID_CREDENTIALS", "Invalid credentials")
+	case errors.Is(err, usecase.ErrInvalidSignupRequest):
+		writeAPIError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid signup request")
+	case errors.Is(err, domain.ErrDuplicateAccount):
+		writeAPIError(w, http.StatusConflict, "ACCOUNT_EXISTS", "Account already exists")
 	case errors.Is(err, domain.ErrDuplicateCredential):
 		writeAPIError(w, http.StatusConflict, "CREDENTIAL_EXISTS", "Credential already exists")
 	case errors.Is(err, domain.ErrInvalidRefreshToken), errors.Is(err, domain.ErrRefreshTokenReuse):
@@ -655,6 +707,11 @@ func sessionDeviceInput(r *http.Request, device deviceRequest) usecase.SessionDe
 		fingerprintHash = strings.TrimSpace(r.Header.Get("X-Device-Fingerprint-Hash"))
 	}
 
+	userAgent := strings.TrimSpace(r.UserAgent())
+	if userAgent == "" {
+		userAgent = strings.TrimSpace(device.UserAgent)
+	}
+
 	channel := strings.TrimSpace(device.Channel)
 	if channel == "" {
 		channel = strings.TrimSpace(r.Header.Get("X-Client-Channel"))
@@ -665,13 +722,19 @@ func sessionDeviceInput(r *http.Request, device deviceRequest) usecase.SessionDe
 		locale = firstLanguage(r.Header.Get("Accept-Language"))
 	}
 
+	timezone := strings.TrimSpace(device.Timezone)
+	if timezone == "" {
+		timezone = firstHeaderValue(r, "X-Client-Timezone", "X-Timezone", "X-Time-Zone")
+	}
+
 	return usecase.SessionDeviceInput{
 		AnonymousID:           anonymousID,
 		Fingerprint:           fingerprint,
 		DeviceFingerprintHash: fingerprintHash,
-		UserAgent:             r.UserAgent(),
+		UserAgent:             userAgent,
 		Channel:               channel,
 		Locale:                locale,
+		Timezone:              timezone,
 	}
 }
 
@@ -696,6 +759,15 @@ func firstLanguage(header string) string {
 	first, _, _ := strings.Cut(strings.TrimSpace(header), ",")
 	language, _, _ := strings.Cut(first, ";")
 	return strings.TrimSpace(language)
+}
+
+func firstHeaderValue(r *http.Request, names ...string) string {
+	for _, name := range names {
+		if value := strings.TrimSpace(r.Header.Get(name)); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {

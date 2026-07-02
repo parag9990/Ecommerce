@@ -66,7 +66,7 @@ function toOrderedEvents(events: SessionEvent[] = []): SessionEvent[] {
 export function toAdminSessionsQueryString(filters: SessionQueryParams): string {
   return buildQueryString({
     page: filters.page,
-    limit: filters.limit,
+    page_size: filters.limit,
     user_id: filters.user_id?.trim(),
     from: filters.from,
     to: filters.to
@@ -93,7 +93,7 @@ export async function listAdminSessions(filters: SessionQueryParams): Promise<Se
     ...response,
     sessions: (response.sessions ?? []).map(normalizeSession),
     page: response.page ?? filters.page,
-    limit: response.limit ?? filters.limit
+    limit: response.page_size ?? response.limit ?? filters.limit
   };
 }
 

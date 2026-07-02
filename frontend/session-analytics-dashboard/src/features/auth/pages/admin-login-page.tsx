@@ -45,7 +45,7 @@ export function AdminLoginPage() {
           identifier: identifier.trim(),
           password,
           device: {
-            source: "session-analytics-dashboard",
+            channel: "session-analytics-dashboard",
             user_agent: window.navigator.userAgent
           }
         },

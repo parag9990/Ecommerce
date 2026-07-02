@@ -238,6 +238,26 @@
       "response_schema": "CategoryListResponse"
     },
     {
+      "id": "seller.product_list",
+      "method": "GET",
+      "path": "/api/v1/seller/products",
+      "service": "product-service",
+      "grpc": "ProductService.ListSellerProducts",
+      "auth": "seller",
+      "request_schema": "ProductListRequest",
+      "response_schema": "ProductListResponse"
+    },
+    {
+      "id": "seller.product_detail",
+      "method": "GET",
+      "path": "/api/v1/seller/products/{product_id}",
+      "service": "product-service",
+      "grpc": "ProductService.GetSellerProduct",
+      "auth": "seller",
+      "request_schema": "IdPathRequest",
+      "response_schema": "Product"
+    },
+    {
       "id": "seller.product_create",
       "method": "POST",
       "path": "/api/v1/seller/products",

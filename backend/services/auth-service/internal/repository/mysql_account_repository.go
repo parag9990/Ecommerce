@@ -20,6 +20,46 @@ func NewMySQLAccountRepository(db *sql.DB) (*MySQLAccountRepository, error) {
 	return &MySQLAccountRepository{db: db}, nil
 }
 
+func (r *MySQLAccountRepository) CreateAccount(ctx context.Context, account domain.AuthAccount) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO auth_accounts (
+			account_id,
+			user_id,
+			email,
+			phone,
+			seller_id,
+			tenant_id,
+			email_verified,
+			phone_verified,
+			status,
+			created_at,
+			updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, account.AccountID, nullableString(account.UserID), nullableStringPtr(account.Email), nullableStringPtr(account.Phone), nullableString(account.SellerID), nullableString(account.TenantID), account.EmailVerified, account.PhoneVerified, account.Status, account.CreatedAt.UTC(), account.UpdatedAt.UTC())
+	if err != nil {
+		if isDuplicateKey(err) {
+			return domain.ErrDuplicateAccount
+		}
+		return fmt.Errorf("insert auth account: %w", err)
+	}
+	return nil
+}
+
+func (r *MySQLAccountRepository) LinkUser(ctx context.Context, accountID string, userID string) error {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE auth_accounts
+		SET user_id = ?
+		WHERE account_id = ?
+	`, userID, accountID)
+	if err != nil {
+		if isDuplicateKey(err) {
+			return domain.ErrDuplicateAccount
+		}
+		return fmt.Errorf("link auth account user: %w", err)
+	}
+	return ensureAffected(result, domain.ErrAccountNotFound)
+}
+
 func (r *MySQLAccountRepository) FindTokenSubject(ctx context.Context, accountID string) (domain.TokenSubject, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT

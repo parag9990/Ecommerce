@@ -18,7 +18,12 @@ import {
   resetPasswordSchema,
   type ResetPasswordFormValues,
 } from '../schemas';
-import { toTrimmedValue } from '../utils';
+import {
+  localEmailOtpNotice,
+  otpDeliveryErrorMessage,
+  otpDeliverySuccessMessage,
+  toTrimmedValue,
+} from '../utils';
 
 const fieldIds = {
   confirmPassword: 'reset-confirm-password',
@@ -35,6 +40,8 @@ export function ResetPasswordPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [challengeId, setChallengeId] = useState(initialChallengeId);
   const [newPassword, setNewPassword] = useState('');
+  const deliveryNotice =
+    challengeId && !successMessage ? localEmailOtpNotice(target) : null;
 
   const {
     formState: { errors, isSubmitting },
@@ -90,10 +97,12 @@ export function ResetPasswordPage() {
         shouldValidate: true,
       });
       setChallengeId(challenge.challenge_id);
-      setSuccessMessage(`New reset OTP sent. It expires in ${challenge.expires_in}s.`);
+      setSuccessMessage(
+        otpDeliverySuccessMessage(target, challenge.expires_in, 'reset OTP'),
+      );
     } catch (error) {
       setServerError(
-        error instanceof Error ? error.message : 'Could not resend reset OTP.',
+        otpDeliveryErrorMessage(target, error, 'Could not resend reset OTP.'),
       );
       throw error;
     }
@@ -119,6 +128,8 @@ export function ResetPasswordPage() {
           ) : null}
 
           {serverError ? <Alert variant="error">{serverError}</Alert> : null}
+
+          {deliveryNotice ? <Alert variant="info">{deliveryNotice}</Alert> : null}
 
           {successMessage ? (
             <Alert variant="success">{successMessage}</Alert>

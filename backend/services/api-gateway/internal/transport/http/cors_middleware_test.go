@@ -28,6 +28,9 @@ func TestCORSMiddlewareAllowsConfiguredPanelOrigin(t *testing.T) {
 	if got := response.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:3003" {
 		t.Fatalf("unexpected allow origin %q", got)
 	}
+	if got := response.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
+		t.Fatalf("unexpected allow credentials %q", got)
+	}
 }
 
 func TestCORSMiddlewareHandlesAllowedPreflight(t *testing.T) {
@@ -40,7 +43,7 @@ func TestCORSMiddlewareHandlesAllowedPreflight(t *testing.T) {
 	request := httptest.NewRequest(http.MethodOptions, "/api/v1/admin/users", nil)
 	request.Header.Set("Origin", "http://localhost:3003")
 	request.Header.Set("Access-Control-Request-Method", http.MethodGet)
-	request.Header.Set("Access-Control-Request-Headers", "authorization,x-request-id")
+	request.Header.Set("Access-Control-Request-Headers", "authorization,x-client-app,x-request-id")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 
@@ -49,6 +52,9 @@ func TestCORSMiddlewareHandlesAllowedPreflight(t *testing.T) {
 	}
 	if got := response.Header().Get("Access-Control-Allow-Headers"); got != corsAllowedHeaders {
 		t.Fatalf("unexpected allow headers %q", got)
+	}
+	if got := response.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
+		t.Fatalf("unexpected allow credentials %q", got)
 	}
 }
 

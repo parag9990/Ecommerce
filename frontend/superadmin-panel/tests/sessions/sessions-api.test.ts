@@ -68,7 +68,7 @@ describe("sessions API", () => {
         page: 2,
         limit: 25
       })
-    ).toBe("page=2&limit=25&user_id=user_123&from=2026-06-01T10%3A00&to=2026-06-01T12%3A00");
+    ).toBe("page=2&page_size=25&user_id=user_123&from=2026-06-01T10%3A00&to=2026-06-01T12%3A00");
   });
 
   it("loads live metrics with auth headers and normalized defaults", async () => {
@@ -117,6 +117,7 @@ describe("sessions API", () => {
 
     expect(requestUrl.pathname).toBe("/api/v1/analytics/sessions");
     expect(requestUrl.searchParams.get("user_id")).toBe("user_123");
+    expect(requestUrl.searchParams.get("page_size")).toBe("25");
     expect(response.sessions[0].device?.operating_system).toBe("Windows");
     expect(response.sessions[0].status).toBe("active");
   });

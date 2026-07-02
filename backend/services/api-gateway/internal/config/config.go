@@ -93,6 +93,8 @@ type Config struct {
 	ProductHTTPURL          string
 	ProductHTTPTimeout      time.Duration
 	CartGRPCAddr            string
+	CartHTTPURL             string
+	CartHTTPTimeout         time.Duration
 	WishlistGRPCAddr        string
 	WishlistHTTPURL         string
 	WishlistHTTPTimeout     time.Duration
@@ -112,6 +114,8 @@ type Config struct {
 	SessionHTTPURL          string
 	SessionHTTPTimeout      time.Duration
 	NotificationGRPCAddr    string
+	NotificationHTTPURL     string
+	NotificationHTTPTimeout time.Duration
 	SuperadminGRPCAddr      string
 	SuperadminHTTPURL       string
 	SuperadminHTTPTimeout   time.Duration
@@ -158,11 +162,19 @@ func Load(ctx context.Context) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	cartHTTPTimeout, err := getDuration("CART_HTTP_TIMEOUT", 10*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
 	cmsHTTPTimeout, err := getDuration("CMS_HTTP_TIMEOUT", 10*time.Second)
 	if err != nil {
 		return Config{}, err
 	}
 	paymentHTTPTimeout, err := getDuration("PAYMENT_HTTP_TIMEOUT", 10*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	notificationHTTPTimeout, err := getDuration("NOTIFICATION_HTTP_TIMEOUT", 10*time.Second)
 	if err != nil {
 		return Config{}, err
 	}
@@ -325,6 +337,11 @@ func Load(ctx context.Context) (Config, error) {
 				"http://localhost:3002",
 				"http://localhost:3003",
 				"http://localhost:5173",
+				"http://127.0.0.1:3000",
+				"http://127.0.0.1:3001",
+				"http://127.0.0.1:3002",
+				"http://127.0.0.1:3003",
+				"http://127.0.0.1:5173",
 			}),
 		},
 		GRPCWeb: GRPCWebConfig{
@@ -352,6 +369,8 @@ func Load(ctx context.Context) (Config, error) {
 		ProductHTTPURL:          getenv("PRODUCT_HTTP_URL", "http://product-service:8082"),
 		ProductHTTPTimeout:      productHTTPTimeout,
 		CartGRPCAddr:            getenv("CART_GRPC_ADDR", ""),
+		CartHTTPURL:             getenv("CART_HTTP_URL", "http://cart-service:8083"),
+		CartHTTPTimeout:         cartHTTPTimeout,
 		WishlistGRPCAddr:        getenv("WISHLIST_GRPC_ADDR", ""),
 		WishlistHTTPURL:         getenv("WISHLIST_HTTP_URL", "http://wishlist-service:8084"),
 		WishlistHTTPTimeout:     wishlistHTTPTimeout,
@@ -371,6 +390,8 @@ func Load(ctx context.Context) (Config, error) {
 		SessionHTTPURL:          getenv("SESSION_HTTP_URL", "http://session-service:8086"),
 		SessionHTTPTimeout:      sessionHTTPTimeout,
 		NotificationGRPCAddr:    getenv("NOTIFICATION_GRPC_ADDR", ""),
+		NotificationHTTPURL:     getenv("NOTIFICATION_HTTP_URL", "http://notification-service:8081"),
+		NotificationHTTPTimeout: notificationHTTPTimeout,
 		SuperadminGRPCAddr:      getenv("SUPERADMIN_GRPC_ADDR", ""),
 		SuperadminHTTPURL:       getenv("SUPERADMIN_HTTP_URL", "http://superadmin-service:8088"),
 		SuperadminHTTPTimeout:   superadminHTTPTimeout,
@@ -551,6 +572,14 @@ func (c Config) Validate() error {
 			errs = append(errs, errors.New("WISHLIST_HTTP_TIMEOUT must be positive"))
 		}
 	}
+	if strings.TrimSpace(c.CartHTTPURL) != "" {
+		if err := validateHTTPURL(c.CartHTTPURL); err != nil {
+			errs = append(errs, fmt.Errorf("CART_HTTP_URL is invalid: %w", err))
+		}
+		if c.CartHTTPTimeout <= 0 {
+			errs = append(errs, errors.New("CART_HTTP_TIMEOUT must be positive"))
+		}
+	}
 	if strings.TrimSpace(c.ProductHTTPURL) != "" {
 		if err := validateHTTPURL(c.ProductHTTPURL); err != nil {
 			errs = append(errs, fmt.Errorf("PRODUCT_HTTP_URL is invalid: %w", err))
@@ -579,6 +608,14 @@ func (c Config) Validate() error {
 		}
 		if len(strings.TrimSpace(c.PaymentInternalAPIToken)) < 32 {
 			errs = append(errs, errors.New("PAYMENT_INTERNAL_API_TOKEN must be at least 32 characters when PAYMENT_HTTP_URL is configured"))
+		}
+	}
+	if strings.TrimSpace(c.NotificationHTTPURL) != "" {
+		if err := validateHTTPURL(c.NotificationHTTPURL); err != nil {
+			errs = append(errs, fmt.Errorf("NOTIFICATION_HTTP_URL is invalid: %w", err))
+		}
+		if c.NotificationHTTPTimeout <= 0 {
+			errs = append(errs, errors.New("NOTIFICATION_HTTP_TIMEOUT must be positive"))
 		}
 	}
 	if c.JWTJWKSCacheTTL <= 0 {

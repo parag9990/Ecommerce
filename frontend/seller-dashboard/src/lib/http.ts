@@ -1,4 +1,5 @@
 import { AppError } from "./api-error";
+import { getSellerAccessToken } from "./auth-session";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8080";
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -90,6 +91,11 @@ export async function http<T>(path: string, options: HttpOptions = {}): Promise<
 
   if (!headers.has("x-request-id")) {
     headers.set("x-request-id", createRequestId());
+  }
+
+  const accessToken = getSellerAccessToken();
+  if (accessToken && !headers.has("authorization")) {
+    headers.set("authorization", `Bearer ${accessToken}`);
   }
 
   const requestId = headers.get("x-request-id") ?? undefined;

@@ -6,6 +6,8 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -212,6 +214,51 @@ func TestHealthCheckReportsServingAndNotServing(t *testing.T) {
 	}
 }
 
+func TestReadinessCheckerCombinesGRPCAndHTTPHealth(t *testing.T) {
+	cfg := testClientConfig(t)
+	descriptors := ServiceDescriptorsFromConfig(cfg)
+	statuses := make(map[string]healthv1.HealthCheckResponse_ServingStatus)
+	for _, descriptor := range descriptors {
+		if isGRPCReadinessService(descriptor.Name) {
+			statuses[descriptor.HealthService] = healthv1.HealthCheckResponse_SERVING
+		}
+	}
+	conn, cleanup := newHealthConn(t, statuses)
+	defer cleanup()
+
+	registry := &Clients{
+		conns:       make(map[Downstream]*grpc.ClientConn),
+		descriptors: make(map[Downstream]ServiceDescriptor),
+	}
+	for _, descriptor := range descriptors {
+		if isGRPCReadinessService(descriptor.Name) {
+			registry.conns[descriptor.Name] = conn
+			registry.descriptors[descriptor.Name] = descriptor
+		}
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	cfg.AuthHTTPURL = server.URL
+	cfg.CartHTTPURL = server.URL
+	cfg.WishlistHTTPURL = server.URL
+	cfg.PaymentHTTPURL = server.URL
+	cfg.CMSHTTPURL = server.URL
+	cfg.SessionHTTPURL = server.URL
+	cfg.NotificationHTTPURL = server.URL
+	cfg.SuperadminHTTPURL = server.URL
+
+	report := NewReadinessCheckerFromConfig(cfg, registry).Check(context.Background())
+	if !report.Ready() {
+		t.Fatalf("expected combined readiness report to be ready, statuses=%v errors=%v", report.Statuses(), report.Errors())
+	}
+	if report[DownstreamAuth].Status != HealthStatusServing || report[DownstreamUser].Status != HealthStatusServing {
+		t.Fatalf("expected HTTP and gRPC dependencies serving, got auth=%+v user=%+v", report[DownstreamAuth], report[DownstreamUser])
+	}
+}
+
 type stubDialer struct {
 	fail        Downstream
 	calls       []Downstream
@@ -243,6 +290,15 @@ func downstreamNames(services []Downstream) []string {
 		names[i] = string(service)
 	}
 	return names
+}
+
+func isGRPCReadinessService(service Downstream) bool {
+	for _, candidate := range grpcReadinessServices {
+		if service == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func testClientConfig(t *testing.T) config.Config {

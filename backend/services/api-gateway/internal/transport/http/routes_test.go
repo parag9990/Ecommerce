@@ -102,6 +102,14 @@ func TestNewRouterHealthReadyChecksDownstreams(t *testing.T) {
 	if envelope.Error == nil || envelope.Error.Code != "DOWNSTREAM_SERVICES_UNAVAILABLE" {
 		t.Fatalf("expected downstream readiness error, got %+v", envelope.Error)
 	}
+	details, ok := envelope.Error.Details.([]any)
+	if !ok || len(details) != 1 {
+		t.Fatalf("expected readiness error details, got %#v", envelope.Error.Details)
+	}
+	detail, ok := details[0].(map[string]any)
+	if !ok || detail["reason"] != "auth: connection refused" {
+		t.Fatalf("expected downstream error reason, got %#v", details[0])
+	}
 }
 
 func TestProtectedRouteRequiresBearerToken(t *testing.T) {

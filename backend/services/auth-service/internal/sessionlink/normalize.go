@@ -123,6 +123,7 @@ func normalizeDeviceInfo(device DeviceInfo) DeviceInfo {
 		UserAgent:             NormalizeUserAgent(device.UserAgent),
 		Channel:               NormalizeMetadataValue(device.Channel),
 		Locale:                NormalizeMetadataValue(device.Locale),
+		Timezone:              NormalizeMetadataValue(device.Timezone),
 	}
 }
 

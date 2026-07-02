@@ -60,7 +60,7 @@ describe("RequireSeller", () => {
 
     renderSellerRoute();
 
-    expect(await screen.findByText("Sign in required")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Seller login" })).toBeTruthy();
   });
 
   it("blocks authenticated users without an active seller", async () => {

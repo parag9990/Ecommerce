@@ -20,6 +20,7 @@ import (
 	"github.com/parag/ecommerce/backend/services/user-service/internal/usecase"
 	platformhealth "github.com/parag/ecommerce/backend/shared/platform/health"
 	platformmetrics "github.com/parag/ecommerce/backend/shared/platform/metrics"
+	platformmiddleware "github.com/parag/ecommerce/backend/shared/platform/middleware"
 )
 
 type adminControlUsecase interface {
@@ -55,7 +56,7 @@ func newAdminServer(cfg config.HTTPConfig, db *sql.DB, metrics *observability.Me
 
 	return &http.Server{
 		Addr:              cfg.Address,
-		Handler:           mux,
+		Handler:           platformmiddleware.CORS(platformmiddleware.DefaultCORSConfig())(mux),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		IdleTimeout:       30 * time.Second,
 	}

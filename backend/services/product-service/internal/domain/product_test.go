@@ -39,6 +39,27 @@ func TestValidateForPublishAllowsZeroStockButRequiresActiveVariant(t *testing.T)
 	assertIssue(t, report, CodeActiveVariantRequired)
 }
 
+func TestProductValidateAllowsDefaultVariantWithoutAttributes(t *testing.T) {
+	product := validProduct()
+	product.CategoryID = "cat_local"
+	product.CategoryPath = []string{"cat_local"}
+	product.Attributes = Attributes{}
+	product.Variants[0].Attributes = Attributes{}
+
+	report := product.Validate(DefaultValidationOptions(), &Category{
+		ID:        "cat_local",
+		Name:      "Local Category",
+		Slug:      "local-category",
+		Path:      []string{"cat_local"},
+		IsActive:  true,
+		SortOrder: 1,
+	})
+
+	if report.HasErrors() {
+		t.Fatalf("expected default variant without attributes to be valid, got issues: %+v", report.Issues)
+	}
+}
+
 func TestStrictAttributeSchemaRejectsUnknownAttributes(t *testing.T) {
 	product := validProduct()
 	product.Attributes["unknown"] = "value"

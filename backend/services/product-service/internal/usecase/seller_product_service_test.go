@@ -37,6 +37,27 @@ func TestCreateProductCreatesSellerDraft(t *testing.T) {
 	}
 }
 
+func TestCreateProductAllowsDefaultVariantWithoutAttributes(t *testing.T) {
+	repo := newMemoryProductRepository()
+	repo.category = categoryWithoutAttributeSchema()
+	service := newTestSellerProductService(t, repo, client.ModerationAutoPublish)
+	input := validProductInput()
+	input.CategoryID = repo.category.ID
+	input.Attributes = domain.Attributes{}
+	input.Variants[0].Attributes = domain.Attributes{}
+
+	product, err := service.CreateProduct(context.Background(), CreateProductRequest{
+		Actor:   sellerActor(),
+		Product: input,
+	})
+	if err != nil {
+		t.Fatalf("CreateProduct returned error: %v", err)
+	}
+	if len(product.Variants[0].Attributes) != 0 {
+		t.Fatalf("variant attributes = %+v, want empty default variant attributes", product.Variants[0].Attributes)
+	}
+}
+
 func TestUpdateProductRejectsOwnershipMismatch(t *testing.T) {
 	repo := newMemoryProductRepository()
 	service := newTestSellerProductService(t, repo, client.ModerationAutoPublish)
@@ -441,6 +462,17 @@ func validCategory() domain.Category {
 				Values:   []string{"black"},
 			},
 		},
+	}
+}
+
+func categoryWithoutAttributeSchema() domain.Category {
+	return domain.Category{
+		ID:        "cat_default",
+		Name:      "Default Category",
+		Slug:      "default-category",
+		Path:      []string{"cat_default"},
+		IsActive:  true,
+		SortOrder: 1,
 	}
 }
 

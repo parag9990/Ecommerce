@@ -103,7 +103,9 @@ function renderPage() {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
+      <MemoryRouter
+        future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
+      >
         <LiveSessionsPage />
       </MemoryRouter>
     </QueryClientProvider>

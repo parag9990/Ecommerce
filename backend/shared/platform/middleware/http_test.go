@@ -39,6 +39,66 @@ func TestRecoverReturnsSafeJSON(t *testing.T) {
 	}
 }
 
+func TestCORSAllowsCredentialedRequest(t *testing.T) {
+	handler := CORS(CORSConfig{AllowedOrigins: []string{"http://localhost:3000"}, AllowCredentials: true})(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }),
+	)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/products", nil)
+	request.Header.Set("Origin", "http://localhost:3000")
+	handler.ServeHTTP(recorder, request)
+
+	if got := recorder.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:3000" {
+		t.Fatalf("allow origin = %q", got)
+	}
+	if got := recorder.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
+		t.Fatalf("allow credentials = %q", got)
+	}
+}
+
+func TestCORSHandlesCustomHeaderPreflight(t *testing.T) {
+	handler := CORS(CORSConfig{AllowedOrigins: []string{"http://localhost:3001"}, AllowCredentials: true})(
+		http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			t.Fatal("preflight must not reach next handler")
+		}),
+	)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodOptions, "/api/v1/seller/products", nil)
+	request.Header.Set("Origin", "http://localhost:3001")
+	request.Header.Set("Access-Control-Request-Method", http.MethodGet)
+	request.Header.Set("Access-Control-Request-Headers", "x-client-app,x-request-id")
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("status = %d", recorder.Code)
+	}
+	if got := recorder.Header().Get("Access-Control-Allow-Headers"); got != defaultCORSAllowedHeaders {
+		t.Fatalf("allow headers = %q", got)
+	}
+}
+
+func TestCORSRejectsUnknownPreflightOrigin(t *testing.T) {
+	handler := CORS(CORSConfig{AllowedOrigins: []string{"http://localhost:3000"}})(
+		http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			t.Fatal("rejected preflight must not reach next handler")
+		}),
+	)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodOptions, "/api/v1/products", nil)
+	request.Header.Set("Origin", "https://example.test")
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d", recorder.Code)
+	}
+	if got := recorder.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("allow origin = %q", got)
+	}
+}
+
 type allowLimiter struct{}
 
 func (allowLimiter) Allow(context.Context, string) (bool, error) { return true, nil }

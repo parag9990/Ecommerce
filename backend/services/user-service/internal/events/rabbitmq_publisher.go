@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,7 +11,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-const rabbitMQExchangeType = "fanout"
+const rabbitMQExchangeType = "topic"
 
 type RabbitMQPublisher struct {
 	conn     *amqp.Connection
@@ -68,7 +69,7 @@ func (p *RabbitMQPublisher) Publish(ctx context.Context, topic string, payload [
 		return err
 	}
 
-	if err := p.channel.PublishWithContext(ctx, topic, "", false, false, amqp.Publishing{
+	if err := p.channel.PublishWithContext(ctx, topic, routingKeyFromPayload(payload), false, false, amqp.Publishing{
 		ContentType:  "application/json",
 		DeliveryMode: amqp.Persistent,
 		Body:         payload,
@@ -124,4 +125,14 @@ func (p *RabbitMQPublisher) declareExchangeLocked(topic string) error {
 	}
 	p.declared[topic] = struct{}{}
 	return nil
+}
+
+func routingKeyFromPayload(payload []byte) string {
+	var envelope struct {
+		EventType string `json:"event_type"`
+	}
+	if err := json.Unmarshal(payload, &envelope); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(envelope.EventType)
 }

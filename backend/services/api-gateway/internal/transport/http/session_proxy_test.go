@@ -97,3 +97,28 @@ func TestPaymentProxyInjectsInternalBearerAndActorRole(t *testing.T) {
 		t.Fatalf("status=%d", response.Code)
 	}
 }
+
+func TestServiceProxyDropsUpstreamCORSHeaders(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Access-Control-Allow-Headers", "x-upstream")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	proxy, err := NewServiceHTTPProxy("product", upstream.URL, upstream.Client(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	proxy.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/products", nil))
+
+	if got := response.Header().Values("Access-Control-Allow-Origin"); len(got) != 0 {
+		t.Fatalf("upstream allow-origin headers were copied: %v", got)
+	}
+	if got := response.Header().Get("Content-Type"); got != "application/json" {
+		t.Fatalf("content-type = %q", got)
+	}
+}

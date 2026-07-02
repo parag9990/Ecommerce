@@ -6,7 +6,7 @@ x-app-defaults: &app-defaults
 
 x-mysql-migration: &mysql-migration
   image: migrate/migrate:v4.18.2
-  restart: "no"
+  restart: "on-failure:5"
   networks: [ecommerce-local-network]
   depends_on:
     mysql:
@@ -23,7 +23,7 @@ services:
       - mysql_data:/var/lib/mysql
       - ./infra/mysql/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-plocal_password"]
+      test: ["CMD", "mysqladmin", "ping", "--protocol=tcp", "-h", "127.0.0.1", "-P", "3306", "-uroot", "-plocal_password"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -251,6 +251,7 @@ services:
       migrate-auth: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
       notification-service: {condition: service_healthy}
+      user-service: {condition: service_healthy}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8081/readyz >/dev/null"]
       interval: 10s
@@ -496,7 +497,7 @@ services:
     ports: ["3000:8080"]
     depends_on: [api-gateway]
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz >/dev/null"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -510,7 +511,7 @@ services:
     ports: ["3001:8080"]
     depends_on: [api-gateway]
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz >/dev/null"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -525,7 +526,7 @@ services:
     depends_on:
       api-gateway: {condition: service_healthy}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz >/dev/null"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -539,7 +540,7 @@ services:
     ports: ["3003:8080"]
     depends_on: [api-gateway]
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz >/dev/null"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 10

@@ -111,6 +111,7 @@ type DeviceInfo struct {
 	UserAgent             string `json:"user_agent,omitempty"`
 	Channel               string `json:"channel,omitempty"`
 	Locale                string `json:"locale,omitempty"`
+	Timezone              string `json:"timezone,omitempty"`
 }
 
 type NetworkInfo struct {

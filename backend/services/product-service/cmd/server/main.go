@@ -25,6 +25,7 @@ import (
 	"product-service/internal/usecase"
 
 	productv1 "github.com/parag/ecommerce/backend/shared/gen/go/ecommerce/product/v1"
+	platformmiddleware "github.com/parag/ecommerce/backend/shared/platform/middleware"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
@@ -108,7 +109,7 @@ func run() error {
 	mux := routes(application, func(probeCtx context.Context) error { return mongoClient.Ping(probeCtx, nil) })
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress,
-		Handler:           mux,
+		Handler:           platformmiddleware.CORS(platformmiddleware.DefaultCORSConfig())(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,

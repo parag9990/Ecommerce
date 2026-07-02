@@ -73,7 +73,7 @@ describe("orders API", () => {
         page: 2,
         limit: 25
       })
-    ).toBe("q=order_123&review_status=manual_review&user_id=user_123&from=2026-06-01&to=2026-06-02&page=2&limit=25");
+    ).toBe("q=order_123&review_status=manual_review&user_id=user_123&from=2026-06-01&to=2026-06-02&page=2&page_size=25");
   });
 
   it("lists admin orders with filters, auth headers, and normalized records", async () => {
@@ -121,6 +121,7 @@ describe("orders API", () => {
     expect(requestUrl.searchParams.get("review_status")).toBe("disputed");
     expect(requestUrl.searchParams.get("user_id")).toBe("user_123");
     expect(requestUrl.searchParams.get("seller_id")).toBe("seller_1");
+    expect(requestUrl.searchParams.get("page_size")).toBe("25");
     expect(requestInit.headers).toMatchObject({
       Authorization: "Bearer admin-token"
     });

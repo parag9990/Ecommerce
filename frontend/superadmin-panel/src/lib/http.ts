@@ -7,6 +7,11 @@ export type ApiErrorBody = {
   message?: string;
   request_id?: string;
   details?: unknown;
+  error?: {
+    code?: string;
+    message?: string;
+    details?: unknown;
+  };
 };
 
 export class ApiError extends Error {
@@ -43,7 +48,18 @@ async function parseErrorBody(response: Response): Promise<ApiErrorBody | null> 
   }
 
   try {
-    return (await response.json()) as ApiErrorBody;
+    const payload = (await response.json()) as ApiErrorBody;
+
+    if (payload.error) {
+      return {
+        code: payload.error.code,
+        message: payload.error.message,
+        request_id: payload.request_id,
+        details: payload.error.details
+      };
+    }
+
+    return payload;
   } catch {
     return null;
   }

@@ -22,6 +22,7 @@ import (
 	httptransport "github.com/example/ecommerce-platform/backend/services/auth-service/internal/transport/http"
 	"github.com/example/ecommerce-platform/backend/services/auth-service/internal/usecase"
 	_ "github.com/go-sql-driver/mysql"
+	platformmiddleware "github.com/parag/ecommerce/backend/shared/platform/middleware"
 )
 
 func main() {
@@ -90,6 +91,12 @@ func main() {
 		os.Exit(1)
 	}
 	defer notificationConn.Close()
+	userClient, userConn, err := clients.DialGRPCUserClient(cfg.User.GRPCAddress, cfg.User.Timeout)
+	if err != nil {
+		logger.Error("auth.user_client.init_failed", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	defer userConn.Close()
 
 	credentialRepo, err := repository.NewMySQLCredentialRepository(db)
 	if err != nil {
@@ -224,7 +231,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	handler, err := httptransport.NewHandler(passwordUsecase, authUsecase, tokenUsecase, otpUsecase, roleUsecase, logger)
+	signupUsecase, err := usecase.NewSignupUsecase(
+		accountRepo,
+		passwordUsecase,
+		roleRepo,
+		tokenUsecase,
+		userClient,
+		sessionLinker,
+		privacyHasher,
+		logger,
+	)
+	if err != nil {
+		logger.Error("auth.signup_usecase.init_failed", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	handler, err := httptransport.NewHandler(passwordUsecase, authUsecase, signupUsecase, tokenUsecase, otpUsecase, roleUsecase, logger)
 	if err != nil {
 		logger.Error("auth.http.handler_init_failed", slog.String("error", err.Error()))
 		os.Exit(1)
@@ -232,10 +254,10 @@ func main() {
 
 	server := &http.Server{
 		Addr: cfg.HTTP.Address,
-		Handler: httptransport.NewRouter(handler,
+		Handler: platformmiddleware.CORS(platformmiddleware.DefaultCORSConfig())(httptransport.NewRouter(handler,
 			httptransport.ReadinessDependency{Name: "mysql", Check: db.PingContext},
 			httptransport.ReadinessDependency{Name: "redis", Check: redisClient.Ping},
-		),
+		)),
 		ReadTimeout:  cfg.HTTP.ReadTimeout,
 		WriteTimeout: cfg.HTTP.WriteTimeout,
 		IdleTimeout:  cfg.HTTP.IdleTimeout,

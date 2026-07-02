@@ -146,6 +146,58 @@ func TestCreateCredentialHashesBeforeStoring(t *testing.T) {
 	}
 }
 
+func TestCreatedCredentialCanBeVerifiedWithSamePassword(t *testing.T) {
+	now := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
+	repo := &fakeCredentialRepository{}
+	hasher, err := password.NewRouter(password.RouterConfig{
+		PreferredAlgorithm: password.AlgorithmArgon2id,
+		Policy:             password.DefaultPolicy(),
+		Argon2id: password.Argon2idParams{
+			MemoryKiB:   1024,
+			Iterations:  1,
+			Parallelism: 1,
+			SaltLength:  16,
+			KeyLength:   32,
+		},
+		Bcrypt: password.DefaultBcryptParams(),
+	})
+	if err != nil {
+		t.Fatalf("NewRouter() error = %v", err)
+	}
+	uc := newTestUsecase(t, repo, hasher, now)
+
+	_, err = uc.CreateCredential(context.Background(), CreateCredentialInput{
+		AccountID: "auth_123",
+		Password:  "Test@123",
+	})
+	if err != nil {
+		t.Fatalf("CreateCredential() error = %v", err)
+	}
+
+	repo.accountCredential = domain.AccountCredential{
+		AccountID:     "auth_123",
+		AccountStatus: domain.AccountStatusActive,
+		Credential:    repo.createdCredential,
+	}
+
+	output, err := uc.VerifyPassword(context.Background(), VerifyPasswordInput{
+		Identifier: "buyer@example.com",
+		Password:   "Test@123",
+	})
+	if err != nil {
+		t.Fatalf("VerifyPassword() error = %v", err)
+	}
+	if output.AccountID != "auth_123" {
+		t.Fatalf("account id = %q", output.AccountID)
+	}
+	if repo.resetAccountID != "auth_123" {
+		t.Fatalf("reset account id = %q", repo.resetAccountID)
+	}
+	if repo.incrementAccountID != "" {
+		t.Fatalf("failed attempts incremented for valid password: %q", repo.incrementAccountID)
+	}
+}
+
 func TestVerifyPasswordRecordsFailedAttempt(t *testing.T) {
 	now := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
 	repo := &fakeCredentialRepository{
@@ -215,6 +267,42 @@ func TestVerifyPasswordResetsAndRehashesOnSuccess(t *testing.T) {
 	}
 	if !output.PasswordRehashed || !output.EmailVerified {
 		t.Fatalf("output = %+v", output)
+	}
+}
+
+func TestVerifyPasswordAllowsFreshUnverifiedSignupAccount(t *testing.T) {
+	now := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
+	repo := &fakeCredentialRepository{
+		accountCredential: domain.AccountCredential{
+			AccountID:     "auth_123",
+			AccountStatus: domain.AccountStatusActive,
+			EmailVerified: false,
+			Credential: domain.Credential{
+				AccountID:    "auth_123",
+				PasswordHash: "stored-hash",
+				PasswordAlgo: password.AlgorithmArgon2id,
+			},
+		},
+	}
+	uc := newTestUsecase(t, repo, stubHasher{
+		verifyResult: password.VerificationResult{Valid: true, Algorithm: password.AlgorithmArgon2id},
+	}, now)
+
+	output, err := uc.VerifyPassword(context.Background(), VerifyPasswordInput{
+		Identifier: "fresh@example.com",
+		Password:   "correct-password",
+	})
+	if err != nil {
+		t.Fatalf("VerifyPassword() error = %v", err)
+	}
+	if output.AccountID != "auth_123" || output.EmailVerified {
+		t.Fatalf("output = %+v", output)
+	}
+	if repo.resetAccountID != "auth_123" {
+		t.Fatalf("reset account id = %q", repo.resetAccountID)
+	}
+	if repo.incrementAccountID != "" {
+		t.Fatal("successful login must not record a failed attempt")
 	}
 }
 

@@ -90,7 +90,7 @@ export function AdminLoginPage() {
           password,
           device: {
             user_agent: window.navigator.userAgent,
-            source: "superadmin-panel"
+            channel: "superadmin-panel"
           }
         })
       });

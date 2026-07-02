@@ -85,6 +85,7 @@ type SessionDeviceInput struct {
 	UserAgent             string
 	Channel               string
 	Locale                string
+	Timezone              string
 }
 
 type SessionNetworkInput struct {
@@ -165,6 +166,7 @@ func (u *AuthUsecase) recordLoginSessionLink(ctx context.Context, accountID stri
 			UserAgent:             input.Device.UserAgent,
 			Channel:               input.Device.Channel,
 			Locale:                input.Device.Locale,
+			Timezone:              input.Device.Timezone,
 		},
 		Network: sessionlink.NetworkInfo{
 			IPHash: u.ipHash(input.Network),

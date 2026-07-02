@@ -109,6 +109,7 @@ export type AdminOrderListResponse = {
   total?: number;
   page?: number;
   limit?: number;
+  page_size?: number;
 };
 
 export type AdminOrderDetailResponse = {

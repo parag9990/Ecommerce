@@ -25,6 +25,7 @@ import (
 	transportgrpc "github.com/example/ecommerce-platform/backend/services/notification-service/internal/transport/grpc"
 	transporthttp "github.com/example/ecommerce-platform/backend/services/notification-service/internal/transport/http"
 	"github.com/example/ecommerce-platform/backend/services/notification-service/internal/usecase"
+	platformmiddleware "github.com/parag/ecommerce/backend/shared/platform/middleware"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
 	"google.golang.org/grpc"
@@ -284,7 +285,7 @@ func newAnalyticsHTTPServer(
 		return nil, nil, fmt.Errorf("listen for notification analytics HTTP: %w", err)
 	}
 	return &http.Server{
-		Handler:           mux,
+		Handler:           platformmiddleware.CORS(platformmiddleware.DefaultCORSConfig())(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,

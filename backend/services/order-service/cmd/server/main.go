@@ -23,6 +23,7 @@ import (
 	ordergrpc "github.com/example/ecommerce-platform/backend/services/order-service/internal/transport/grpc"
 	"github.com/example/ecommerce-platform/backend/services/order-service/internal/usecase"
 	_ "github.com/go-sql-driver/mysql"
+	platformmiddleware "github.com/parag/ecommerce/backend/shared/platform/middleware"
 )
 
 func main() {
@@ -124,7 +125,7 @@ func run(logger *slog.Logger) error {
 	}
 
 	healthServer := &http.Server{
-		Addr: cfg.HTTP.Address, Handler: serviceMux(db, paymentResults, orders, cfg.HTTP.AdminToken, cfg.Downstream.PaymentEventsToken, logger),
+		Addr: cfg.HTTP.Address, Handler: platformmiddleware.CORS(platformmiddleware.DefaultCORSConfig())(serviceMux(db, paymentResults, orders, cfg.HTTP.AdminToken, cfg.Downstream.PaymentEventsToken, logger)),
 		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second,
 	}
 	errCh := make(chan error, 2)

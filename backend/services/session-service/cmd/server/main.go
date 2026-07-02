@@ -12,6 +12,7 @@ import (
 	"github.com/example/ecommerce-platform/backend/services/session-service/internal/app"
 	"github.com/example/ecommerce-platform/backend/services/session-service/internal/config"
 	httptransport "github.com/example/ecommerce-platform/backend/services/session-service/internal/transport/http"
+	platformmiddleware "github.com/parag/ecommerce/backend/shared/platform/middleware"
 )
 
 func main() {
@@ -41,7 +42,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:         cfg.HTTP.Address,
-		Handler:      httptransport.NewRouter(deps.HTTPHandler),
+		Handler:      platformmiddleware.CORS(platformmiddleware.DefaultCORSConfig())(httptransport.NewRouter(deps.HTTPHandler)),
 		ReadTimeout:  cfg.HTTP.ReadTimeout,
 		WriteTimeout: cfg.HTTP.WriteTimeout,
 		IdleTimeout:  cfg.HTTP.IdleTimeout,

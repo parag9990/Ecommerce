@@ -25,6 +25,7 @@ export type AdminUserListResponse = {
   total?: number;
   page?: number;
   limit?: number;
+  page_size?: number;
 };
 
 export type UpdateUserStatusInput = {

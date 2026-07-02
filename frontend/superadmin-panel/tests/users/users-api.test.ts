@@ -67,7 +67,7 @@ describe("users API", () => {
         page: 2,
         limit: 25
       })
-    ).toBe("q=rahul&page=2&limit=25");
+    ).toBe("q=rahul&page=2&page_size=25");
   });
 
   it("lists admin users with search, status, pagination, and auth headers", async () => {
@@ -96,6 +96,7 @@ describe("users API", () => {
     expect(requestUrl.pathname).toBe("/api/v1/admin/users");
     expect(requestUrl.searchParams.get("q")).toBe("rahul");
     expect(requestUrl.searchParams.get("status")).toBe("active");
+    expect(requestUrl.searchParams.get("page_size")).toBe("25");
     expect(requestInit.headers).toMatchObject({
       Authorization: "Bearer admin-token"
     });
@@ -145,5 +146,6 @@ describe("users API", () => {
 
     expect(requestUrl.pathname).toBe("/api/v1/analytics/sessions");
     expect(requestUrl.searchParams.get("user_id")).toBe("user_123");
+    expect(requestUrl.searchParams.get("page_size")).toBe("20");
   });
 });

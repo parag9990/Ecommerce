@@ -15,7 +15,7 @@ import {
   forgotPasswordSchema,
   type ForgotPasswordFormValues,
 } from '../schemas';
-import { toTrimmedValue } from '../utils';
+import { otpDeliveryErrorMessage, toTrimmedValue } from '../utils';
 
 const fieldIds = {
   identifier: 'forgot-password-identifier',
@@ -50,9 +50,11 @@ export function ForgotPasswordPage() {
       await navigate(`${routePaths.resetPassword}?${params.toString()}`);
     } catch (error) {
       setServerError(
-        error instanceof Error
-          ? error.message
-          : 'Could not start password reset.',
+        otpDeliveryErrorMessage(
+          toTrimmedValue(values.identifier),
+          error,
+          'Could not start password reset.',
+        ),
       );
     }
   }

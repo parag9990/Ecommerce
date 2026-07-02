@@ -44,7 +44,10 @@ function renderPage(initialEntry: string) {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialEntry]}>
+      <MemoryRouter
+        future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
+        initialEntries={[initialEntry]}
+      >
         <Routes>
           <Route path="/journey" element={<JourneyExplorerPage />} />
           <Route path="/journey/:sessionId" element={<JourneyExplorerPage />} />

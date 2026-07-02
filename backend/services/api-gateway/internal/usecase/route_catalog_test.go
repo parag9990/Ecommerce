@@ -18,12 +18,14 @@ func TestRouteCatalogLoadsMasterAPIContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list routes: %v", err)
 	}
-	if got, want := len(routes), 97; got != want {
+	if got, want := len(routes), 99; got != want {
 		t.Fatalf("expected %d routes from master-api.json, got %d", want, got)
 	}
 
 	assertRoute(t, catalog, "auth.login", domain.MethodPost, "/api/v1/auth/login", "auth-service", "AuthService.Login", domain.AuthPublic)
 	assertRoute(t, catalog, "product.detail", domain.MethodGet, "/api/v1/products/{product_id}", "product-service", "ProductService.GetProduct", domain.AuthPublic)
+	assertRoute(t, catalog, "seller.product_list", domain.MethodGet, "/api/v1/seller/products", "product-service", "ProductService.ListSellerProducts", domain.AuthSeller)
+	assertRoute(t, catalog, "seller.product_detail", domain.MethodGet, "/api/v1/seller/products/{product_id}", "product-service", "ProductService.GetSellerProduct", domain.AuthSeller)
 	assertRoute(t, catalog, "payment.webhook", domain.MethodPost, "/api/v1/webhooks/payments/{provider}", "payment-service", "PaymentService.HandleWebhook", domain.AuthWebhook)
 	assertRoute(t, catalog, "admin.setting_update", domain.MethodPatch, "/api/v1/admin/settings/{key}", "superadmin-service", "SuperadminService.UpdatePlatformSetting", domain.AuthSuperadmin)
 	assertRoute(t, catalog, "admin.search_synonyms", domain.MethodGet, "/api/v1/admin/search/synonyms", "search-service", "SearchService.ListSynonyms", domain.AuthAdmin)

@@ -32,6 +32,15 @@ type resetPasswordRequest struct {
 	NewPassword string `json:"new_password"`
 }
 
+type signupRequest struct {
+	Email    string        `json:"email"`
+	Phone    string        `json:"phone,omitempty"`
+	FullName string        `json:"full_name"`
+	Password string        `json:"password"`
+	Role     string        `json:"role,omitempty"`
+	Device   deviceRequest `json:"device,omitempty"`
+}
+
 type sendOTPRequest struct {
 	AccountID *string `json:"account_id,omitempty"`
 	Target    string  `json:"target"`
@@ -67,8 +76,10 @@ type deviceRequest struct {
 	AnonymousID           string `json:"anonymous_id,omitempty"`
 	Fingerprint           string `json:"fingerprint,omitempty"`
 	DeviceFingerprintHash string `json:"device_fingerprint_hash,omitempty"`
+	UserAgent             string `json:"user_agent,omitempty"`
 	Channel               string `json:"channel,omitempty"`
 	Locale                string `json:"locale,omitempty"`
+	Timezone              string `json:"timezone,omitempty"`
 }
 
 type issueTokenPairRequest struct {

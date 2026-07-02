@@ -18,6 +18,7 @@ import (
 	httptransport "ecommerce/backend/services/wishlist-service/internal/transport/http"
 	"ecommerce/backend/services/wishlist-service/internal/usecase"
 
+	platformmiddleware "github.com/parag/ecommerce/backend/shared/platform/middleware"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
@@ -148,7 +149,7 @@ func run() error {
 
 	server := &http.Server{
 		Addr:         cfg.HTTP.Addr,
-		Handler:      loggingMiddleware(logger, mux),
+		Handler:      platformmiddleware.CORS(platformmiddleware.DefaultCORSConfig())(loggingMiddleware(logger, mux)),
 		ReadTimeout:  cfg.HTTP.ReadTimeout,
 		WriteTimeout: cfg.HTTP.WriteTimeout,
 		IdleTimeout:  cfg.HTTP.IdleTimeout,

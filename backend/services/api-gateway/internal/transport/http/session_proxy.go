@@ -116,6 +116,7 @@ func (p *SessionProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer response.Body.Close()
 	removeHopByHopHeaders(response.Header)
+	removeCORSHeaders(response.Header)
 	for key, values := range response.Header {
 		for _, value := range values {
 			w.Header().Add(key, value)
@@ -135,6 +136,12 @@ func removeIdentityHeaders(header http.Header) {
 
 func removeHopByHopHeaders(header http.Header) {
 	for _, name := range []string{"Connection", "Proxy-Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "Te", "Trailer", "Transfer-Encoding", "Upgrade"} {
+		header.Del(name)
+	}
+}
+
+func removeCORSHeaders(header http.Header) {
+	for _, name := range []string{"Access-Control-Allow-Origin", "Access-Control-Allow-Credentials", "Access-Control-Allow-Headers", "Access-Control-Allow-Methods", "Access-Control-Expose-Headers", "Access-Control-Max-Age"} {
 		header.Del(name)
 	}
 }

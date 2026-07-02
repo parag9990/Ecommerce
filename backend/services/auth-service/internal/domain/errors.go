@@ -7,6 +7,7 @@ var (
 	ErrInvalidCredentials  = errors.New("invalid credentials")
 	ErrAccountLocked       = errors.New("account temporarily locked")
 	ErrAccountInactive     = errors.New("account cannot authenticate")
+	ErrDuplicateAccount    = errors.New("account already exists")
 	ErrDuplicateCredential = errors.New("credential already exists")
 	ErrInvalidRefreshToken = errors.New("invalid refresh token")
 	ErrRefreshTokenReuse   = errors.New("refresh token reuse detected")

@@ -3,6 +3,7 @@
 INFRA = mysql mongodb redis rabbitmq kafka typesense mailpit jaeger prometheus
 BACKEND = auth-service user-service product-service cart-service wishlist-service search-service session-service session-retention-worker cms-service recommendation-service order-service payment-service notification-service superadmin-service api-gateway
 FRONTEND = user-app seller-dashboard session-analytics-dashboard superadmin-panel
+GO_TEST_PACKAGES = ./proto-gen/go/... ./services/api-gateway/... ./services/auth-service/... ./services/cart-service/... ./services/cms-service/... ./services/notification-service/... ./services/order-service/... ./services/payment-service/... ./services/product-service/... ./services/recommendation-service/... ./services/search-service/... ./services/session-service/... ./services/superadmin-service/... ./services/user-service/... ./services/wishlist-service/... ./shared/gen/go/... ./shared/platform/... ./shared/validation/...
 
 setup:
 	docker compose config
@@ -47,7 +48,7 @@ session-retention-once:
 	docker compose run --rm -e SESSION_RETENTION_WORKER_RUN_ONCE=true session-retention-worker
 
 test-go:
-	@set -e; for service in backend/services/* backend/shared/* backend/proto-gen/go; do if [ -f "$$service/go.mod" ]; then echo "==> $$service"; (cd "$$service" && go test ./...); fi; done
+	cd backend && go test $(GO_TEST_PACKAGES)
 
 test-frontend:
 	cd frontend && corepack pnpm install --frozen-lockfile && corepack pnpm --workspace-concurrency=1 -r --if-present test

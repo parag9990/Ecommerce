@@ -1,7 +1,9 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { afterEach, expect, vi } from "vitest";
+import { afterEach, beforeEach, expect, vi } from "vitest";
 
 expect.extend(matchers);
+
+const originalConsoleWarn = console.warn.bind(console);
 
 if (!("text" in Blob.prototype)) {
   Object.defineProperty(Blob.prototype, "text", {
@@ -17,7 +19,31 @@ if (!("text" in Blob.prototype)) {
   });
 }
 
+beforeEach(() => {
+  vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => {
+    if (isExpectedAnalyticsRequestWarning(args[0])) {
+      return;
+    }
+
+    originalConsoleWarn(...args);
+  });
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
+
+function isExpectedAnalyticsRequestWarning(value: unknown) {
+  return (
+    isRecord(value) &&
+    value.level === "warn" &&
+    typeof value.event === "string" &&
+    value.event.startsWith("analytics.") &&
+    value.event.endsWith(".request_failed")
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

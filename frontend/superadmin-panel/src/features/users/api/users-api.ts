@@ -47,7 +47,7 @@ export function toAdminUsersQueryString(filters: AdminUserFilters): string {
     q: filters.q?.trim(),
     status: filters.status && filters.status !== "all" ? filters.status : undefined,
     page: filters.page,
-    limit: filters.limit
+    page_size: filters.limit
   });
 }
 
@@ -59,7 +59,7 @@ export async function listAdminUsers(filters: AdminUserFilters): Promise<AdminUs
     ...response,
     users: (response.users ?? []).map(normalizeUser),
     page: response.page ?? filters.page,
-    limit: response.limit ?? filters.limit
+    limit: response.page_size ?? response.limit ?? filters.limit
   };
 }
 
@@ -88,7 +88,7 @@ export async function listUserSessions(userId: string): Promise<UserSessionListR
   const query = buildQueryString({
     user_id: userId,
     page: 1,
-    limit: 20
+    page_size: 20
   });
   const response = await apiFetch<UserSessionListResponse>(`${SESSIONS_PATH}?${query}`);
 

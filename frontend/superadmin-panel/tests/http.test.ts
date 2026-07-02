@@ -26,4 +26,32 @@ describe("apiFetch URL composition", () => {
     expect(requestUrl.origin).toBe("https://gateway.example.test");
     expect(requestUrl.pathname).toBe("/api/v1/admin/users");
   });
+
+  it("surfaces nested auth and gateway error payload messages", async () => {
+    vi.stubEnv("VITE_API_BASE_URL", "https://gateway.example.test/");
+
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(
+        JSON.stringify({
+          request_id: "req_nested",
+          error: {
+            code: "INVALID_REQUEST",
+            message: "json: unknown field \"source\""
+          }
+        }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" }
+        }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(apiFetch("/api/v1/auth/login")).rejects.toMatchObject({
+      status: 400,
+      code: "INVALID_REQUEST",
+      message: 'json: unknown field "source"',
+      requestId: "req_nested"
+    });
+  });
 });

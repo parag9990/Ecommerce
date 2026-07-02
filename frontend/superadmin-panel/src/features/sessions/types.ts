@@ -69,6 +69,7 @@ export type SessionListResponse = {
   total?: number;
   page?: number;
   limit?: number;
+  page_size?: number;
 };
 
 export type SessionJourney = {

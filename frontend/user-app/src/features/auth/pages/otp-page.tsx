@@ -13,7 +13,14 @@ import { AuthPageFrame } from '../components/auth-page-frame';
 import { AuthSubmit } from '../components/auth-submit';
 import { ResendOtpButton } from '../components/resend-otp-button';
 import { otpSchema, type OtpFormValues } from '../schemas';
-import { detectOtpChannel, isOtpPurpose, toTrimmedValue } from '../utils';
+import {
+  detectOtpChannel,
+  isOtpPurpose,
+  localEmailOtpNotice,
+  otpDeliveryErrorMessage,
+  otpDeliverySuccessMessage,
+  toTrimmedValue,
+} from '../utils';
 
 const fieldIds = {
   otp: 'otp-code',
@@ -34,6 +41,8 @@ export function OtpPage() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [challengeId, setChallengeId] = useState(initialChallengeId);
+  const deliveryNotice =
+    challengeId && !successMessage ? localEmailOtpNotice(target) : null;
 
   const {
     formState: { errors, isSubmitting },
@@ -89,10 +98,12 @@ export function OtpPage() {
         shouldValidate: true,
       });
       setChallengeId(challenge.challenge_id);
-      setSuccessMessage(`New OTP sent. It expires in ${challenge.expires_in}s.`);
+      setSuccessMessage(
+        otpDeliverySuccessMessage(target, challenge.expires_in),
+      );
     } catch (error) {
       setServerError(
-        error instanceof Error ? error.message : 'Could not resend OTP.',
+        otpDeliveryErrorMessage(target, error, 'Could not resend OTP.'),
       );
       throw error;
     }
@@ -118,6 +129,8 @@ export function OtpPage() {
           ) : null}
 
           {serverError ? <Alert variant="error">{serverError}</Alert> : null}
+
+          {deliveryNotice ? <Alert variant="info">{deliveryNotice}</Alert> : null}
 
           {successMessage ? (
             <Alert variant="success">{successMessage}</Alert>

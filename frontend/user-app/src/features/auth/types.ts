@@ -21,8 +21,11 @@ export type LoginRequest = {
   identifier: string;
   password: string;
   device?: {
-    timezone?: string;
-    user_agent?: string;
+    anonymous_id?: string;
+    channel?: string;
+    device_fingerprint_hash?: string;
+    fingerprint?: string;
+    locale?: string;
   };
 };
 

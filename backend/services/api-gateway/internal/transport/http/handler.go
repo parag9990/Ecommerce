@@ -55,7 +55,7 @@ func (h *Handler) HealthReady(w http.ResponseWriter, r *http.Request) {
 				"errors", report.Errors(),
 				"request_id", RequestIDFromContext(r.Context()),
 			)
-			writeError(w, r, http.StatusServiceUnavailable, "DOWNSTREAM_SERVICES_UNAVAILABLE", "One or more downstream services are not ready")
+			writeError(w, r, http.StatusServiceUnavailable, "DOWNSTREAM_SERVICES_UNAVAILABLE", "One or more downstream services are not ready", report.Errors()...)
 			return
 		}
 		writeSuccess(w, r, http.StatusOK, HealthDTO{

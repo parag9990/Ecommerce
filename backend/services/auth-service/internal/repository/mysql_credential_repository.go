@@ -164,7 +164,31 @@ func (r *MySQLCredentialRepository) ResetFailedAttempts(ctx context.Context, acc
 	if err != nil {
 		return fmt.Errorf("reset failed attempts: %w", err)
 	}
-	return ensureAffected(result, domain.ErrCredentialNotFound)
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read rows affected: %w", err)
+	}
+	if affected > 0 {
+		return nil
+	}
+	return r.ensureCredentialExists(ctx, accountID)
+}
+
+func (r *MySQLCredentialRepository) ensureCredentialExists(ctx context.Context, accountID string) error {
+	var existing string
+	err := r.db.QueryRowContext(ctx, `
+		SELECT account_id
+		FROM credentials
+		WHERE account_id = ?
+		LIMIT 1
+	`, accountID).Scan(&existing)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.ErrCredentialNotFound
+		}
+		return fmt.Errorf("check credential exists: %w", err)
+	}
+	return nil
 }
 
 func nullableTime(value *time.Time) any {

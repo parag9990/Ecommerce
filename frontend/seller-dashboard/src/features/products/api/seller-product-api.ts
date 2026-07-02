@@ -33,13 +33,12 @@ export async function listSellerProducts(
   params: ProductListRequest,
 ): Promise<ProductListResponse> {
   const query = toQuery({
-    seller_id: params.seller_id,
     category_id: params.category_id,
     status: params.status === "all" ? undefined : params.status,
     page: params.page,
     page_size: params.page_size,
   });
-  const response = await http<RawProductListResponse>(`/api/v1/products?${query}`);
+  const response = await http<RawProductListResponse>(`/api/v1/seller/products?${query}`);
   const products = Array.isArray(response.products)
     ? response.products.map(normalizeProduct)
     : [];
@@ -51,7 +50,7 @@ export async function listSellerProducts(
 }
 
 export async function getProduct(productId: string): Promise<Product> {
-  const product = await http<unknown>(`/api/v1/products/${productId}`);
+  const product = await http<unknown>(`/api/v1/seller/products/${productId}`);
   return normalizeProduct(product);
 }
 

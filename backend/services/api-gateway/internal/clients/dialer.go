@@ -16,6 +16,8 @@ import (
 )
 
 const defaultDialTimeout = 3 * time.Second
+const defaultKeepaliveTime = 10 * time.Minute
+const defaultKeepaliveTimeout = 20 * time.Second
 
 type Dialer interface {
 	Dial(ctx context.Context, descriptor ServiceDescriptor) (*grpc.ClientConn, error)
@@ -89,9 +91,9 @@ func (d *grpcDialer) Dial(ctx context.Context, descriptor ServiceDescriptor) (*g
 			MinConnectTimeout: d.options.DialTimeout,
 		}),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                30 * time.Second,
-			Timeout:             10 * time.Second,
-			PermitWithoutStream: true,
+			Time:                defaultKeepaliveTime,
+			Timeout:             defaultKeepaliveTimeout,
+			PermitWithoutStream: false,
 		}),
 	}
 	dialOptions = append(dialOptions, d.extra...)

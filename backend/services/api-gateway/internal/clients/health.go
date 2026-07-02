@@ -3,9 +3,14 @@ package clients
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"time"
+
+	"ecommerce/api-gateway/internal/config"
 
 	"google.golang.org/grpc"
 	healthv1 "google.golang.org/grpc/health/grpc_health_v1"
@@ -31,9 +36,13 @@ type DependencyHealth struct {
 type HealthReport map[Downstream]DependencyHealth
 
 func (c *Clients) Check(ctx context.Context) HealthReport {
-	report := make(HealthReport, len(serviceOrder))
+	return c.checkServices(ctx, serviceOrder)
+}
+
+func (c *Clients) checkServices(ctx context.Context, services []Downstream) HealthReport {
+	report := make(HealthReport, len(services))
 	if c == nil {
-		for _, service := range serviceOrder {
+		for _, service := range services {
 			report[service] = DependencyHealth{
 				Service: string(service),
 				Status:  HealthStatusUnavailable,
@@ -44,8 +53,8 @@ func (c *Clients) Check(ctx context.Context) HealthReport {
 	}
 
 	var wg sync.WaitGroup
-	results := make(chan dependencyHealthResult, len(serviceOrder))
-	for _, service := range serviceOrder {
+	results := make(chan dependencyHealthResult, len(services))
+	for _, service := range services {
 		descriptor, descriptorOK := c.descriptors[service]
 		conn, connOK := c.conns[service]
 		if !descriptorOK || !connOK || conn == nil {
@@ -71,6 +80,59 @@ func (c *Clients) Check(ctx context.Context) HealthReport {
 	close(results)
 	for result := range results {
 		report[result.service] = result.health
+	}
+	return report
+}
+
+type HTTPHealthTarget struct {
+	URL  string
+	Path string
+}
+
+type ReadinessChecker struct {
+	grpc        *Clients
+	httpClient  *http.Client
+	httpTargets map[Downstream]HTTPHealthTarget
+}
+
+func NewReadinessCheckerFromConfig(cfg config.Config, grpcClients *Clients) *ReadinessChecker {
+	return &ReadinessChecker{
+		grpc:       grpcClients,
+		httpClient: &http.Client{},
+		httpTargets: map[Downstream]HTTPHealthTarget{
+			DownstreamAuth:         {URL: cfg.AuthHTTPURL, Path: "/readyz"},
+			DownstreamCart:         {URL: cfg.CartHTTPURL, Path: "/readyz"},
+			DownstreamWishlist:     {URL: cfg.WishlistHTTPURL, Path: "/readyz"},
+			DownstreamPayment:      {URL: cfg.PaymentHTTPURL, Path: "/healthz"},
+			DownstreamCMS:          {URL: cfg.CMSHTTPURL, Path: "/healthz"},
+			DownstreamSession:      {URL: cfg.SessionHTTPURL, Path: "/readyz"},
+			DownstreamNotification: {URL: cfg.NotificationHTTPURL, Path: "/readyz"},
+			DownstreamSuperadmin:   {URL: cfg.SuperadminHTTPURL, Path: "/readyz"},
+		},
+	}
+}
+
+func (c *ReadinessChecker) Check(ctx context.Context) HealthReport {
+	report := make(HealthReport, len(serviceOrder))
+	if c == nil {
+		return (*Clients)(nil).Check(ctx)
+	}
+
+	grpcReport := c.grpc.checkServices(ctx, grpcReadinessServices)
+	for _, service := range serviceOrder {
+		if target, ok := c.httpTargets[service]; ok {
+			report[service] = checkHTTPHealth(ctx, service, target, c.httpClient)
+			continue
+		}
+		if health, ok := grpcReport[service]; ok {
+			report[service] = health
+			continue
+		}
+		report[service] = DependencyHealth{
+			Service: string(service),
+			Status:  HealthStatusUnavailable,
+			Error:   "readiness check is not configured",
+		}
 	}
 	return report
 }
@@ -116,6 +178,14 @@ type dependencyHealthResult struct {
 	health  DependencyHealth
 }
 
+var grpcReadinessServices = []Downstream{
+	DownstreamUser,
+	DownstreamProduct,
+	DownstreamOrder,
+	DownstreamSearch,
+	DownstreamRecommendation,
+}
+
 func checkHealth(ctx context.Context, descriptor ServiceDescriptor, conn *grpc.ClientConn) DependencyHealth {
 	healthCtx, cancel := context.WithTimeout(ctx, healthCheckTimeout)
 	defer cancel()
@@ -142,6 +212,61 @@ func checkHealth(ctx context.Context, descriptor ServiceDescriptor, conn *grpc.C
 		Service: string(descriptor.Name),
 		Status:  HealthStatusServing,
 	}
+}
+
+func checkHTTPHealth(ctx context.Context, service Downstream, target HTTPHealthTarget, client *http.Client) DependencyHealth {
+	rawURL := strings.TrimSpace(target.URL)
+	if rawURL == "" {
+		return DependencyHealth{
+			Service: string(service),
+			Status:  HealthStatusUnavailable,
+			Error:   "http health URL is not configured",
+		}
+	}
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	healthCtx, cancel := context.WithTimeout(ctx, healthCheckTimeout)
+	defer cancel()
+	request, err := http.NewRequestWithContext(healthCtx, http.MethodGet, joinHealthURL(rawURL, target.Path), nil)
+	if err != nil {
+		return DependencyHealth{
+			Service: string(service),
+			Status:  HealthStatusUnavailable,
+			Error:   err.Error(),
+		}
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return DependencyHealth{
+			Service: string(service),
+			Status:  HealthStatusUnavailable,
+			Error:   err.Error(),
+		}
+	}
+	defer response.Body.Close()
+	_, _ = io.Copy(io.Discard, response.Body)
+
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return DependencyHealth{
+			Service: string(service),
+			Status:  HealthStatusUnavailable,
+			Error:   fmt.Sprintf("http health returned %s", response.Status),
+		}
+	}
+	return DependencyHealth{
+		Service: string(service),
+		Status:  HealthStatusServing,
+	}
+}
+
+func joinHealthURL(rawURL string, path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		path = "/healthz"
+	}
+	return strings.TrimRight(rawURL, "/") + "/" + strings.TrimLeft(path, "/")
 }
 
 func healthStatusFromGRPC(status healthv1.HealthCheckResponse_ServingStatus) HealthStatus {

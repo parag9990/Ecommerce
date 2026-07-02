@@ -45,6 +45,7 @@ func TestAuthUsecaseLoginRecordsSessionLinkEvent(t *testing.T) {
 			UserAgent:   "Mozilla/5.0",
 			Channel:     "web",
 			Locale:      "en-US",
+			Timezone:    "Asia/Kolkata",
 		},
 		Network: SessionNetworkInput{IPAddress: "203.0.113.10"},
 	})
@@ -66,6 +67,9 @@ func TestAuthUsecaseLoginRecordsSessionLinkEvent(t *testing.T) {
 	}
 	if linker.login.Auth.Method != sessionlink.AuthMethodPassword {
 		t.Fatalf("auth method = %q", linker.login.Auth.Method)
+	}
+	if linker.login.Device.Timezone != "Asia/Kolkata" {
+		t.Fatalf("device timezone = %q", linker.login.Device.Timezone)
 	}
 }
 

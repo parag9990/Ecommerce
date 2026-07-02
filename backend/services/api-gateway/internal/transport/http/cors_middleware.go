@@ -9,8 +9,8 @@ import (
 
 const (
 	corsAllowedMethods = "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS"
-	corsAllowedHeaders = "Authorization, Content-Type, Idempotency-Key, X-Request-ID"
-	corsExposedHeaders = "X-Request-ID"
+	corsAllowedHeaders = "Accept, Authorization, Content-Type, Idempotency-Key, X-Client-App, X-Request-ID, X-Request-Source, X-CSRF-Token"
+	corsExposedHeaders = "Content-Disposition, X-Request-ID"
 )
 
 func CORSMiddleware(cfg config.CORSConfig) func(http.Handler) http.Handler {
@@ -38,8 +38,11 @@ func CORSMiddleware(cfg config.CORSConfig) func(http.Handler) http.Handler {
 			}
 
 			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Expose-Headers", corsExposedHeaders)
 			if r.Method == http.MethodOptions {
+				w.Header().Add("Vary", "Access-Control-Request-Method")
+				w.Header().Add("Vary", "Access-Control-Request-Headers")
 				w.Header().Set("Access-Control-Allow-Methods", corsAllowedMethods)
 				w.Header().Set("Access-Control-Allow-Headers", corsAllowedHeaders)
 				w.Header().Set("Access-Control-Max-Age", "600")
