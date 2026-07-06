@@ -66,6 +66,9 @@ type ListSessionsInput struct {
 	DeviceType  string
 	Channel     string
 	Status      string
+	Country     string
+	EntryPage   string
+	Query       string
 }
 
 type SessionListOutput struct {
@@ -83,6 +86,8 @@ type GetFunnelReportInput struct {
 	Steps      []string
 	DeviceType string
 	Channel    string
+	Source     string
+	UserType   string
 	Country    string
 	Campaign   string
 }
@@ -351,6 +356,9 @@ func (u *AnalyticsUsecase) normalizeSessionListInput(input ListSessionsInput, no
 		DeviceType:  domain.DeviceType(strings.TrimSpace(input.DeviceType)),
 		Channel:     domain.Channel(strings.TrimSpace(input.Channel)),
 		Status:      domain.SessionStatus(strings.TrimSpace(input.Status)),
+		Country:     input.Country,
+		EntryPage:   input.EntryPage,
+		Query:       input.Query,
 	}.Normalize()
 	if filter.DeviceType != "" && !filter.DeviceType.Valid() {
 		return domain.SessionListFilter{}, fmt.Errorf("%w: device_type must be desktop, mobile, tablet, bot, or unknown", ErrInvalidSessionInput)
@@ -360,6 +368,15 @@ func (u *AnalyticsUsecase) normalizeSessionListInput(input ListSessionsInput, no
 	}
 	if filter.Status != "" && !filter.Status.Valid() {
 		return domain.SessionListFilter{}, fmt.Errorf("%w: status must be active, ended, expired, or revoked", ErrInvalidSessionInput)
+	}
+	if filter.EntryPage != "" && !strings.HasPrefix(filter.EntryPage, "/") {
+		return domain.SessionListFilter{}, fmt.Errorf("%w: entry_page must be a site path", ErrInvalidSessionInput)
+	}
+	if len(filter.Country) > 80 {
+		return domain.SessionListFilter{}, fmt.Errorf("%w: country is too long", ErrInvalidSessionInput)
+	}
+	if len(filter.Query) > 128 {
+		return domain.SessionListFilter{}, fmt.Errorf("%w: q is too long", ErrInvalidSessionInput)
 	}
 	return filter, nil
 }
@@ -391,6 +408,8 @@ func (u *AnalyticsUsecase) normalizeFunnelInput(input GetFunnelReportInput) (dom
 		Steps:      steps,
 		DeviceType: domain.DeviceType(strings.TrimSpace(input.DeviceType)),
 		Channel:    domain.Channel(strings.TrimSpace(input.Channel)),
+		Source:     input.Source,
+		UserType:   input.UserType,
 		Country:    input.Country,
 		Campaign:   input.Campaign,
 	}.Normalize()
@@ -399,6 +418,9 @@ func (u *AnalyticsUsecase) normalizeFunnelInput(input GetFunnelReportInput) (dom
 	}
 	if filter.Channel != "" && !filter.Channel.Valid() {
 		return domain.FunnelReportFilter{}, fmt.Errorf("%w: channel must be supported", ErrInvalidSessionInput)
+	}
+	if filter.UserType != "" && filter.UserType != "all" && filter.UserType != "anonymous" && filter.UserType != "logged_in" {
+		return domain.FunnelReportFilter{}, fmt.Errorf("%w: user_type must be all, anonymous, or logged_in", ErrInvalidSessionInput)
 	}
 	return filter, nil
 }
@@ -628,6 +650,9 @@ func sessionFilterCacheParams(filter domain.SessionListFilter) map[string]string
 		"device_type":  string(filter.DeviceType),
 		"channel":      string(filter.Channel),
 		"status":       string(filter.Status),
+		"country":      filter.Country,
+		"entry_page":   filter.EntryPage,
+		"q":            filter.Query,
 	}
 }
 
@@ -639,6 +664,8 @@ func funnelFilterCacheParams(filter domain.FunnelReportFilter) map[string]string
 		"steps":       domain.FunnelCacheStepKey(filter.Steps),
 		"device_type": string(filter.DeviceType),
 		"channel":     string(filter.Channel),
+		"source":      filter.Source,
+		"user_type":   filter.UserType,
 		"country":     filter.Country,
 		"campaign":    filter.Campaign,
 	}

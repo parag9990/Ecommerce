@@ -22,7 +22,7 @@ test('renders product title, price, stock, and detail link', () => {
             title: 'Running Shoes',
             variants: [
               {
-                price: { amount: 1999, currency: 'INR' },
+                price: { amount: 199900, currency: 'INR' },
                 sku: 'RUN-BLK-8',
                 stock_quantity: 8,
               },

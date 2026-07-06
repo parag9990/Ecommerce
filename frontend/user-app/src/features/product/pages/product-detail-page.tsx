@@ -37,13 +37,18 @@ export function ProductDetailPage() {
   const variants = useMemo(() => product?.variants ?? [], [product?.variants]);
   const [selection, setSelection] = useState<{
     productId?: string | undefined;
-    sku?: string | undefined;
+    variantId?: string | undefined;
   }>({});
-  const selectedSku =
-    selection.productId === product?.product_id ? selection.sku : undefined;
+  const selectedVariantId =
+    selection.productId === product?.product_id ? selection.variantId : undefined;
 
   const selectedVariant =
-    variants.find((variant) => variant.sku === selectedSku) ?? variants[0];
+    variants.find(
+      (variant) => (variant.variant_id ?? variant.sku) === selectedVariantId,
+    ) ?? variants[0];
+  const selectedStock =
+    selectedVariant?.available_quantity ?? selectedVariant?.stock_quantity;
+  const selectedCartVariantId = selectedVariant?.variant_id ?? selectedVariant?.sku;
 
   if (isLoading) {
     return <ProductDetailSkeleton />;
@@ -108,23 +113,23 @@ export function ProductDetailPage() {
         )}
 
         <VariantPicker
-          onChange={(sku) => {
+          onChange={(variantId) => {
             setSelection({
               productId: product.product_id,
-              sku,
+              variantId,
             });
           }}
-          selectedSku={selectedVariant?.sku}
+          selectedVariantId={selectedVariant ? selectedVariant.variant_id ?? selectedVariant.sku : undefined}
           variants={variants}
         />
 
         <div className="grid gap-3 rounded-md border border-slate-200 bg-white p-4 sm:grid-cols-[minmax(0,1fr)_auto]">
           {selectedVariant ? (
             <AddToCartButton
-              disabled={selectedVariant.stock_quantity === 0}
+              disabled={selectedStock === 0}
               fullWidth
               productId={product.product_id}
-              variantId={selectedVariant.sku}
+              variantId={selectedCartVariantId}
             />
           ) : (
             <p className="text-sm text-slate-600">
@@ -133,7 +138,7 @@ export function ProductDetailPage() {
           )}
           <WishlistButton
             productId={product.product_id}
-            variantId={selectedVariant?.sku}
+            variantId={selectedCartVariantId}
           />
         </div>
 

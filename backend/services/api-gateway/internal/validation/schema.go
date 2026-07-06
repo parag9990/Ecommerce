@@ -276,7 +276,7 @@ func validateNamedStringRules(path string, field string, value string) []FieldEr
 			details = append(details, FieldError{Field: path, Reason: "oneof", Message: "payment_provider value is not supported"})
 		}
 	case field == "sort":
-		if !contains([]string{"relevance", "price_asc", "price_desc", "newest", "rating"}, value) {
+		if !contains([]string{"relevance", "popular", "price_asc", "price_desc", "newest", "rating_desc", "rating"}, value) {
 			details = append(details, FieldError{Field: path, Reason: "oneof", Message: "sort value is not supported"})
 		}
 	case field == "q":

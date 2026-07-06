@@ -7,7 +7,7 @@ import type { ReportFilters } from "../../../api/session-api";
 import { ExportReportPanel } from "./export-report-panel";
 
 const filters: ReportFilters = {
-  channel: "web",
+  channel: "user_app_web",
   deviceType: "mobile",
   from: "2026-05-22",
   source: "paid",

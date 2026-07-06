@@ -60,6 +60,42 @@ export function getSafeErrorMessage(error: unknown) {
   return error.message || "Request complete nahi ho payi.";
 }
 
+function detailMessage(detail: unknown) {
+  if (!detail || typeof detail !== "object") {
+    return "";
+  }
+
+  const candidate = detail as Record<string, unknown>;
+  const message = typeof candidate.message === "string" ? candidate.message.trim() : "";
+  const field = typeof candidate.field === "string" ? candidate.field.trim() : "";
+
+  if (!message) {
+    return "";
+  }
+
+  return field ? `${field}: ${message}` : message;
+}
+
+export function getErrorDetailMessages(error: unknown) {
+  if (!(error instanceof AppError)) {
+    return [];
+  }
+
+  const details = error.details;
+  if (Array.isArray(details)) {
+    return details.map(detailMessage).filter(Boolean).slice(0, 5);
+  }
+
+  if (details && typeof details === "object" && Array.isArray((details as Record<string, unknown>).issues)) {
+    return ((details as Record<string, unknown>).issues as unknown[])
+      .map(detailMessage)
+      .filter(Boolean)
+      .slice(0, 5);
+  }
+
+  return [];
+}
+
 export function isPermissionError(error: unknown) {
   return error instanceof AppError && (error.status === 401 || error.status === 403);
 }

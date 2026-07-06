@@ -1,13 +1,16 @@
 import {
   Activity,
   Clock3,
-  MousePointerClick,
-  ShoppingCart,
-  TrendingUp,
+  Gauge,
+  Radio,
   Users
 } from "lucide-react";
 
-import { formatDuration, formatNumber, formatPercent } from "../../../lib/format";
+import {
+  formatDuration,
+  formatNumber,
+  formatRelativeTime
+} from "../../../lib/format";
 import type { LiveMetricsResponse } from "../types";
 import { MetricCard } from "./metric-card";
 
@@ -26,36 +29,31 @@ export function MetricCardGrid({ metrics }: MetricCardGridProps) {
         value={formatNumber(metrics.activeUsersNow)}
       />
       <MetricCard
-        helper="Sessions started today"
+        helper="Open sessions in the live window"
         icon={Users}
-        label="Sessions Today"
-        value={formatNumber(metrics.sessionsToday)}
+        label="Active Sessions"
+        value={formatNumber(metrics.activeSessionsNow)}
       />
       <MetricCard
-        helper="Checkout to paid conversion"
-        icon={TrendingUp}
-        label="Conversion Rate"
+        helper="Recent event throughput"
+        icon={Radio}
+        label="Events / Min"
         tone="positive"
-        value={formatPercent(metrics.conversionRate)}
+        value={formatNumber(metrics.eventsPerMinute)}
       />
       <MetricCard
-        helper="Mean engagement time"
+        helper="Live metrics lookback"
         icon={Clock3}
-        label="Avg. Session Duration"
-        value={formatDuration(metrics.averageSessionDurationSeconds)}
+        label="Live Window"
+        value={formatDuration(metrics.windowSeconds ?? 0)}
       />
       <MetricCard
-        helper="Single-page sessions"
-        icon={MousePointerClick}
-        label="Bounce Rate"
-        tone={metrics.bounceRate > 60 ? "warning" : "neutral"}
-        value={formatPercent(metrics.bounceRate)}
-      />
-      <MetricCard
-        helper="Product views becoming carts"
-        icon={ShoppingCart}
-        label="View to Cart Rate"
-        value={formatPercent(metrics.productViewToCartRate)}
+        helper="Last service measurement"
+        icon={Gauge}
+        label="Measured"
+        value={
+          metrics.measuredAt ? formatRelativeTime(metrics.measuredAt) : "Unknown"
+        }
       />
     </section>
   );
@@ -64,10 +62,7 @@ export function MetricCardGrid({ metrics }: MetricCardGridProps) {
 export function isLiveMetricsEmpty(metrics: LiveMetricsResponse): boolean {
   return (
     metrics.activeUsersNow === 0 &&
-    metrics.sessionsToday === 0 &&
-    metrics.conversionRate === 0 &&
-    metrics.averageSessionDurationSeconds === 0 &&
-    metrics.bounceRate === 0 &&
-    metrics.productViewToCartRate === 0
+    metrics.activeSessionsNow === 0 &&
+    metrics.eventsPerMinute === 0
   );
 }

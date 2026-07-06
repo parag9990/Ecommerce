@@ -45,6 +45,9 @@ type SessionListFilter struct {
 	DeviceType  DeviceType
 	Channel     Channel
 	Status      SessionStatus
+	Country     string
+	EntryPage   string
+	Query       string
 }
 
 func (f SessionListFilter) Normalize() SessionListFilter {
@@ -56,6 +59,9 @@ func (f SessionListFilter) Normalize() SessionListFilter {
 	out.DeviceType = DeviceType(strings.TrimSpace(string(out.DeviceType)))
 	out.Channel = Channel(strings.TrimSpace(string(out.Channel)))
 	out.Status = SessionStatus(strings.TrimSpace(string(out.Status)))
+	out.Country = strings.ToUpper(strings.TrimSpace(out.Country))
+	out.EntryPage = strings.TrimSpace(out.EntryPage)
+	out.Query = strings.TrimSpace(out.Query)
 	return out
 }
 
@@ -66,6 +72,8 @@ type FunnelReportFilter struct {
 	Steps      []EventType
 	DeviceType DeviceType
 	Channel    Channel
+	Source     string
+	UserType   string
 	Country    string
 	Campaign   string
 }
@@ -78,6 +86,8 @@ func (f FunnelReportFilter) Normalize() FunnelReportFilter {
 	out.Steps = normalizeFunnelStepTypes(out.Steps)
 	out.DeviceType = DeviceType(strings.TrimSpace(string(out.DeviceType)))
 	out.Channel = Channel(strings.TrimSpace(string(out.Channel)))
+	out.Source = strings.TrimSpace(out.Source)
+	out.UserType = strings.ToLower(strings.TrimSpace(out.UserType))
 	out.Country = strings.ToUpper(strings.TrimSpace(out.Country))
 	out.Campaign = strings.TrimSpace(out.Campaign)
 	return out

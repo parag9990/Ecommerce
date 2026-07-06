@@ -19,6 +19,7 @@ export type AddressListResponse = {
 
 export type CheckoutRequest = {
   address_id: string;
+  cart_id: string;
   coupon_code?: string | undefined;
   idempotency_key: string;
   payment_provider: string;

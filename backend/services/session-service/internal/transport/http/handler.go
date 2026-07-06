@@ -926,6 +926,9 @@ func parseSessionListInput(r *http.Request) (usecase.ListSessionsInput, error) {
 		DeviceType:  query.Get("device_type"),
 		Channel:     query.Get("channel"),
 		Status:      query.Get("status"),
+		Country:     query.Get("country"),
+		EntryPage:   query.Get("entry_page"),
+		Query:       query.Get("q"),
 	}, nil
 }
 
@@ -947,6 +950,8 @@ func parseFunnelReportInput(r *http.Request) (usecase.GetFunnelReportInput, erro
 		Steps:      steps,
 		DeviceType: query.Get("device_type"),
 		Channel:    query.Get("channel"),
+		Source:     query.Get("source"),
+		UserType:   query.Get("user_type"),
 		Country:    query.Get("country"),
 		Campaign:   query.Get("campaign"),
 	}, nil
@@ -1094,7 +1099,7 @@ func rolesFromRequest(r *http.Request) []string {
 
 func adminRoleAllowed(role string) bool {
 	switch strings.ToLower(strings.TrimSpace(role)) {
-	case "admin", "superadmin", "operations_admin":
+	case "admin", "operations_admin", "finance_admin", "catalog_admin", "superadmin":
 		return true
 	default:
 		return false

@@ -58,6 +58,31 @@ func TestCreateProductAllowsDefaultVariantWithoutAttributes(t *testing.T) {
 	}
 }
 
+func TestCreateProductAllowsCustomAttributesWhenCategorySchemaIsEmpty(t *testing.T) {
+	repo := newMemoryProductRepository()
+	repo.category = categoryWithoutAttributeSchema()
+	service := newTestSellerProductService(t, repo, client.ModerationAutoPublish)
+	input := validProductInput()
+	input.CategoryID = repo.category.ID
+	input.Attributes = domain.Attributes{
+		"neck_type":         "Round Neck",
+		"sleeve_type":       "Half Sleeve",
+		"care_instructions": "Machine wash cold, do not bleach",
+	}
+	input.Variants[0].Attributes = domain.Attributes{}
+
+	product, err := service.CreateProduct(context.Background(), CreateProductRequest{
+		Actor:   sellerActor(),
+		Product: input,
+	})
+	if err != nil {
+		t.Fatalf("CreateProduct returned error: %v", err)
+	}
+	if product.Attributes["neck_type"] != "Round Neck" {
+		t.Fatalf("product attributes = %+v, want custom attributes preserved", product.Attributes)
+	}
+}
+
 func TestUpdateProductRejectsOwnershipMismatch(t *testing.T) {
 	repo := newMemoryProductRepository()
 	service := newTestSellerProductService(t, repo, client.ModerationAutoPublish)

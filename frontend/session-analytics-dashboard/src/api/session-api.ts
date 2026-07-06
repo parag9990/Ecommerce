@@ -28,8 +28,8 @@ export type LiveMetricsRequest = {
 export const funnelStepKeys = [
   "product_view",
   "add_to_cart",
-  "checkout_started",
-  "paid"
+  "checkout_step",
+  "payment_result"
 ] as const;
 
 export type FunnelStepKey = (typeof funnelStepKeys)[number];
@@ -523,14 +523,12 @@ export async function getLiveMetrics(
 ): Promise<LiveMetricsResponse> {
   validateLiveMetricsRequest(request);
 
+  const range = toExclusiveDateTimeRange(request.dateRange);
   const params = new URLSearchParams({
-    channel: request.filters.channel,
-    device_type: request.filters.deviceType,
-    from: request.dateRange.from,
-    source: request.filters.source,
-    to: request.dateRange.to,
-    user_type: request.filters.userType
+    from: range.from,
+    to: range.to
   });
+  appendSegmentFilterParams(params, request.filters);
 
   try {
     const payload = await getJSON<unknown>(
@@ -554,14 +552,12 @@ export async function getFunnelReport(
 ): Promise<RawFunnelReportResponse> {
   validateFunnelReportRequest(request);
 
+  const range = toExclusiveDateTimeRange(request.dateRange);
   const params = new URLSearchParams({
-    channel: request.filters.channel,
-    device_type: request.filters.deviceType,
-    from: request.dateRange.from,
-    source: request.filters.source,
-    to: request.dateRange.to,
-    user_type: request.filters.userType
+    from: range.from,
+    to: range.to
   });
+  appendSegmentFilterParams(params, request.filters);
 
   if (request.steps?.length) {
     params.set("steps", request.steps.join(","));
@@ -589,10 +585,11 @@ export async function getRetentionReport(
 ): Promise<RetentionReportResponse> {
   validateRetentionReportRequest(request);
 
+  const range = toExclusiveDateTimeRange(request.dateRange);
   const params = new URLSearchParams({
-    from: request.dateRange.from,
+    from: range.from,
     interval: request.interval,
-    to: request.dateRange.to,
+    to: range.to,
     window: String(request.window)
   });
 
@@ -630,7 +627,7 @@ export async function getHeatmap(
     path,
     to: request.to
   });
-  appendQueryParam(params, "mode", request.mode);
+  appendQueryParam(params, "heatmap_type", request.mode);
 
   try {
     const payload = await getJSON<unknown>(
@@ -667,7 +664,7 @@ export async function getActiveSessions(
   appendQueryParam(params, "device_type", request.deviceType);
   appendQueryParam(params, "country", request.country?.trim());
   appendQueryParam(params, "entry_page", request.entryPage?.trim());
-  appendQueryParam(params, "limit", request.limit ?? 50);
+  appendQueryParam(params, "page_size", request.limit ?? 50);
 
   try {
     const payload = await getJSON<unknown>(
@@ -2030,15 +2027,30 @@ function parseLiveMetricsResponse(payload: unknown): LiveMetricsResponse {
   }
 
   return {
-    activeUsersNow: readNumber(payload, "activeUsersNow"),
-    averageSessionDurationSeconds: readNumber(
-      payload,
-      "averageSessionDurationSeconds"
-    ),
-    bounceRate: readNumber(payload, "bounceRate"),
-    conversionRate: readNumber(payload, "conversionRate"),
-    productViewToCartRate: readNumber(payload, "productViewToCartRate"),
-    sessionsToday: readNumber(payload, "sessionsToday")
+    activeSessionsNow: readMetricNumber(payload, [
+      "activeSessionsNow",
+      "activeSessions",
+      "active_sessions"
+    ]),
+    activeUsersNow: readMetricNumber(payload, [
+      "activeUsersNow",
+      "activeUsers",
+      "active_users"
+    ]),
+    eventsPerMinute: readMetricNumber(payload, [
+      "eventsPerMinute",
+      "events_per_minute"
+    ]),
+    measuredAt: readMetricOptionalString(payload, [
+      "measuredAt",
+      "measured_at",
+      "refreshedAt",
+      "refreshed_at"
+    ]),
+    windowSeconds: readMetricOptionalNumber(payload, [
+      "windowSeconds",
+      "window_seconds"
+    ])
   };
 }
 
@@ -2325,7 +2337,13 @@ function parseRawFunnelStep(payload: unknown): RawFunnelStep {
 
   return {
     count: readFunnelOptionalNumber(payload, ["count"]),
-    key: readFunnelOptionalString(payload, ["key", "stepKey", "step_key"]),
+    key: readFunnelOptionalString(payload, [
+      "key",
+      "stepKey",
+      "step_key",
+      "eventType",
+      "event_type"
+    ]),
     label: readFunnelOptionalString(payload, ["label", "name"]),
     sessions: readFunnelOptionalNumber(payload, ["sessions"]),
     step: readFunnelOptionalString(payload, ["step"]),
@@ -2344,31 +2362,43 @@ function parseActiveSessionsResponse(payload: unknown): ActiveSessionsResponse {
   }
 
   const sessionsPayload = readArray(payload, ["sessions"]);
+  const sessions = sessionsPayload.map(parseActiveSession);
+  const total = readOptionalFiniteNumber(payload, ["total"]);
+  const refreshedAt =
+    readOptionalString(payload, ["refreshedAt", "refreshed_at", "measuredAt"]) ??
+    new Date().toISOString();
 
   return {
-    activeUsers: readFiniteNumber(payload, ["activeUsers", "active_users"]),
-    activeSessions: readFiniteNumber(payload, [
-      "activeSessions",
-      "active_sessions"
-    ]),
-    eventsPerMinute: readFiniteNumber(payload, [
-      "eventsPerMinute",
-      "events_per_minute"
-    ]),
-    refreshedAt: readString(payload, ["refreshedAt", "refreshed_at"]),
-    sessions: sessionsPayload.map(parseActiveSession),
-    deviceBreakdown: readBreakdown(payload, [
-      "deviceBreakdown",
-      "device_breakdown"
-    ]),
-    locationBreakdown: readBreakdown(payload, [
-      "locationBreakdown",
-      "location_breakdown"
-    ]),
-    entryPageBreakdown: readBreakdown(payload, [
-      "entryPageBreakdown",
-      "entry_page_breakdown"
-    ])
+    activeUsers:
+      readOptionalFiniteNumber(payload, ["activeUsers", "active_users"]) ??
+      countUniqueActors(sessions),
+    activeSessions:
+      readOptionalFiniteNumber(payload, ["activeSessions", "active_sessions"]) ??
+      total ??
+      sessions.length,
+    deviceBreakdown:
+      readOptionalBreakdown(payload, ["deviceBreakdown", "device_breakdown"]) ??
+      buildBreakdown(sessions.map((session) => session.device.type)),
+    entryPageBreakdown:
+      readOptionalBreakdown(payload, [
+        "entryPageBreakdown",
+        "entry_page_breakdown"
+      ]) ?? buildBreakdown(sessions.map((session) => session.entryPage)),
+    eventsPerMinute:
+      readOptionalFiniteNumber(payload, [
+        "eventsPerMinute",
+        "events_per_minute"
+      ]) ?? 0,
+    locationBreakdown:
+      readOptionalBreakdown(payload, [
+        "locationBreakdown",
+        "location_breakdown"
+      ]) ??
+      buildBreakdown(
+        sessions.map((session) => session.location.country ?? "Unknown")
+      ),
+    refreshedAt,
+    sessions
   };
 }
 
@@ -2378,35 +2408,51 @@ function parseActiveSession(payload: unknown): ActiveSession {
   }
 
   const device = readOptionalRecord(payload, ["device"]) ?? {};
-  const location = readOptionalRecord(payload, ["location"]) ?? {};
+  const location = readOptionalRecord(payload, ["location", "geo"]) ?? {};
   const deviceType = readOptionalString(device, ["type"]) ?? "unknown";
+  const startedAt = readString(payload, ["startedAt", "started_at"]);
+  const lastSeenAt = readString(payload, ["lastSeenAt", "last_seen_at"]);
 
   return {
     anonymousId: readString(payload, ["anonymousId", "anonymous_id"]),
     channel: readOptionalString(payload, ["channel"]),
-    currentPage: readOptionalString(payload, ["currentPage", "current_page"]),
+    currentPage: readOptionalString(payload, [
+      "currentPage",
+      "current_page",
+      "exitPage",
+      "exit_page"
+    ]),
     device: {
       browser: readOptionalString(device, ["browser"]),
       os: readOptionalString(device, ["os"]),
       type: normalizeDeviceType(deviceType),
       userAgent: readOptionalString(device, ["userAgent", "user_agent"])
     },
-    durationSeconds: readFiniteNumber(payload, [
-      "durationSeconds",
-      "duration_seconds"
-    ]),
+    durationSeconds:
+      readOptionalFiniteNumber(payload, [
+        "durationSeconds",
+        "duration_seconds"
+      ]) ?? calculateDurationSeconds(startedAt, lastSeenAt),
     entryPage: readString(payload, ["entryPage", "entry_page"]),
-    eventCount: readFiniteNumber(payload, ["eventCount", "event_count"]),
-    lastSeenAt: readString(payload, ["lastSeenAt", "last_seen_at"]),
+    eventCount:
+      readOptionalFiniteNumber(payload, ["eventCount", "event_count"]) ?? 0,
+    lastSeenAt,
     location: {
       city: readOptionalString(location, ["city"]),
       country: readOptionalString(location, ["country"]),
       region: readOptionalString(location, ["region"])
     },
-    maskedUserId: readOptionalString(payload, ["maskedUserId", "masked_user_id"]),
+    maskedUserId: readOptionalString(payload, [
+      "maskedUserId",
+      "masked_user_id",
+      "userId",
+      "user_id"
+    ]),
     sessionId: readString(payload, ["sessionId", "session_id"]),
-    source: readOptionalString(payload, ["source"]),
-    startedAt: readString(payload, ["startedAt", "started_at"])
+    source:
+      readOptionalString(payload, ["source"]) ??
+      readOptionalString(readOptionalRecord(payload, ["utm"]) ?? {}, ["source"]),
+    startedAt
   };
 }
 
@@ -2589,9 +2635,98 @@ function readBreakdown(
   });
 }
 
-function readNumber(record: Record<string, unknown>, key: keyof LiveMetricsResponse) {
-  const value = record[key];
-  if (typeof value !== "number" || !Number.isFinite(value)) {
+function readOptionalBreakdown(
+  payload: Record<string, unknown>,
+  keys: string[]
+): ActiveSessionBreakdownItem[] | undefined {
+  const value = readValue(payload, keys);
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (!Array.isArray(value)) {
+    throw invalidActiveSessionsResponse();
+  }
+
+  return readBreakdown({ items: value }, ["items"]);
+}
+
+function buildBreakdown(values: Array<string | undefined>): ActiveSessionBreakdownItem[] {
+  const counts = new Map<string, number>();
+  let total = 0;
+
+  for (const value of values) {
+    const label = value?.trim() || "Unknown";
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+    total += 1;
+  }
+
+  return [...counts.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .map(([label, count]) => ({
+      count,
+      label,
+      percentage: total > 0 ? (count / total) * 100 : 0
+    }));
+}
+
+function countUniqueActors(sessions: ActiveSession[]): number {
+  const actors = new Set<string>();
+  for (const session of sessions) {
+    actors.add(session.maskedUserId ?? session.anonymousId ?? session.sessionId);
+  }
+  return actors.size;
+}
+
+function readMetricNumber(record: Record<string, unknown>, keys: string[]): number {
+  const value = readValue(record, keys);
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  throw invalidMetricsResponse();
+}
+
+function readMetricOptionalNumber(
+  record: Record<string, unknown>,
+  keys: string[]
+): number | undefined {
+  const value = readValue(record, keys);
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  throw invalidMetricsResponse();
+}
+
+function readMetricOptionalString(
+  record: Record<string, unknown>,
+  keys: string[]
+): string | undefined {
+  const value = readValue(record, keys);
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  if (typeof value !== "string") {
     throw invalidMetricsResponse();
   }
 
@@ -2605,6 +2740,29 @@ function readFiniteNumber(record: Record<string, unknown>, keys: string[]): numb
   }
 
   return value;
+}
+
+function readOptionalFiniteNumber(
+  record: Record<string, unknown>,
+  keys: string[]
+): number | undefined {
+  const value = readValue(record, keys);
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  throw invalidActiveSessionsResponse();
 }
 
 function readString(record: Record<string, unknown>, keys: string[]): string {
@@ -3188,6 +3346,33 @@ function appendQueryParam(
   }
 
   params.set(key, String(value));
+}
+
+function appendSegmentFilterParams(
+  params: URLSearchParams,
+  filters: SegmentFilters
+) {
+  appendQueryParam(params, "device_type", filters.deviceType);
+  appendQueryParam(params, "channel", filters.channel);
+  appendQueryParam(params, "source", filters.source);
+  appendQueryParam(params, "user_type", filters.userType);
+}
+
+function toExclusiveDateTimeRange(range: DateRange): { from: string; to: string } {
+  return {
+    from: toUTCStartOfDay(range.from),
+    to: toUTCStartOfNextDay(range.to)
+  };
+}
+
+function toUTCStartOfDay(value: string): string {
+  return `${value}T00:00:00.000Z`;
+}
+
+function toUTCStartOfNextDay(value: string): string {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + 1));
+  return date.toISOString();
 }
 
 function normalizeHeatmapPath(path: string): string {

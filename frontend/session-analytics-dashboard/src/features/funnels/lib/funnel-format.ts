@@ -3,14 +3,14 @@ import type { FunnelStepKey } from "../../../api/session-api";
 export const defaultFunnelSteps: FunnelStepKey[] = [
   "product_view",
   "add_to_cart",
-  "checkout_started",
-  "paid"
+  "checkout_step",
+  "payment_result"
 ];
 
 export const funnelStepLabels: Record<FunnelStepKey, string> = {
   add_to_cart: "Added to cart",
-  checkout_started: "Checkout started",
-  paid: "Paid",
+  checkout_step: "Checkout started",
+  payment_result: "Paid",
   product_view: "Product viewed"
 };
 

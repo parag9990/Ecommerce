@@ -5,7 +5,7 @@ import { readProductFilters, writeProductFilters } from './product-url-state';
 describe('product URL state', () => {
   test('reads supported filters from URL params', () => {
     const params = new URLSearchParams(
-      'q=shoes&category_id=cat_1&brand=Nike&seller_id=seller_1&min_price=100&max_price=5000&min_rating=4&in_stock=true&page=2&page_size=48&sort=price%3Aasc',
+      'q=shoes&category_id=cat_1&brand=Nike&seller_id=seller_1&min_price=100&max_price=5000&min_rating=4&in_stock=true&page=2&page_size=48&sort=price_asc',
     );
 
     expect(readProductFilters(params)).toEqual({
@@ -19,7 +19,7 @@ describe('product URL state', () => {
       pageSize: 48,
       q: 'shoes',
       sellerId: 'seller_1',
-      sort: 'price:asc',
+      sort: 'price_asc',
     });
   });
 
@@ -38,9 +38,9 @@ describe('product URL state', () => {
       page: 1,
       pageSize: 24,
       q: 'laptop',
-      sort: 'price:asc',
+      sort: 'price_asc',
     });
 
-    expect(params.toString()).toBe('q=laptop&sort=price%3Aasc');
+    expect(params.toString()).toBe('q=laptop&sort=price_asc');
   });
 });

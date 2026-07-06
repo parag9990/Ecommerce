@@ -209,7 +209,7 @@ func FindSellableVariant(product *ProductForCart, variantID string) (*ProductVar
 	variantID = strings.TrimSpace(variantID)
 	for idx := range product.Variants {
 		variant := &product.Variants[idx]
-		if strings.TrimSpace(variant.ID) != variantID {
+		if strings.TrimSpace(variant.ID) != variantID && strings.TrimSpace(variant.SKU) != variantID {
 			continue
 		}
 		if !variantSellable(*variant) {

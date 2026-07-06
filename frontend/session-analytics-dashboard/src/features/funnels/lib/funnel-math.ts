@@ -121,7 +121,7 @@ function readStepKey(item: RawFunnelStep): FunnelStepKey | null {
     rawKey === "checkout_start" ||
     rawKey === "checkout_step"
   ) {
-    return "checkout_started";
+    return "checkout_step";
   }
 
   if (
@@ -130,7 +130,7 @@ function readStepKey(item: RawFunnelStep): FunnelStepKey | null {
     rawKey === "payment_success" ||
     rawKey === "payment_succeeded"
   ) {
-    return "paid";
+    return "payment_result";
   }
 
   return null;

@@ -48,6 +48,8 @@ type PrivacyUsecase struct {
 	logger *slog.Logger
 }
 
+var analyticsAdminRoles = []string{"admin", "operations_admin", "finance_admin", "catalog_admin", "superadmin"}
+
 type UpdatePrivacySettingsInput struct {
 	Actor     domain.Actor
 	Masking   domain.PrivacyMaskingSettings
@@ -97,7 +99,7 @@ func NewPrivacyUsecase(repo PrivacyRepository, active ActiveSessionRepository, c
 }
 
 func (uc *PrivacyUsecase) GetPrivacySettings(ctx context.Context, actor domain.Actor) (domain.PrivacySettings, error) {
-	if err := requireAnyRole(actor, "admin", "operations_admin", "superadmin"); err != nil {
+	if err := requireAnyRole(actor, analyticsAdminRoles...); err != nil {
 		return domain.PrivacySettings{}, err
 	}
 
@@ -155,7 +157,7 @@ func (uc *PrivacyUsecase) UpdatePrivacySettings(ctx context.Context, input Updat
 }
 
 func (uc *PrivacyUsecase) GetRetentionSettings(ctx context.Context, actor domain.Actor) (domain.RetentionSettings, error) {
-	if err := requireAnyRole(actor, "admin", "operations_admin", "superadmin"); err != nil {
+	if err := requireAnyRole(actor, analyticsAdminRoles...); err != nil {
 		return domain.RetentionSettings{}, err
 	}
 	settings, err := uc.loadSettings(ctx)
@@ -347,7 +349,7 @@ func (uc *PrivacyUsecase) CreateDeletionRequest(ctx context.Context, input Creat
 }
 
 func (uc *PrivacyUsecase) ListDeletionRequests(ctx context.Context, actor domain.Actor) ([]domain.DeletionRequest, error) {
-	if err := requireAnyRole(actor, "admin", "operations_admin", "superadmin"); err != nil {
+	if err := requireAnyRole(actor, analyticsAdminRoles...); err != nil {
 		return nil, err
 	}
 	return uc.repo.ListDeletionRequests(ctx, uc.config.DeletionListLimit)

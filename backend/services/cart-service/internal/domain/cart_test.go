@@ -168,6 +168,33 @@ func TestCartAddOrIncrementItemIncrementsExistingLine(t *testing.T) {
 	}
 }
 
+func TestCartAddOrIncrementItemMatchesExistingLineBySKU(t *testing.T) {
+	now := time.Date(2026, 5, 24, 10, 0, 0, 0, time.UTC)
+	userID := "user_123"
+	item := validItem(now)
+	item.VariantID = "RUN-BLK-9"
+	cart := Cart{
+		ID:        "cart_123",
+		UserID:    &userID,
+		Status:    CartStatusActive,
+		Items:     []CartItem{item},
+		Totals:    validTotals(),
+		Version:   1,
+		CreatedAt: now,
+		UpdatedAt: now,
+		ExpiresAt: now.Add(90 * 24 * time.Hour),
+	}
+	snapshot := validSnapshot()
+	snapshot.SKU = "RUN-BLK-9"
+
+	if err := cart.AddOrIncrementItem(snapshot, 1, now.Add(time.Minute), "unused"); err != nil {
+		t.Fatalf("AddOrIncrementItem() error = %v", err)
+	}
+	if len(cart.Items) != 1 || cart.Items[0].Quantity != 3 || cart.Items[0].VariantID != "var_1" {
+		t.Fatalf("unexpected item after SKU match: %#v", cart.Items)
+	}
+}
+
 func TestCartAddOrIncrementItemRejectsStockShortage(t *testing.T) {
 	now := time.Date(2026, 5, 24, 10, 0, 0, 0, time.UTC)
 	owner := CartOwner{Type: CartOwnerTypeGuest, GuestSessionID: "guest_123"}
@@ -239,6 +266,55 @@ func TestCartRemoveItemIsIdempotentWhenMissing(t *testing.T) {
 	}
 	if len(cart.Items) != 1 {
 		t.Fatalf("item count = %d, want 1", len(cart.Items))
+	}
+}
+
+func TestCartSetItemQuantityUpdatesLineBySKU(t *testing.T) {
+	now := time.Date(2026, 5, 24, 10, 0, 0, 0, time.UTC)
+	userID := "user_123"
+	item := validItem(now)
+	item.VariantID = "RUN-BLK-9"
+	cart := Cart{
+		ID:        "cart_123",
+		UserID:    &userID,
+		Status:    CartStatusActive,
+		Items:     []CartItem{item},
+		Totals:    validTotals(),
+		Version:   1,
+		CreatedAt: now,
+		UpdatedAt: now,
+		ExpiresAt: now.Add(90 * 24 * time.Hour),
+	}
+	snapshot := validSnapshot()
+	snapshot.SKU = "RUN-BLK-9"
+	snapshot.UnitPrice = NewMoney(1200, CurrencyINR)
+
+	if err := cart.SetItemQuantity("item_1", 3, snapshot, now.Add(time.Minute)); err != nil {
+		t.Fatalf("SetItemQuantity() error = %v", err)
+	}
+	if got := cart.Items[0]; got.Quantity != 3 || got.VariantID != "var_1" || got.LineSubtotal.Amount != 3600 {
+		t.Fatalf("unexpected item after quantity set: %#v", got)
+	}
+}
+
+func TestCartSetItemQuantityRejectsMissingItem(t *testing.T) {
+	now := time.Date(2026, 5, 24, 10, 0, 0, 0, time.UTC)
+	userID := "user_123"
+	cart := Cart{
+		ID:        "cart_123",
+		UserID:    &userID,
+		Status:    CartStatusActive,
+		Items:     []CartItem{validItem(now)},
+		Totals:    validTotals(),
+		Version:   1,
+		CreatedAt: now,
+		UpdatedAt: now,
+		ExpiresAt: now.Add(90 * 24 * time.Hour),
+	}
+
+	err := cart.SetItemQuantity("missing_item", 1, validSnapshot(), now.Add(time.Minute))
+	if !errors.Is(err, ErrCartItemNotFound) {
+		t.Fatalf("SetItemQuantity() error = %v, want ErrCartItemNotFound", err)
 	}
 }
 

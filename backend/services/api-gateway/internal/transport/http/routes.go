@@ -37,6 +37,7 @@ type RouterOptions struct {
 	SessionHTTPClient    *http.Client
 	AuthHTTPClient       *http.Client
 	ProductHTTPClient    *http.Client
+	CartHTTPClient       *http.Client
 	CMSHTTPClient        *http.Client
 	PaymentHTTPClient    *http.Client
 	WishlistHTTPClient   *http.Client
@@ -78,6 +79,10 @@ func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecas
 	if opts.OrderClient != nil {
 		sellerOrderHandler = NewSellerOrderHandler(opts.OrderClient, logger)
 	}
+	var buyerOrderHandler *BuyerOrderHandler
+	if opts.OrderClient != nil {
+		buyerOrderHandler = NewBuyerOrderHandler(opts.OrderClient, opts.UserClient, logger)
+	}
 	var searchHandler *handlers.SearchHandler
 	if opts.SearchClient != nil {
 		searchHandler = handlers.NewSearchHandler(opts.SearchClient, logger)
@@ -92,7 +97,13 @@ func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecas
 		if client == nil {
 			client = &http.Client{Timeout: cfg.SessionHTTPTimeout}
 		}
-		sessionProxy, err = NewSessionProxy(cfg.SessionHTTPURL, client, logger)
+		sessionProxy, err = NewServiceHTTPProxy(
+			"session",
+			cfg.SessionHTTPURL,
+			client,
+			logger,
+			WithBearerAuth(cfg.SessionServiceAdminToken),
+		)
 		if err != nil {
 			return nil, fmt.Errorf("configure session HTTP proxy: %w", err)
 		}
@@ -128,6 +139,17 @@ func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecas
 		productProxy, err = NewServiceHTTPProxy("product", cfg.ProductHTTPURL, client, logger)
 		if err != nil {
 			return nil, fmt.Errorf("configure product HTTP proxy: %w", err)
+		}
+	}
+	var cartProxy *SessionProxy
+	if strings.TrimSpace(cfg.CartHTTPURL) != "" {
+		client := opts.CartHTTPClient
+		if client == nil {
+			client = &http.Client{Timeout: cfg.CartHTTPTimeout}
+		}
+		cartProxy, err = NewServiceHTTPProxy("cart", cfg.CartHTTPURL, client, logger)
+		if err != nil {
+			return nil, fmt.Errorf("configure cart HTTP proxy: %w", err)
 		}
 	}
 	var cmsProxy *SessionProxy
@@ -188,6 +210,9 @@ func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecas
 		if notificationHandler != nil {
 			endpoint = notificationRouteEndpoint(route, notificationHandler, endpoint)
 		}
+		if buyerOrderHandler != nil {
+			endpoint = buyerOrderRouteEndpoint(route, buyerOrderHandler, endpoint)
+		}
 		if sellerOrderHandler != nil {
 			endpoint = sellerOrderRouteEndpoint(route, sellerOrderHandler, endpoint)
 		}
@@ -202,6 +227,9 @@ func NewRouterWithOptions(ctx context.Context, cfg config.Config, catalog usecas
 		}
 		if productProxy != nil && route.Service == "product-service" {
 			endpoint = productProxy.ServeHTTP
+		}
+		if cartProxy != nil && route.Service == "cart-service" {
+			endpoint = cartProxy.ServeHTTP
 		}
 		if cmsProxy != nil && route.Service == "cms-service" {
 			endpoint = cmsProxy.ServeHTTP

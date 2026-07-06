@@ -12,9 +12,10 @@ export const deviceTypeOptions = [
 
 export const channelOptions = [
   { label: "All channels", value: "all" },
-  { label: "Web", value: "web" },
+  { label: "User web", value: "user_app_web" },
   { label: "Mobile web", value: "mobile_web" },
-  { label: "App", value: "app" }
+  { label: "Android app", value: "android_app" },
+  { label: "iOS app", value: "ios_app" }
 ] as const satisfies ReadonlyArray<FilterOption<string>>;
 
 export const sourceOptions = [
@@ -46,11 +47,10 @@ export type SegmentFilters = {
 
 export type LiveMetricsResponse = {
   activeUsersNow: number;
-  sessionsToday: number;
-  conversionRate: number;
-  averageSessionDurationSeconds: number;
-  bounceRate: number;
-  productViewToCartRate: number;
+  activeSessionsNow: number;
+  eventsPerMinute: number;
+  measuredAt?: string;
+  windowSeconds?: number;
 };
 
 export const defaultSegmentFilters: SegmentFilters = {

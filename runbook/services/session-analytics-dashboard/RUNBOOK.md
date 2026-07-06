@@ -31,7 +31,14 @@ corepack pnpm install --frozen-lockfile
 
 ## 7. Database/Migration/Seed Setup
 
-No database owned by this app. Session event seed data: Not found in codebase - please confirm.
+No database is owned by this frontend. The dashboard reads analytics data through API Gateway from `session-service`.
+
+Required data stores:
+
+- MongoDB `session_db`: `sessions`, `session_events`, `heatmap_points`, `analytics_aggregates`, retention/report/privacy collections.
+- Redis DB 5: active session indexes, live user/session counters, and recent event counters.
+
+Run `session-service` Mongo migrations before testing analytics pages. There is no standalone analytics seed script; generate data by using the user app or ingesting session events into `session-service`. Overview/live sessions require active Redis data, while journeys, funnels, heatmaps, cohorts, reports, and privacy pages read Mongo-backed session analytics data.
 
 ## 8. Run Command
 
@@ -66,6 +73,9 @@ Manual Vite logs appear in the terminal.
 ## 11. Common Issues
 
 - Dashboard is empty until session events exist.
+- Overview and live sessions are empty until Redis has recent active session/event data.
+- Funnels use `product_view`, `add_to_cart`, `checkout_step`, and `payment_result` event types.
+- Heatmaps use the `heatmap_type` query value (`click` or `scroll`).
 - Manual Vite port conflicts with seller dashboard.
 - `VITE_API_PROXY_TARGET` must point to the API Gateway.
 - Admin authorization is required for protected analytics endpoints.

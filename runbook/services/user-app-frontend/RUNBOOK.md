@@ -16,6 +16,10 @@ React, TypeScript, Vite, React Router, React Query, Zustand, Connect/gRPC-Web cl
 
 API Gateway, gRPC-Web facade, auth/product/cart/wishlist/order/payment/search/session services through the gateway.
 
+Product browse and category pages read published products from Product Service through the gateway, so products created in Seller Dashboard/CMS become visible after they are saved as `published`. Search, popular products, autocomplete, and filtered result pages also depend on Search Service and its Typesense index.
+
+Checkout depends on Cart Service, User Service addresses, Order Service, Product Service inventory, and Payment Service. The frontend sends the active `cart_id`, selected `address_id`, payment provider, and idempotency key to `POST /api/v1/orders/checkout` through API Gateway.
+
 ## 5. Environment Variables
 
 Use `frontend/user-app/.env.example`.
@@ -71,7 +75,15 @@ Manual Vite logs appear in the terminal running `pnpm dev:user`.
 - Gateway CORS does not include the manual Vite origin.
 - Signup flow may fail until auth signup route mismatch is resolved.
 - Payment UI can show providers while backend providers are disabled.
+- Popular products or filtered search fail if Search Service/Typesense is unhealthy or its product index has not caught up.
+- Checkout fails if the gateway cannot reach Order Service over gRPC or User Service cannot return the selected delivery address.
 
 ## 12. Quick Verification
 
-Open `http://localhost:3000` for Docker or the Vite URL printed by the manual dev server.
+Open `http://localhost:3000` for Docker or the Vite URL printed by the manual dev server, then verify:
+
+- Home page product grid loads published products.
+- Search and category pages show product cards with images/prices.
+- Deals page loads popular products.
+- Wishlist items show hydrated product title, price, image, and move-to-cart works.
+- Checkout review step can create an order/payment intent from a non-empty cart and saved address.

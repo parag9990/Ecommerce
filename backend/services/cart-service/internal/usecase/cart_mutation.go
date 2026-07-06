@@ -9,14 +9,18 @@ import (
 
 type CartMutationUsecase struct {
 	addItem            *AddItemUsecase
+	updateItem         *UpdateItemUsecase
 	removeItem         *RemoveItemUsecase
 	applyCouponPreview *ApplyCouponPreviewUsecase
 	mergeGuestCart     *MergeGuestCartUsecase
 }
 
-func NewCartMutationUsecase(addItem *AddItemUsecase, removeItem *RemoveItemUsecase, applyCouponPreview *ApplyCouponPreviewUsecase, mergeGuestCart *MergeGuestCartUsecase) (*CartMutationUsecase, error) {
+func NewCartMutationUsecase(addItem *AddItemUsecase, updateItem *UpdateItemUsecase, removeItem *RemoveItemUsecase, applyCouponPreview *ApplyCouponPreviewUsecase, mergeGuestCart *MergeGuestCartUsecase) (*CartMutationUsecase, error) {
 	if addItem == nil {
 		return nil, errors.New("add item usecase is required")
+	}
+	if updateItem == nil {
+		return nil, errors.New("update item usecase is required")
 	}
 	if removeItem == nil {
 		return nil, errors.New("remove item usecase is required")
@@ -27,11 +31,15 @@ func NewCartMutationUsecase(addItem *AddItemUsecase, removeItem *RemoveItemUseca
 	if mergeGuestCart == nil {
 		return nil, errors.New("merge guest cart usecase is required")
 	}
-	return &CartMutationUsecase{addItem: addItem, removeItem: removeItem, applyCouponPreview: applyCouponPreview, mergeGuestCart: mergeGuestCart}, nil
+	return &CartMutationUsecase{addItem: addItem, updateItem: updateItem, removeItem: removeItem, applyCouponPreview: applyCouponPreview, mergeGuestCart: mergeGuestCart}, nil
 }
 
 func (u *CartMutationUsecase) AddItem(ctx context.Context, cmd AddItemCommand) (*domain.Cart, error) {
 	return u.addItem.AddItem(ctx, cmd)
+}
+
+func (u *CartMutationUsecase) UpdateItem(ctx context.Context, cmd UpdateItemCommand) (*domain.Cart, error) {
+	return u.updateItem.UpdateItem(ctx, cmd)
 }
 
 func (u *CartMutationUsecase) RemoveItem(ctx context.Context, cmd RemoveItemCommand) (*domain.Cart, error) {

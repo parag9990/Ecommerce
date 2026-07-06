@@ -13,6 +13,10 @@ type addItemRequest struct {
 	Quantity  int    `json:"quantity"`
 }
 
+type updateItemRequest struct {
+	Quantity int `json:"quantity"`
+}
+
 type couponPreviewRequest struct {
 	CouponCode string `json:"coupon_code"`
 	CartID     string `json:"cart_id,omitempty"`
@@ -169,6 +173,33 @@ func newCartResponse(cart *domain.Cart) cartResponse {
 		UpdatedAt:      cart.UpdatedAt,
 		ExpiresAt:      cart.ExpiresAt,
 	}
+}
+
+func newEmptyCartResponse(owner domain.CartOwner) cartResponse {
+	totals := cartTotalsResponse{
+		Subtotal:        newMoneyResponse(domain.NewMoney(0, domain.CurrencyINR)),
+		Discount:        newMoneyResponse(domain.NewMoney(0, domain.CurrencyINR)),
+		Total:           newMoneyResponse(domain.NewMoney(0, domain.CurrencyINR)),
+		Currency:        domain.CurrencyINR,
+		ItemCount:       0,
+		UniqueItemCount: 0,
+	}
+	response := cartResponse{
+		Status:   string(domain.CartStatusActive),
+		Items:    []cartItemResponse{},
+		Subtotal: totals.Subtotal,
+		Discount: totals.Discount,
+		Total:    totals.Total,
+		Totals:   totals,
+	}
+	if owner.IsUser() {
+		userID := owner.UserID
+		response.UserID = &userID
+	} else {
+		guestSessionID := owner.GuestSessionID
+		response.GuestSessionID = &guestSessionID
+	}
+	return response
 }
 
 func newCouponViewResponse(preview *domain.CouponView) *couponViewResponse {

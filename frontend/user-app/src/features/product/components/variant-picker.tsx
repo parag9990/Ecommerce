@@ -2,8 +2,8 @@ import type { ProductVariant } from '../types';
 import { Price } from './price';
 
 type VariantPickerProps = {
-  onChange: (sku: string) => void;
-  selectedSku?: string | undefined;
+  onChange: (variantId: string) => void;
+  selectedVariantId?: string | undefined;
   variants: ProductVariant[];
 };
 
@@ -27,7 +27,7 @@ function formatVariantAttributes(variant: ProductVariant) {
 
 export function VariantPicker({
   onChange,
-  selectedSku,
+  selectedVariantId,
   variants,
 }: VariantPickerProps) {
   if (variants.length === 0) {
@@ -44,8 +44,9 @@ export function VariantPicker({
 
       <div className="grid gap-2 sm:grid-cols-2">
         {variants.map((variant) => {
-          const isSelected = selectedSku === variant.sku;
-          const stock = variant.stock_quantity;
+          const variantId = variant.variant_id ?? variant.sku;
+          const isSelected = selectedVariantId === variantId;
+          const stock = variant.available_quantity ?? variant.stock_quantity;
           const attributeLabel = formatVariantAttributes(variant);
 
           return (
@@ -56,17 +57,17 @@ export function VariantPicker({
                   ? 'border-slate-950 bg-slate-50'
                   : 'border-slate-200 bg-white hover:border-slate-400',
               ].join(' ')}
-              key={variant.sku}
+              key={variantId}
             >
               <input
                 checked={isSelected}
                 className="sr-only"
                 name="variant"
                 onChange={() => {
-                  onChange(variant.sku);
+                  onChange(variantId);
                 }}
                 type="radio"
-                value={variant.sku}
+                value={variantId}
               />
               <span className="block text-sm font-medium text-slate-950">
                 {variant.sku}

@@ -26,7 +26,10 @@ function getStockLabel(stock: number | undefined) {
 export function ProductCard({ product }: ProductCardProps) {
   const primaryVariant = product.variants?.[0];
   const imageUrl = product.images?.[0];
-  const stock = getStockLabel(primaryVariant?.stock_quantity);
+  const stockQuantity =
+    primaryVariant?.available_quantity ?? primaryVariant?.stock_quantity;
+  const variantId = primaryVariant?.variant_id ?? primaryVariant?.sku;
+  const stock = getStockLabel(stockQuantity);
 
   return (
     <article className="group overflow-hidden rounded-md border border-slate-200 bg-white transition hover:border-slate-300 hover:shadow-sm">
@@ -54,7 +57,7 @@ export function ProductCard({ product }: ProductCardProps) {
           <WishlistButton
             iconOnly
             productId={product.product_id}
-            variantId={primaryVariant?.sku}
+            variantId={variantId}
           />
         </div>
       </div>
@@ -87,10 +90,10 @@ export function ProductCard({ product }: ProductCardProps) {
       <div className="border-t border-slate-100 p-3">
         <AddToCartButton
           compact
-          disabled={!primaryVariant || primaryVariant.stock_quantity === 0}
+          disabled={!primaryVariant || stockQuantity === 0}
           productId={product.product_id}
           showViewCartLink={false}
-          variantId={primaryVariant?.sku}
+          variantId={variantId}
         />
       </div>
     </article>

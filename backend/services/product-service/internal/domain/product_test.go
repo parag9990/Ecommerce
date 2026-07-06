@@ -39,11 +39,11 @@ func TestValidateForPublishAllowsZeroStockButRequiresActiveVariant(t *testing.T)
 	assertIssue(t, report, CodeActiveVariantRequired)
 }
 
-func TestProductValidateAllowsDefaultVariantWithoutAttributes(t *testing.T) {
+func TestProductValidateAllowsCustomAttributesWhenCategorySchemaIsEmpty(t *testing.T) {
 	product := validProduct()
 	product.CategoryID = "cat_local"
 	product.CategoryPath = []string{"cat_local"}
-	product.Attributes = Attributes{}
+	product.Attributes = Attributes{"neck_type": "Round Neck"}
 	product.Variants[0].Attributes = Attributes{}
 
 	report := product.Validate(DefaultValidationOptions(), &Category{
@@ -56,7 +56,7 @@ func TestProductValidateAllowsDefaultVariantWithoutAttributes(t *testing.T) {
 	})
 
 	if report.HasErrors() {
-		t.Fatalf("expected default variant without attributes to be valid, got issues: %+v", report.Issues)
+		t.Fatalf("expected empty category schema to allow custom product attributes, got issues: %+v", report.Issues)
 	}
 }
 

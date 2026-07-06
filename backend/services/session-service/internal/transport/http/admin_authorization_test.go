@@ -20,6 +20,23 @@ func TestAnalyticsAdminTokenIsRequiredWhenConfigured(t *testing.T) {
 	}
 }
 
+func TestAnalyticsAdminGateAllowsGatewayAdminRoles(t *testing.T) {
+	for _, role := range []string{"admin", "operations_admin", "finance_admin", "catalog_admin", "superadmin"} {
+		t.Run(role, func(t *testing.T) {
+			handler := newTestHandler(t, &fakeEventIngestUsecase{}, 64<<10)
+			handler.SetAdminToken("test_session_admin_token_at_least_32_chars")
+			request := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/live", nil)
+			request.Header.Set("Authorization", "Bearer test_session_admin_token_at_least_32_chars")
+			request.Header.Set("X-User-Roles", role)
+			response := httptest.NewRecorder()
+			NewRouter(handler).ServeHTTP(response, request)
+			if response.Code != http.StatusOK {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
 func TestAnalyticsMaskingDirectiveCannotExposePII(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/sessions", nil)
 	request.Header.Set("X-Admin-Mask-PII", "true")

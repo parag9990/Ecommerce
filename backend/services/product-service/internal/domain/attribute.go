@@ -84,6 +84,10 @@ func ValidateAttributes(attrs Attributes, schema []AttributeDefinition, scope At
 		}
 	}
 
+	if len(schema) == 0 {
+		return report
+	}
+
 	if len(attrs) == 0 {
 		return report
 	}

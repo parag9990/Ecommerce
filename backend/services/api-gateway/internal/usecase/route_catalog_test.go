@@ -8,6 +8,7 @@ import (
 	"ecommerce/api-gateway/internal/domain"
 	"ecommerce/api-gateway/internal/repository"
 	"ecommerce/api-gateway/internal/usecase"
+	"ecommerce/api-gateway/internal/validation"
 )
 
 func TestRouteCatalogLoadsMasterAPIContract(t *testing.T) {
@@ -32,6 +33,11 @@ func TestRouteCatalogLoadsMasterAPIContract(t *testing.T) {
 	assertRoute(t, catalog, "admin.search_synonym_update", domain.MethodPatch, "/api/v1/admin/search/synonyms/{synonym_id}", "search-service", "SearchService.UpdateSynonym", domain.AuthAdmin)
 	assertRoute(t, catalog, "admin.audit_logs_export", domain.MethodPost, "/api/v1/admin/audit-logs/export", "superadmin-service", "SuperadminService.ExportAuditLogs", domain.AuthSuperadmin)
 	assertRoute(t, catalog, "admin.payment_reconciliations", domain.MethodGet, "/api/v1/admin/payment-reconciliations", "superadmin-service", "SuperadminService.ListPaymentReconciliations", domain.AuthAdmin)
+	assertRoute(t, catalog, "analytics.live", domain.MethodGet, "/api/v1/analytics/live", "session-service", "SessionService.GetLiveMetrics", domain.AuthAdmin)
+	assertRoute(t, catalog, "analytics.sessions", domain.MethodGet, "/api/v1/analytics/sessions", "session-service", "SessionService.ListSessions", domain.AuthAdmin)
+	assertRoute(t, catalog, "analytics.journey", domain.MethodGet, "/api/v1/analytics/sessions/{session_id}/journey", "session-service", "SessionService.GetJourney", domain.AuthAdmin)
+	assertRoute(t, catalog, "analytics.funnels", domain.MethodGet, "/api/v1/analytics/funnels", "session-service", "SessionService.GetFunnelReport", domain.AuthAdmin)
+	assertRoute(t, catalog, "analytics.heatmaps", domain.MethodGet, "/api/v1/analytics/heatmaps", "session-service", "SessionService.GetHeatmap", domain.AuthAdmin)
 	assertRoute(t, catalog, "analytics.retention", domain.MethodGet, "/api/v1/analytics/retention", "session-service", "SessionService.GetRetentionReport", domain.AuthAdmin)
 	assertRoute(t, catalog, "analytics.report_schedules_create", domain.MethodPost, "/api/v1/analytics/reports/schedules", "session-service", "SessionService.CreateReportSchedule", domain.AuthAdmin)
 	assertRoute(t, catalog, "analytics.privacy_retention_update", domain.MethodPatch, "/api/v1/analytics/privacy/retention", "session-service", "SessionService.UpdateRetentionPolicy", domain.AuthSuperadmin)
@@ -57,6 +63,11 @@ func TestRouteCatalogLoadsMasterAPIContract(t *testing.T) {
 	if !ok || searchSchema.Properties["filter"].Type != "array" {
 		t.Fatal("expected SearchRequest to allow repeated filter query parameters")
 	}
+	validator := validation.NewSchemaValidator(schemas)
+	assertSchemaProperties(t, validator, "LiveMetricsRequest", []string{"from", "to", "device_type", "channel", "source", "user_type"})
+	assertSchemaProperties(t, validator, "SessionListRequest", []string{"page", "page_size", "status", "device_type", "channel", "country", "entry_page", "q"})
+	assertSchemaProperties(t, validator, "FunnelReportRequest", []string{"from", "to", "steps", "device_type", "channel", "source", "user_type", "country", "campaign"})
+	assertSchemaProperties(t, validator, "HeatmapRequest", []string{"path", "device_type", "heatmap_type", "viewport_bucket", "from", "to", "limit"})
 }
 
 func assertRoute(t *testing.T, catalog usecase.RouteCatalog, id string, method domain.HTTPMethod, path string, service string, grpcMethod string, auth domain.AuthLevel) {
@@ -74,6 +85,19 @@ func assertRoute(t *testing.T, catalog usecase.RouteCatalog, id string, method d
 	}
 	if byKey.ID != id {
 		t.Fatalf("expected route id %s by key, got %s", id, byKey.ID)
+	}
+}
+
+func assertSchemaProperties(t *testing.T, validator *validation.SchemaValidator, name string, properties []string) {
+	t.Helper()
+	schema, ok := validator.ResolveByName(name)
+	if !ok {
+		t.Fatalf("expected schema %s to resolve", name)
+	}
+	for _, property := range properties {
+		if _, ok := schema.Properties[property]; !ok {
+			t.Fatalf("expected schema %s to allow property %s", name, property)
+		}
 	}
 }
 

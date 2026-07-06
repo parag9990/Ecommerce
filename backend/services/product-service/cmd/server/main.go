@@ -359,9 +359,13 @@ func respondStatus(w http.ResponseWriter, status int, value any, err error) {
 
 func writeServiceError(w http.ResponseWriter, err error) {
 	status, code, message := http.StatusInternalServerError, "INTERNAL_ERROR", "internal product service error"
+	errorBody := map[string]any{}
 	var serviceErr *usecase.ServiceError
 	if errors.As(err, &serviceErr) {
 		code, message = serviceErr.Code, serviceErr.Message
+		if issues := serviceErr.Report.ErrorIssues(); len(issues) > 0 {
+			errorBody["details"] = issues
+		}
 		switch serviceErr.Kind {
 		case usecase.ErrorKindInvalidArgument:
 			status = http.StatusBadRequest
@@ -377,7 +381,9 @@ func writeServiceError(w http.ResponseWriter, err error) {
 			status = http.StatusServiceUnavailable
 		}
 	}
-	writeJSON(w, status, map[string]any{"error": map[string]any{"code": code, "message": message}})
+	errorBody["code"] = code
+	errorBody["message"] = message
+	writeJSON(w, status, map[string]any{"error": errorBody})
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

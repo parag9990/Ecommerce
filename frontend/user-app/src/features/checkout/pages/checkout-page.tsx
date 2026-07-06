@@ -97,8 +97,13 @@ export function CheckoutPage() {
     setError(undefined);
 
     try {
+      if (!cart?.cart_id) {
+        throw new Error('Cart could not be prepared for checkout.');
+      }
+
       const response = await checkoutMutation.mutateAsync({
         address_id: values.address_id,
+        cart_id: cart.cart_id,
         coupon_code: values.coupon_code?.trim().toUpperCase() || undefined,
         idempotency_key: getCheckoutIdempotencyKey(),
         payment_provider: values.payment_provider,

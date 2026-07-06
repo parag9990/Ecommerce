@@ -54,11 +54,11 @@ describe("FunnelAnalysisPage", () => {
 
     const params = requestUrls[requestUrls.length - 1].searchParams;
     expect(params.get("device_type")).toBe("mobile");
-    expect(params.get("channel")).toBe("all");
-    expect(params.get("source")).toBe("all");
-    expect(params.get("user_type")).toBe("all");
+    expect(params.has("channel")).toBe(false);
+    expect(params.has("source")).toBe(false);
+    expect(params.has("user_type")).toBe(false);
     expect(params.get("steps")).toBe(
-      "product_view,add_to_cart,checkout_started,paid"
+      "product_view,add_to_cart,checkout_step,payment_result"
     );
   });
 
@@ -111,8 +111,8 @@ function funnelResponse() {
     steps: [
       { key: "product_view", count: 1000 },
       { key: "add_to_cart", count: 320 },
-      { key: "checkout_started", count: 180 },
-      { key: "paid", count: 90 }
+      { key: "checkout_step", count: 180 },
+      { key: "payment_result", count: 90 }
     ]
   };
 }

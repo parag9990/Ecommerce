@@ -11,6 +11,7 @@ var (
 	ErrInvalidCartTotals        = errors.New("invalid cart totals")
 	ErrDuplicateCartItem        = errors.New("duplicate cart item")
 	ErrCartItemLimitReached     = errors.New("cart item limit reached")
+	ErrCartItemNotFound         = errors.New("cart item not found")
 	ErrCartOwnerMissing         = errors.New("cart owner missing")
 	ErrCartNotFound             = errors.New("cart not found")
 	ErrCartNotActive            = errors.New("cart is not active")

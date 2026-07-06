@@ -95,7 +95,7 @@ func (c *Cart) AddOrIncrementItem(snapshot ProductVariantSnapshot, addQty int, n
 
 	for idx := range c.Items {
 		item := &c.Items[idx]
-		if item.ProductID != snapshot.ProductID || item.VariantID != snapshot.VariantID {
+		if item.ProductID != snapshot.ProductID || !variantMatchesSnapshot(item.VariantID, snapshot) {
 			continue
 		}
 		finalQty := item.Quantity + addQty
@@ -105,6 +105,7 @@ func (c *Cart) AddOrIncrementItem(snapshot ProductVariantSnapshot, addQty int, n
 		if finalQty > snapshot.StockQuantity {
 			return StockError{Requested: finalQty, Available: snapshot.StockQuantity}
 		}
+		item.VariantID = snapshot.VariantID
 		item.Quantity = finalQty
 		item.SellerID = snapshot.SellerID
 		item.SKUSnapshot = optionalString(snapshot.SKU)
@@ -178,6 +179,64 @@ func (c *Cart) RemoveItem(itemID string, now time.Time) (bool, error) {
 		c.UpdatedAt = now
 	}
 	return removed, nil
+}
+
+func (c *Cart) SetItemQuantity(itemID string, quantity int, snapshot ProductVariantSnapshot, now time.Time) error {
+	if c == nil {
+		return fmt.Errorf("%w: cart is nil", ErrInvalidCart)
+	}
+	if c.Status != CartStatusActive {
+		return ErrCartNotActive
+	}
+	itemID = strings.TrimSpace(itemID)
+	if itemID == "" {
+		return ErrItemIDRequired
+	}
+	if quantity < MinItemQuantity {
+		return ErrQuantityTooSmall
+	}
+	if quantity > MaxItemQuantity {
+		return ErrQuantityTooLarge
+	}
+	if err := validateSnapshot(snapshot); err != nil {
+		return err
+	}
+	if quantity > snapshot.StockQuantity {
+		return StockError{Requested: quantity, Available: snapshot.StockQuantity}
+	}
+	now = now.UTC()
+	if now.IsZero() {
+		return fmt.Errorf("%w: mutation timestamp is required", ErrInvalidCart)
+	}
+
+	for idx := range c.Items {
+		item := &c.Items[idx]
+		if strings.TrimSpace(item.ItemID) != itemID {
+			continue
+		}
+		if item.ProductID != snapshot.ProductID || !variantMatchesSnapshot(item.VariantID, snapshot) {
+			return ErrCartItemNotFound
+		}
+		item.VariantID = snapshot.VariantID
+		item.SellerID = snapshot.SellerID
+		item.SKUSnapshot = optionalString(snapshot.SKU)
+		item.TitleSnapshot = strings.TrimSpace(snapshot.Title)
+		item.ImageURLSnapshot = optionalString(snapshot.ImageURL)
+		item.VariantSnapshot = cloneStringMap(snapshot.Attributes)
+		item.UnitPrice = snapshot.UnitPrice
+		item.Quantity = quantity
+		item.LineSubtotal = NewMoney(snapshot.UnitPrice.Amount*int64(quantity), snapshot.UnitPrice.Currency)
+		item.PriceSnapshotAt = now
+		item.UpdatedAt = now
+		c.UpdatedAt = now
+		return nil
+	}
+	return ErrCartItemNotFound
+}
+
+func variantMatchesSnapshot(variantID string, snapshot ProductVariantSnapshot) bool {
+	variantID = strings.TrimSpace(variantID)
+	return variantID != "" && (variantID == snapshot.VariantID || variantID == snapshot.SKU)
 }
 
 func (c *Cart) CleanupZeroQuantityItems(now time.Time) int {

@@ -182,6 +182,27 @@ func (r *MongoAnalyticsRepository) BuildFunnelFromRawEvents(ctx context.Context,
 	if normalized.Country != "" {
 		match = append(match, bson.E{Key: "geo.country", Value: normalized.Country})
 	}
+	andConditions := bson.A{}
+	if normalized.Source != "" && !strings.EqualFold(normalized.Source, "all") {
+		andConditions = append(andConditions, bson.D{{Key: "$or", Value: bson.A{
+			bson.D{{Key: "properties.source", Value: normalized.Source}},
+			bson.D{{Key: "properties.utm_source", Value: normalized.Source}},
+			bson.D{{Key: "properties.utm.source", Value: normalized.Source}},
+		}}})
+	}
+	switch normalized.UserType {
+	case "logged_in":
+		andConditions = append(andConditions, bson.D{{Key: "user_id", Value: bson.D{{Key: "$type", Value: "string"}, {Key: "$ne", Value: ""}}}})
+	case "anonymous":
+		andConditions = append(andConditions, bson.D{{Key: "$or", Value: bson.A{
+			bson.D{{Key: "user_id", Value: bson.D{{Key: "$exists", Value: false}}}},
+			bson.D{{Key: "user_id", Value: nil}},
+			bson.D{{Key: "user_id", Value: ""}},
+		}}})
+	}
+	if len(andConditions) > 0 {
+		match = append(match, bson.E{Key: "$and", Value: andConditions})
+	}
 
 	pipeline := mongo.Pipeline{
 		{{Key: "$match", Value: match}},
@@ -238,6 +259,12 @@ func appendSegmentFilters(query bson.D, filter domain.FunnelReportFilter) bson.D
 	}
 	if filter.Channel != "" {
 		query = append(query, bson.E{Key: "segment.channel", Value: string(filter.Channel)})
+	}
+	if filter.Source != "" && !strings.EqualFold(filter.Source, "all") {
+		query = append(query, bson.E{Key: "segment.source", Value: filter.Source})
+	}
+	if filter.UserType != "" && !strings.EqualFold(filter.UserType, "all") {
+		query = append(query, bson.E{Key: "segment.user_type", Value: filter.UserType})
 	}
 	if filter.Country != "" {
 		query = append(query, bson.E{Key: "segment.country", Value: filter.Country})

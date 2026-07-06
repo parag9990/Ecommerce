@@ -88,7 +88,7 @@ describe("LiveSessionsPage", () => {
     expect(url).toContain("/api/v1/analytics/sessions?");
     expect(url).toContain("status=active");
     expect(url).toContain("device_type=mobile");
-    expect(url).toContain("limit=50");
+    expect(url).toContain("page_size=50");
   });
 });
 

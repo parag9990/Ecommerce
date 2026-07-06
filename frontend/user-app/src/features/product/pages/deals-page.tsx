@@ -19,7 +19,7 @@ export function DealsPage() {
     return {
       page: parsedFilters.page,
       pageSize: parsedFilters.pageSize,
-      sort: 'popularity_score:desc',
+      sort: 'popular',
     };
   }, [searchParams]);
   const products = useProductList(filters, 'search');

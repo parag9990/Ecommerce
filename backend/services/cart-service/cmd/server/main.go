@@ -146,6 +146,22 @@ func main() {
 		logger.Error("cart.remove_item_usecase.init_failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
+	updateItemUsecase, err := usecase.NewUpdateItemUsecase(usecase.UpdateItemDependencies{
+		Repository:      cartRepository,
+		Cache:           cartCache,
+		ProductClient:   productClient,
+		Clock:           usecase.SystemClock{},
+		Logger:          logger,
+		CartTTL:         cfg.Cart.ExpiryTTL,
+		UserCartTTL:     cfg.Cart.UserExpiryTTL,
+		GuestCartTTL:    cfg.Cart.GuestExpiryTTL,
+		DefaultCurrency: cfg.Cart.DefaultCurrency,
+		MaxSaveAttempts: cfg.Cart.MaxSaveAttempts,
+	})
+	if err != nil {
+		logger.Error("cart.update_item_usecase.init_failed", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
 	applyCouponPreviewUsecase, err := usecase.NewApplyCouponPreviewUsecase(usecase.ApplyCouponPreviewDependencies{
 		Repository:      cartRepository,
 		Cache:           cartCache,
@@ -179,7 +195,7 @@ func main() {
 		logger.Error("cart.merge_guest_cart_usecase.init_failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
-	cartUsecase, err := usecase.NewCartMutationUsecase(addItemUsecase, removeItemUsecase, applyCouponPreviewUsecase, mergeGuestCartUsecase)
+	cartUsecase, err := usecase.NewCartMutationUsecase(addItemUsecase, updateItemUsecase, removeItemUsecase, applyCouponPreviewUsecase, mergeGuestCartUsecase)
 	if err != nil {
 		logger.Error("cart.mutation_usecase.init_failed", slog.String("error", err.Error()))
 		os.Exit(1)

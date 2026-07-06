@@ -74,8 +74,12 @@ describe("CohortRetentionPage", () => {
     expect(latest.searchParams.get("user_type")).toBeNull();
     expect(latest.searchParams.get("interval")).toBe("week");
     expect(latest.searchParams.get("window")).toBe("4");
-    expect(latest.searchParams.get("from")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(latest.searchParams.get("to")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(latest.searchParams.get("from")).toMatch(
+      /^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$/
+    );
+    expect(latest.searchParams.get("to")).toMatch(
+      /^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$/
+    );
   });
 
   it("updates window options when the interval changes", async () => {

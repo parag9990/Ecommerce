@@ -80,6 +80,18 @@ func TestServiceRejectsQueryPageSizeRange(t *testing.T) {
 	assertValidationError(t, err, http.StatusBadRequest, "page_size", "range")
 }
 
+func TestServiceAcceptsSupportedSearchSorts(t *testing.T) {
+	service := NewService(testSchemas(), Options{Enabled: true}, nil)
+	route := testRoute("search.products", http.MethodGet, "/api/v1/search", "SearchRequest")
+
+	for _, sort := range []string{"popular", "rating_desc"} {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/search?sort="+sort, nil)
+		if _, err := service.Validate(httptest.NewRecorder(), req, route); err != nil {
+			t.Fatalf("sort %q should be valid, got %+v", sort, err)
+		}
+	}
+}
+
 func TestServiceRejectsInvalidPathID(t *testing.T) {
 	service := NewService(testSchemas(), Options{Enabled: true}, nil)
 	route := testRoute("product.detail", http.MethodGet, "/api/v1/products/{product_id}", "IdPathRequest")
@@ -179,11 +191,18 @@ func testSchemas() map[string]domain.Schema {
 		},
 		"CheckoutRequest": {
 			Type:     "object",
-			Required: []string{"address_id", "payment_provider", "idempotency_key"},
+			Required: []string{"address_id", "cart_id", "payment_provider", "idempotency_key"},
 			Properties: map[string]domain.Schema{
 				"address_id":       {Type: "string"},
+				"cart_id":          {Type: "string"},
 				"payment_provider": {Type: "string"},
 				"idempotency_key":  {Type: "string"},
+			},
+		},
+		"SearchRequest": {
+			Type: "object",
+			Properties: map[string]domain.Schema{
+				"sort": {Type: "string"},
 			},
 		},
 		"PaginationRequest": {

@@ -377,7 +377,7 @@ func TestHandleListSessionsParsesFiltersForAdmin(t *testing.T) {
 	}
 	handler := newTestHandlerWithAnalytics(t, &fakeEventIngestUsecase{}, &fakeSessionJourneyUsecase{}, &fakeSessionHeatmapUsecase{}, analytics, 64<<10)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/sessions?user_id=user_123&from=2026-05-22T00:00:00Z&to=2026-05-23T00:00:00Z&page=1&page_size=50&device_type=mobile", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/sessions?user_id=user_123&from=2026-05-22T00:00:00Z&to=2026-05-23T00:00:00Z&page=1&page_size=50&device_type=mobile&country=in&entry_page=/&q=sess", nil)
 	req.Header.Set("X-User-Roles", "admin")
 	rr := httptest.NewRecorder()
 
@@ -386,7 +386,11 @@ func TestHandleListSessionsParsesFiltersForAdmin(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rr.Code, rr.Body.String())
 	}
-	if analytics.sessionsInput.UserID != "user_123" || analytics.sessionsInput.DeviceType != "mobile" {
+	if analytics.sessionsInput.UserID != "user_123" ||
+		analytics.sessionsInput.DeviceType != "mobile" ||
+		analytics.sessionsInput.Country != "in" ||
+		analytics.sessionsInput.EntryPage != "/" ||
+		analytics.sessionsInput.Query != "sess" {
 		t.Fatalf("unexpected sessions input: %+v", analytics.sessionsInput)
 	}
 	var response SessionListResponse
@@ -415,7 +419,7 @@ func TestHandleGetFunnelReportReturnsStepsForAdmin(t *testing.T) {
 	}
 	handler := newTestHandlerWithAnalytics(t, &fakeEventIngestUsecase{}, &fakeSessionJourneyUsecase{}, &fakeSessionHeatmapUsecase{}, analytics, 64<<10)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/funnels?from=2026-05-22T00:00:00Z&to=2026-05-23T00:00:00Z&steps=product_view,add_to_cart", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/funnels?from=2026-05-22T00:00:00Z&to=2026-05-23T00:00:00Z&steps=product_view,add_to_cart&source=search&user_type=logged_in", nil)
 	req.Header.Set("X-User-Roles", "admin")
 	rr := httptest.NewRecorder()
 
@@ -424,7 +428,10 @@ func TestHandleGetFunnelReportReturnsStepsForAdmin(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rr.Code, rr.Body.String())
 	}
-	if len(analytics.funnelInput.Steps) != 2 || analytics.funnelInput.Steps[0] != "product_view" {
+	if len(analytics.funnelInput.Steps) != 2 ||
+		analytics.funnelInput.Steps[0] != "product_view" ||
+		analytics.funnelInput.Source != "search" ||
+		analytics.funnelInput.UserType != "logged_in" {
 		t.Fatalf("unexpected funnel input: %+v", analytics.funnelInput)
 	}
 	var response FunnelReportResponse

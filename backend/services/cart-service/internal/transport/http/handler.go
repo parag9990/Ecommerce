@@ -21,6 +21,7 @@ type SchemaUsecase interface {
 
 type CartUsecase interface {
 	AddItem(ctx context.Context, cmd usecase.AddItemCommand) (*domain.Cart, error)
+	UpdateItem(ctx context.Context, cmd usecase.UpdateItemCommand) (*domain.Cart, error)
 	RemoveItem(ctx context.Context, cmd usecase.RemoveItemCommand) (*domain.Cart, error)
 	ApplyCouponPreview(ctx context.Context, cmd usecase.ApplyCouponPreviewCommand) (*usecase.CouponPreviewResult, error)
 	MergeGuestCart(ctx context.Context, cmd usecase.MergeGuestCartCommand) (*domain.Cart, error)
@@ -61,8 +62,9 @@ func NewHandler(schemaUsecase SchemaUsecase, cartUsecase CartUsecase, logger *sl
 }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/api/v1/cart", h.handleGetCart)
 	mux.HandleFunc("/api/v1/cart/items", h.handleAddItem)
-	mux.HandleFunc("/api/v1/cart/items/", h.handleRemoveItem)
+	mux.HandleFunc("/api/v1/cart/items/", h.handleCartItem)
 	mux.HandleFunc("/api/v1/cart/coupons/preview", h.handleApplyCouponPreview)
 	mux.HandleFunc("/api/v1/cart/merge", h.handleMergeGuestCart)
 	mux.HandleFunc("/internal/v1/cart/schema", h.handleSchema)
@@ -89,6 +91,35 @@ func (h *Handler) handleGetCartForCheckout(w http.ResponseWriter, r *http.Reques
 	}
 	if cart == nil || cart.ID != strings.TrimSpace(r.PathValue("cart_id")) {
 		h.writeCartError(w, domain.ErrCartNotFound)
+		return
+	}
+	writeJSON(w, http.StatusOK, newCartResponse(cart))
+}
+
+func (h *Handler) handleGetCart(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	if h.cartReader == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "CART_READ_UNAVAILABLE", "cart read service is unavailable")
+		return
+	}
+	owner, err := cartOwnerFromRequest(r)
+	if err != nil {
+		h.writeCartError(w, err)
+		return
+	}
+	cart, err := h.cartReader.FindActiveByOwner(r.Context(), owner)
+	if errors.Is(err, domain.ErrCartNotFound) {
+		writeJSON(w, http.StatusOK, newEmptyCartResponse(owner))
+		return
+	}
+	if err != nil {
+		h.writeCartError(w, err)
+		return
+	}
+	if cart == nil || domain.IsActiveCartExpired(cart, time.Now().UTC()) {
+		writeJSON(w, http.StatusOK, newEmptyCartResponse(owner))
 		return
 	}
 	writeJSON(w, http.StatusOK, newCartResponse(cart))
@@ -171,14 +202,52 @@ func (h *Handler) handleAddItem(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, newCartResponse(cart))
 }
 
-func (h *Handler) handleRemoveItem(w http.ResponseWriter, r *http.Request) {
-	if !requireMethod(w, r, http.MethodDelete) {
+func (h *Handler) handleCartItem(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodPatch:
+		h.handleUpdateItem(w, r)
+	case http.MethodDelete:
+		h.handleRemoveItem(w, r)
+	default:
+		w.Header().Set("Allow", http.MethodPatch+", "+http.MethodDelete)
+		writeAPIError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+	}
+}
+
+func (h *Handler) handleUpdateItem(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	defer r.Body.Close()
+
+	var req updateItemRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "INVALID_JSON", "request body must be valid JSON")
 		return
 	}
 
-	itemID := strings.TrimPrefix(r.URL.Path, "/api/v1/cart/items/")
-	if strings.Contains(itemID, "/") {
-		writeAPIError(w, http.StatusNotFound, "NOT_FOUND", "cart item route was not found")
+	itemID, err := cartItemIDFromPath(r.URL.Path)
+	if err != nil {
+		h.writeCartError(w, err)
+		return
+	}
+	cart, err := h.cartUsecase.UpdateItem(r.Context(), usecase.UpdateItemCommand{
+		UserID:         ownerHeader(r, "X-User-ID"),
+		GuestSessionID: firstHeader(r, "X-Guest-Session-ID", "X-Guest-Session-Id", "X-Session-ID"),
+		ItemID:         itemID,
+		Quantity:       req.Quantity,
+	})
+	if err != nil {
+		h.writeCartError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, newCartResponse(cart))
+}
+
+func (h *Handler) handleRemoveItem(w http.ResponseWriter, r *http.Request) {
+	itemID, err := cartItemIDFromPath(r.URL.Path)
+	if err != nil {
+		h.writeCartError(w, err)
 		return
 	}
 
@@ -192,6 +261,14 @@ func (h *Handler) handleRemoveItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, newCartResponse(cart))
+}
+
+func cartItemIDFromPath(path string) (string, error) {
+	itemID := strings.TrimPrefix(path, "/api/v1/cart/items/")
+	if itemID == "" || strings.Contains(itemID, "/") {
+		return "", domain.ErrItemIDRequired
+	}
+	return itemID, nil
 }
 
 func (h *Handler) handleApplyCouponPreview(w http.ResponseWriter, r *http.Request) {
@@ -316,6 +393,8 @@ func (h *Handler) writeCartError(w http.ResponseWriter, err error) {
 		writeAPIError(w, http.StatusConflict, "PRODUCT_PRICE_INVALID", "product price is not available")
 	case errors.Is(err, domain.ErrCartItemLimitReached):
 		writeAPIError(w, http.StatusConflict, "CART_ITEM_LIMIT_REACHED", "cart item limit reached")
+	case errors.Is(err, domain.ErrCartItemNotFound):
+		writeAPIError(w, http.StatusNotFound, "CART_ITEM_NOT_FOUND", "cart item was not found")
 	case errors.Is(err, domain.ErrCartNotFound):
 		writeAPIError(w, http.StatusNotFound, "CART_NOT_FOUND", "active cart was not found for this shopper")
 	case errors.Is(err, domain.ErrCartNotActive):
@@ -365,6 +444,13 @@ func (h *Handler) writeMergeCartError(w http.ResponseWriter, err error) {
 
 func ownerHeader(r *http.Request, key string) string {
 	return r.Header.Get(key)
+}
+
+func cartOwnerFromRequest(r *http.Request) (domain.CartOwner, error) {
+	return domain.ResolveCartOwner(
+		ownerHeader(r, "X-User-ID"),
+		firstHeader(r, "X-Guest-Session-ID", "X-Guest-Session-Id", "X-Session-ID"),
+	)
 }
 
 func firstHeader(r *http.Request, keys ...string) string {

@@ -5,14 +5,20 @@ type PriceProps = {
 };
 
 function formatPrice(amount: number, currency: string) {
+  const majorAmount = amount / 100;
+
   try {
     return new Intl.NumberFormat('en-IN', {
       currency,
-      maximumFractionDigits: 0,
+      maximumFractionDigits: 2,
+      minimumFractionDigits: 2,
       style: 'currency',
-    }).format(amount);
+    }).format(majorAmount);
   } catch {
-    return `${currency} ${amount.toLocaleString('en-IN')}`;
+    return `${currency} ${majorAmount.toLocaleString('en-IN', {
+      maximumFractionDigits: 2,
+      minimumFractionDigits: 2,
+    })}`;
   }
 }
 

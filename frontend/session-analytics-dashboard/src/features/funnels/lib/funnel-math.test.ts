@@ -8,8 +8,8 @@ describe("normalizeFunnelReport", () => {
       steps: [
         { key: "product_view", count: 100 },
         { key: "add_to_cart", count: 40 },
-        { key: "checkout_started", count: 20 },
-        { key: "paid", count: 10 }
+        { key: "checkout_step", count: 20 },
+        { key: "payment_result", count: 10 }
       ]
     });
 
@@ -40,8 +40,8 @@ describe("normalizeFunnelReport", () => {
     expect(report.steps.map((step) => [step.key, step.count])).toEqual([
       ["product_view", 12],
       ["add_to_cart", 0],
-      ["checkout_started", 6],
-      ["paid", 3]
+      ["checkout_step", 6],
+      ["payment_result", 3]
     ]);
     expect(report.hasSmallCounts).toBe(true);
     expect(report.steps[1].dropoffFromPrevious).toBe(12);
@@ -51,7 +51,7 @@ describe("normalizeFunnelReport", () => {
     const report = normalizeFunnelReport({
       steps: [
         { key: "add_to_cart", count: 4 },
-        { key: "paid", count: 2 }
+        { key: "payment_result", count: 2 }
       ]
     });
 

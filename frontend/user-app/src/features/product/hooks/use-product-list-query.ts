@@ -6,6 +6,30 @@ import type { ProductFilters } from '../types';
 
 type ProductListMode = 'home' | 'search';
 
+function hasSearchOnlyFilters(filters: ProductFilters) {
+  return Boolean(
+    filters.q ||
+      filters.brand ||
+      filters.sellerId ||
+      filters.minPrice ||
+      filters.maxPrice ||
+      filters.minRating ||
+      filters.inStock,
+  );
+}
+
+function canUseCatalogList(filters: ProductFilters, mode: ProductListMode) {
+  if (mode === 'home') {
+    return true;
+  }
+
+  if (hasSearchOnlyFilters(filters)) {
+    return false;
+  }
+
+  return filters.sort !== 'popular';
+}
+
 export function useProductListQuery(
   filters: ProductFilters,
   mode: ProductListMode,
@@ -13,12 +37,13 @@ export function useProductListQuery(
   return useQuery({
     placeholderData: keepPreviousData,
     queryFn: ({ signal }) =>
-      mode === 'home'
+      canUseCatalogList(filters, mode)
         ? listProducts(
             {
               categoryId: filters.categoryId,
               page: filters.page,
               pageSize: filters.pageSize,
+              sort: filters.sort,
             },
             { signal },
           )

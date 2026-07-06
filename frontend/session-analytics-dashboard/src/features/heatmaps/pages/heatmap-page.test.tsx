@@ -60,7 +60,9 @@ describe("HeatmapPage", () => {
 
     await waitFor(() =>
       expect(
-        requestUrls.some((url) => url.searchParams.get("mode") === "scroll")
+        requestUrls.some(
+          (url) => url.searchParams.get("heatmap_type") === "scroll"
+        )
       ).toBe(true)
     );
 
@@ -68,7 +70,7 @@ describe("HeatmapPage", () => {
     expect(latest.pathname).toBe("/api/v1/analytics/heatmaps");
     expect(latest.searchParams.get("path")).toBe("/checkout");
     expect(latest.searchParams.get("device_type")).toBe("mobile");
-    expect(latest.searchParams.get("mode")).toBe("scroll");
+    expect(latest.searchParams.get("heatmap_type")).toBe("scroll");
     expect(latest.searchParams.get("from")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(latest.searchParams.get("to")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(await screen.findByText("Scroll reach")).toBeInTheDocument();

@@ -82,7 +82,7 @@ func NewReportsUsecase(repo ReportRepository, cfg ReportsConfig) (*ReportsUsecas
 }
 
 func (u *ReportsUsecase) Export(ctx context.Context, input ExportReportInput) (domain.ReportExport, error) {
-	if err := requireAnyRole(input.Actor, "admin", "operations_admin", "superadmin"); err != nil {
+	if err := requireAnyRole(input.Actor, analyticsAdminRoles...); err != nil {
 		return domain.ReportExport{}, err
 	}
 	reportType := domain.AnalyticsReportType(strings.TrimSpace(input.ReportType))
@@ -127,7 +127,7 @@ func reportDateLabel(raw string, fallback time.Time) string {
 }
 
 func (u *ReportsUsecase) ListSchedules(ctx context.Context, actor domain.Actor) ([]domain.ReportSchedule, error) {
-	if err := requireAnyRole(actor, "admin", "operations_admin", "superadmin"); err != nil {
+	if err := requireAnyRole(actor, analyticsAdminRoles...); err != nil {
 		return nil, err
 	}
 	items, err := u.repo.ListSchedules(ctx, u.cfg.ListLimit)
@@ -141,7 +141,7 @@ func (u *ReportsUsecase) ListSchedules(ctx context.Context, actor domain.Actor) 
 }
 
 func (u *ReportsUsecase) CreateSchedule(ctx context.Context, actor domain.Actor, input domain.CreateReportSchedule, requestID string) (domain.ReportSchedule, error) {
-	if err := requireAnyRole(actor, "admin", "operations_admin", "superadmin"); err != nil {
+	if err := requireAnyRole(actor, analyticsAdminRoles...); err != nil {
 		return domain.ReportSchedule{}, err
 	}
 	normalized, err := normalizeScheduleInput(input)
@@ -164,7 +164,7 @@ func (u *ReportsUsecase) CreateSchedule(ctx context.Context, actor domain.Actor,
 }
 
 func (u *ReportsUsecase) UpdateScheduleStatus(ctx context.Context, input UpdateReportScheduleStatusInput) (domain.ReportSchedule, error) {
-	if err := requireAnyRole(input.Actor, "admin", "operations_admin", "superadmin"); err != nil {
+	if err := requireAnyRole(input.Actor, analyticsAdminRoles...); err != nil {
 		return domain.ReportSchedule{}, err
 	}
 	id := strings.TrimSpace(input.ID)
@@ -197,7 +197,7 @@ func (u *ReportsUsecase) UpdateScheduleStatus(ctx context.Context, input UpdateR
 }
 
 func (u *ReportsUsecase) DeleteSchedule(ctx context.Context, actor domain.Actor, id string, requestID string) error {
-	if err := requireAnyRole(actor, "admin", "operations_admin", "superadmin"); err != nil {
+	if err := requireAnyRole(actor, analyticsAdminRoles...); err != nil {
 		return err
 	}
 	id = strings.TrimSpace(id)

@@ -30,8 +30,8 @@ export function useWishlistMutations() {
 
   const moveToCart = useMutation({
     mutationFn: (productId: string) => moveWishlistItemToCart(productId),
-    onSuccess: (cart) => {
-      queryClient.setQueryData(queryKeys.cart.detail(), cart);
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.cart.all });
       void queryClient.invalidateQueries({ queryKey: queryKeys.wishlist.all });
     },
   });

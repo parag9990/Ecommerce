@@ -50,11 +50,21 @@ func TestAnalyticsUsecaseListSessionsUsesDefaults(t *testing.T) {
 	}
 	uc.WithClock(fixedClock{now: now})
 
-	out, err := uc.ListSessions(context.Background(), ListSessionsInput{DeviceType: string(domain.DeviceTypeDesktop)})
+	out, err := uc.ListSessions(context.Background(), ListSessionsInput{
+		Country:    "in",
+		DeviceType: string(domain.DeviceTypeDesktop),
+		EntryPage:  "/products",
+		Query:      "sess",
+	})
 	if err != nil {
 		t.Fatalf("list sessions: %v", err)
 	}
-	if repo.filter.Page != 1 || repo.filter.PageSize != 25 || repo.filter.DeviceType != domain.DeviceTypeDesktop {
+	if repo.filter.Page != 1 ||
+		repo.filter.PageSize != 25 ||
+		repo.filter.DeviceType != domain.DeviceTypeDesktop ||
+		repo.filter.Country != "IN" ||
+		repo.filter.EntryPage != "/products" ||
+		repo.filter.Query != "sess" {
 		t.Fatalf("unexpected filter: %+v", repo.filter)
 	}
 	if out.Total != 1 || len(out.Sessions) != 1 {
@@ -76,15 +86,20 @@ func TestAnalyticsUsecaseFunnelUsesAggregateFirst(t *testing.T) {
 	}
 
 	out, err := uc.GetFunnelReport(context.Background(), GetFunnelReportInput{
-		From:  from,
-		To:    from.Add(24 * time.Hour),
-		Steps: []string{"product_view", "add_to_cart"},
+		From:     from,
+		To:       from.Add(24 * time.Hour),
+		Steps:    []string{"product_view", "add_to_cart"},
+		Source:   "search",
+		UserType: "logged_in",
 	})
 	if err != nil {
 		t.Fatalf("get funnel: %v", err)
 	}
 	if agg.rawCalled {
 		t.Fatal("raw fallback should not be called when aggregate exists")
+	}
+	if agg.filter.Source != "search" || agg.filter.UserType != "logged_in" {
+		t.Fatalf("unexpected funnel filter: %+v", agg.filter)
 	}
 	if out.Source != "mongo_aggregate" || out.Steps[1].ConversionFromPrevious != 25 {
 		t.Fatalf("unexpected funnel output: %+v", out)

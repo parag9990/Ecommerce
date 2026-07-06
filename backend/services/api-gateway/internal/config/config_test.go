@@ -83,6 +83,18 @@ func TestConfigValidateRequiresPaymentProxyToken(t *testing.T) {
 	}
 }
 
+func TestConfigValidateRequiresSessionProxyToken(t *testing.T) {
+	cfg := validConfig(t)
+	cfg.SessionHTTPURL = "http://session-service:8086"
+	cfg.SessionHTTPTimeout = time.Second
+	cfg.SessionServiceAdminToken = "short"
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "SESSION_SERVICE_ADMIN_TOKEN or SESSION_ADMIN_TOKEN must be at least 32 characters") {
+		t.Fatalf("expected session admin token validation error, got %v", err)
+	}
+}
+
 func TestConfigLoadReadsGRPCSettings(t *testing.T) {
 	contractPath := writeTestContract(t)
 	t.Setenv("API_CONTRACT_PATH", contractPath)
@@ -148,6 +160,26 @@ func TestConfigLoadReadsPaymentHTTPTarget(t *testing.T) {
 	}
 	if cfg.PaymentInternalAPIToken != "payment-internal-token-at-least-32-chars" {
 		t.Fatalf("unexpected payment internal token %q", cfg.PaymentInternalAPIToken)
+	}
+}
+
+func TestConfigLoadReadsSessionHTTPTargetAndAdminToken(t *testing.T) {
+	contractPath := writeTestContract(t)
+	t.Setenv("API_CONTRACT_PATH", contractPath)
+	t.Setenv("SESSION_HTTP_URL", "http://session-service:8086")
+	t.Setenv("SESSION_HTTP_TIMEOUT", "2500ms")
+	t.Setenv("SESSION_SERVICE_ADMIN_TOKEN", "session-service-admin-token-at-least-32-chars")
+	setGRPCTargetEnv(t)
+
+	cfg, err := Load(context.Background())
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.SessionHTTPURL != "http://session-service:8086" || cfg.SessionHTTPTimeout != 2500*time.Millisecond {
+		t.Fatalf("unexpected session http config: url=%q timeout=%s", cfg.SessionHTTPURL, cfg.SessionHTTPTimeout)
+	}
+	if cfg.SessionServiceAdminToken != "session-service-admin-token-at-least-32-chars" {
+		t.Fatalf("unexpected session admin token %q", cfg.SessionServiceAdminToken)
 	}
 }
 
@@ -417,19 +449,20 @@ func writeTestContract(t *testing.T) string {
 func setGRPCTargetEnv(t *testing.T) {
 	t.Helper()
 	targets := map[string]string{
-		"AUTH_GRPC_ADDR":           "auth-service:9090",
-		"USER_GRPC_ADDR":           "user-service:9090",
-		"PRODUCT_GRPC_ADDR":        "product-service:9090",
-		"CART_GRPC_ADDR":           "cart-service:9090",
-		"WISHLIST_GRPC_ADDR":       "wishlist-service:9090",
-		"ORDER_GRPC_ADDR":          "order-service:9090",
-		"PAYMENT_GRPC_ADDR":        "payment-service:9090",
-		"SEARCH_GRPC_ADDR":         "search-service:9090",
-		"RECOMMENDATION_GRPC_ADDR": "recommendation-service:9090",
-		"CMS_GRPC_ADDR":            "cms-service:9090",
-		"SESSION_GRPC_ADDR":        "session-service:9090",
-		"NOTIFICATION_GRPC_ADDR":   "notification-service:9090",
-		"SUPERADMIN_GRPC_ADDR":     "superadmin-service:9090",
+		"AUTH_GRPC_ADDR":              "auth-service:9090",
+		"USER_GRPC_ADDR":              "user-service:9090",
+		"PRODUCT_GRPC_ADDR":           "product-service:9090",
+		"CART_GRPC_ADDR":              "cart-service:9090",
+		"WISHLIST_GRPC_ADDR":          "wishlist-service:9090",
+		"ORDER_GRPC_ADDR":             "order-service:9090",
+		"PAYMENT_GRPC_ADDR":           "payment-service:9090",
+		"SEARCH_GRPC_ADDR":            "search-service:9090",
+		"RECOMMENDATION_GRPC_ADDR":    "recommendation-service:9090",
+		"CMS_GRPC_ADDR":               "cms-service:9090",
+		"SESSION_GRPC_ADDR":           "session-service:9090",
+		"SESSION_SERVICE_ADMIN_TOKEN": "session-service-admin-token-at-least-32-chars",
+		"NOTIFICATION_GRPC_ADDR":      "notification-service:9090",
+		"SUPERADMIN_GRPC_ADDR":        "superadmin-service:9090",
 	}
 	for key, value := range targets {
 		t.Setenv(key, value)

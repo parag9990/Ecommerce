@@ -5,9 +5,11 @@ export type Money = {
 
 export type ProductVariant = {
   attributes?: Record<string, unknown> | undefined;
+  available_quantity?: number | undefined;
   price?: Money | undefined;
   sku: string;
   stock_quantity?: number | undefined;
+  variant_id?: string | undefined;
 };
 
 export type Product = {
@@ -50,11 +52,11 @@ export type AutocompleteResponse = {
 };
 
 export const productSortOptions = [
-  'popularity_score:desc',
-  'created_at:desc',
-  'price:asc',
-  'price:desc',
-  'rating:desc',
+  'popular',
+  'newest',
+  'price_asc',
+  'price_desc',
+  'rating_desc',
 ] as const;
 
 export type SortOption = (typeof productSortOptions)[number];

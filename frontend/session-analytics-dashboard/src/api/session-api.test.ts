@@ -35,33 +35,32 @@ describe("session analytics api", () => {
   it("fetches live metrics with date and segment query params", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({
-        activeUsersNow: 42,
-        averageSessionDurationSeconds: 245,
-        bounceRate: 41.2,
-        conversionRate: 3.8,
-        productViewToCartRate: 12.6,
-        sessionsToday: 1280
+        active_sessions: 17,
+        active_users: 42,
+        events_per_minute: "9.5",
+        measured_at: "2026-05-28T10:00:00.000Z",
+        window_seconds: 60
       })
     );
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(getLiveMetrics(request)).resolves.toEqual({
+      activeSessionsNow: 17,
       activeUsersNow: 42,
-      averageSessionDurationSeconds: 245,
-      bounceRate: 41.2,
-      conversionRate: 3.8,
-      productViewToCartRate: 12.6,
-      sessionsToday: 1280
+      eventsPerMinute: 9.5,
+      measuredAt: "2026-05-28T10:00:00.000Z",
+      windowSeconds: 60
     });
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const params = new URL(url, "http://localhost").searchParams;
     expect(url).toContain("/api/v1/analytics/live?");
-    expect(url).toContain("from=2026-05-22");
-    expect(url).toContain("to=2026-05-28");
-    expect(url).toContain("device_type=all");
-    expect(url).toContain("channel=all");
-    expect(url).toContain("source=all");
-    expect(url).toContain("user_type=all");
+    expect(params.get("from")).toBe("2026-05-22T00:00:00.000Z");
+    expect(params.get("to")).toBe("2026-05-29T00:00:00.000Z");
+    expect(params.has("device_type")).toBe(false);
+    expect(params.has("channel")).toBe(false);
+    expect(params.has("source")).toBe(false);
+    expect(params.has("user_type")).toBe(false);
     expect(init.credentials).toBe("include");
   });
 
@@ -71,12 +70,9 @@ describe("session analytics api", () => {
       vi.fn(async () =>
         jsonResponse({
           data: {
-            activeUsersNow: 1,
-            averageSessionDurationSeconds: 10,
-            bounceRate: 0,
-            conversionRate: 0,
-            productViewToCartRate: 0,
-            sessionsToday: 2
+            active_sessions: 2,
+            active_users: 1,
+            events_per_minute: 3
           }
         })
       )
@@ -84,7 +80,8 @@ describe("session analytics api", () => {
 
     await expect(getLiveMetrics(request)).resolves.toMatchObject({
       activeUsersNow: 1,
-      sessionsToday: 2
+      activeSessionsNow: 2,
+      eventsPerMinute: 3
     });
   });
 
@@ -96,8 +93,8 @@ describe("session analytics api", () => {
         steps: [
           { key: "product_view", count: 1000 },
           { key: "add_to_cart", sessions: "320" },
-          { key: "checkout_started", unique_sessions: 180 },
-          { key: "paid", count: 90 }
+          { key: "checkout_step", unique_sessions: 180 },
+          { key: "payment_result", count: 90 }
         ]
       })
     );
@@ -107,12 +104,12 @@ describe("session analytics api", () => {
       getFunnelReport({
         dateRange: request.dateRange,
         filters: {
-          channel: "web",
+          channel: "user_app_web",
           deviceType: "mobile",
           source: "paid",
           userType: "logged_in"
         },
-        steps: ["product_view", "add_to_cart", "checkout_started", "paid"]
+        steps: ["product_view", "add_to_cart", "checkout_step", "payment_result"]
       })
     ).resolves.toMatchObject({
       generatedAt: "2026-05-28T10:00:00.000Z",
@@ -120,8 +117,8 @@ describe("session analytics api", () => {
       steps: [
         { count: 1000, key: "product_view" },
         { key: "add_to_cart", sessions: 320 },
-        { key: "checkout_started", uniqueSessions: 180 },
-        { count: 90, key: "paid" }
+        { key: "checkout_step", uniqueSessions: 180 },
+        { count: 90, key: "payment_result" }
       ]
     });
 
@@ -129,14 +126,14 @@ describe("session analytics api", () => {
     const params = new URL(url, "http://localhost").searchParams;
 
     expect(url).toContain("/api/v1/analytics/funnels?");
-    expect(params.get("from")).toBe("2026-05-22");
-    expect(params.get("to")).toBe("2026-05-28");
+    expect(params.get("from")).toBe("2026-05-22T00:00:00.000Z");
+    expect(params.get("to")).toBe("2026-05-29T00:00:00.000Z");
     expect(params.get("device_type")).toBe("mobile");
-    expect(params.get("channel")).toBe("web");
+    expect(params.get("channel")).toBe("user_app_web");
     expect(params.get("source")).toBe("paid");
     expect(params.get("user_type")).toBe("logged_in");
     expect(params.get("steps")).toBe(
-      "product_view,add_to_cart,checkout_started,paid"
+      "product_view,add_to_cart,checkout_step,payment_result"
     );
     expect(init.credentials).toBe("include");
   });
@@ -197,7 +194,7 @@ describe("session analytics api", () => {
       getRetentionReport({
         dateRange: request.dateRange,
         filters: {
-          channel: "web",
+          channel: "user_app_web",
           deviceType: "mobile",
           source: "paid",
           userType: "logged_in"
@@ -242,12 +239,12 @@ describe("session analytics api", () => {
     const params = new URL(url, "http://localhost").searchParams;
 
     expect(url).toContain("/api/v1/analytics/retention?");
-    expect(params.get("from")).toBe("2026-05-22");
-    expect(params.get("to")).toBe("2026-05-28");
+    expect(params.get("from")).toBe("2026-05-22T00:00:00.000Z");
+    expect(params.get("to")).toBe("2026-05-29T00:00:00.000Z");
     expect(params.get("interval")).toBe("week");
     expect(params.get("window")).toBe("8");
     expect(params.get("device_type")).toBe("mobile");
-    expect(params.get("channel")).toBe("web");
+    expect(params.get("channel")).toBe("user_app_web");
     expect(params.get("source")).toBe("paid");
     expect(params.get("user_type")).toBe("logged_in");
     expect(init.credentials).toBe("include");
@@ -271,7 +268,7 @@ describe("session analytics api", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("fetches heatmap aggregates with path, device, range, and mode params", async () => {
+  it("fetches heatmap aggregates with path, device, range, and type params", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({
         average_scroll_depth: "64.5",
@@ -318,7 +315,7 @@ describe("session analytics api", () => {
     expect(params.get("device_type")).toBe("mobile");
     expect(params.get("from")).toBe("2026-05-22");
     expect(params.get("to")).toBe("2026-05-28");
-    expect(params.get("mode")).toBe("scroll");
+    expect(params.get("heatmap_type")).toBe("scroll");
     expect(init.credentials).toBe("include");
   });
 
@@ -393,7 +390,7 @@ describe("session analytics api", () => {
     expect(url).toContain("country=India");
     expect(url).toContain("entry_page=%2Fproducts");
     expect(url).toContain("q=anon_123");
-    expect(url).toContain("limit=25");
+    expect(url).toContain("page_size=25");
     expect(init.credentials).toBe("include");
   });
 
@@ -465,7 +462,7 @@ describe("session analytics api", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await exportAnalyticsReport({
-      channel: "web",
+      channel: "user_app_web",
       deviceType: "mobile",
       format: "csv",
       from: "2026-05-22",
@@ -489,7 +486,7 @@ describe("session analytics api", () => {
     expect(params.get("to")).toBe("2026-05-28");
     expect(params.get("timezone")).toBe("UTC");
     expect(params.get("device")).toBe("mobile");
-    expect(params.get("channel")).toBe("web");
+    expect(params.get("channel")).toBe("user_app_web");
     expect(params.get("source")).toBe("paid");
     expect(params.get("user_type")).toBe("logged_in");
     expect((init.headers as Headers).get("Accept")).toBe("text/csv");

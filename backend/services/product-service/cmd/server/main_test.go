@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"product-service/internal/domain"
+	"product-service/internal/usecase"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -71,5 +75,40 @@ func TestInternalGRPCAuth(t *testing.T) {
 	}
 	if _, err := interceptor(context.Background(), nil, publicInfo, handler); err != nil {
 		t.Fatalf("public method rejected: %v", err)
+	}
+}
+
+func TestWriteServiceErrorIncludesValidationDetails(t *testing.T) {
+	response := httptest.NewRecorder()
+	writeServiceError(response, &usecase.ServiceError{
+		Kind:    usecase.ErrorKindInvalidArgument,
+		Code:    usecase.ErrorCodeValidation,
+		Message: "validation failed",
+		Report: domain.ValidationReport{Issues: []domain.ValidationIssue{{
+			Code:     domain.CodeUnknownAttributeKey,
+			Field:    "attributes.neck_type",
+			Message:  "attribute is not allowed by category schema",
+			Severity: domain.IssueSeverityError,
+		}}},
+	})
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+
+	var body struct {
+		Error struct {
+			Code    string                   `json:"code"`
+			Details []domain.ValidationIssue `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Error.Code != usecase.ErrorCodeValidation {
+		t.Fatalf("code = %s, want %s", body.Error.Code, usecase.ErrorCodeValidation)
+	}
+	if len(body.Error.Details) != 1 || body.Error.Details[0].Field != "attributes.neck_type" {
+		t.Fatalf("details = %+v, want validation issue", body.Error.Details)
 	}
 }

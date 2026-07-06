@@ -27,6 +27,26 @@ func TestReportsUsecaseExportEscapesSpreadsheetFormulas(t *testing.T) {
 	}
 }
 
+func TestReportsUsecaseExportAllowsGatewayAdminRoles(t *testing.T) {
+	repo := &reportsRepoFake{table: domain.TabularReport{Headers: []string{"metric"}, Rows: [][]string{{"sessions"}}}}
+	service, err := NewReportsUsecase(repo, ReportsConfig{})
+	if err != nil {
+		t.Fatalf("new reports usecase: %v", err)
+	}
+
+	_, err = service.Export(context.Background(), ExportReportInput{
+		Actor:      domain.Actor{ID: "finance_1", Roles: []string{"finance_admin"}},
+		ReportType: "overview",
+		Format:     "csv",
+		From:       time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC),
+		To:         time.Date(2026, 5, 2, 0, 0, 0, 0, time.UTC),
+		Timezone:   "UTC",
+	})
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+}
+
 func TestReportsUsecaseCreatesValidatedWeeklySchedule(t *testing.T) {
 	repo := &reportsRepoFake{}
 	service, _ := NewReportsUsecase(repo, ReportsConfig{})

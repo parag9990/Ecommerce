@@ -29,6 +29,21 @@ func TestPrivacyUsecaseGetSettingsAddsPermissions(t *testing.T) {
 	}
 }
 
+func TestPrivacyUsecaseGetSettingsAllowsGatewayAdminRolesReadOnly(t *testing.T) {
+	uc := newTestPrivacyUsecase(t, &fakePrivacyRepo{}, nil)
+
+	settings, err := uc.GetPrivacySettings(context.Background(), domain.Actor{
+		ID:    "catalog_1",
+		Roles: []string{"catalog_admin"},
+	})
+	if err != nil {
+		t.Fatalf("GetPrivacySettings returned error: %v", err)
+	}
+	if settings.Permissions.CanUpdateMasking || settings.Permissions.CanRequestDeletion || settings.Permissions.CanUpdateRetention {
+		t.Fatalf("catalog admin should be read-only, got permissions %+v", settings.Permissions)
+	}
+}
+
 func TestPrivacyUsecaseUpdateRetentionRequiresSuperadminAndReason(t *testing.T) {
 	uc := newTestPrivacyUsecase(t, &fakePrivacyRepo{}, nil)
 

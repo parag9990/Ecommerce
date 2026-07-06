@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
@@ -320,6 +321,22 @@ func (r *MongoSessionRepository) ListSessions(ctx context.Context, filter domain
 	if normalized.Status != "" {
 		query = append(query, bson.E{Key: "status", Value: normalized.Status})
 	}
+	if normalized.Country != "" {
+		query = append(query, bson.E{Key: "geo.country", Value: normalized.Country})
+	}
+	if normalized.EntryPage != "" {
+		query = append(query, bson.E{Key: "entry_page", Value: normalized.EntryPage})
+	}
+	if normalized.Query != "" {
+		pattern := primitiveRegex(normalized.Query)
+		query = append(query, bson.E{Key: "$or", Value: bson.A{
+			bson.D{{Key: "session_id", Value: pattern}},
+			bson.D{{Key: "anonymous_id", Value: pattern}},
+			bson.D{{Key: "user_id", Value: pattern}},
+			bson.D{{Key: "entry_page", Value: pattern}},
+			bson.D{{Key: "exit_page", Value: pattern}},
+		}})
+	}
 
 	total, err := r.collection.CountDocuments(ctx, query)
 	if err != nil {
@@ -350,6 +367,10 @@ func (r *MongoSessionRepository) ListSessions(ctx context.Context, filter domain
 		return nil, 0, fmt.Errorf("iterate sessions: %w", err)
 	}
 	return sessions, total, nil
+}
+
+func primitiveRegex(value string) bson.Regex {
+	return bson.Regex{Pattern: regexp.QuoteMeta(strings.TrimSpace(value)), Options: "i"}
 }
 
 func (r *MongoSessionRepository) MarkEnded(ctx context.Context, sessionID string, endedAt time.Time, reason domain.SessionEndReason) error {

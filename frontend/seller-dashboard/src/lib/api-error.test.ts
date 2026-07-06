@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   AppError,
+  getErrorDetailMessages,
   getRequestId,
   getSafeErrorMessage,
   isPermissionError,
@@ -43,5 +44,23 @@ describe("api error helpers", () => {
     expect(getSafeErrorMessage(new Error("boom"))).toBe(
       "Unexpected error aa gaya. Retry karein.",
     );
+  });
+
+  it("extracts validation detail messages", () => {
+    const error = new AppError({
+      status: 400,
+      code: "VALIDATION_ERROR",
+      message: "validation failed",
+      details: [
+        {
+          field: "attributes.neck_type",
+          message: "attribute is not allowed by category schema",
+        },
+      ],
+    });
+
+    expect(getErrorDetailMessages(error)).toEqual([
+      "attributes.neck_type: attribute is not allowed by category schema",
+    ]);
   });
 });
