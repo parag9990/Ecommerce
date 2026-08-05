@@ -50,8 +50,8 @@ services:
       test: ["CMD-SHELL", "mongosh --quiet --username local_admin --password local_mongo_password --authenticationDatabase admin --eval 'db.adminCommand(\"ping\")' localhost:27017/admin"]
       interval: 10s
       timeout: 5s
-      retries: 20
-      start_period: 20s
+      retries: 30
+      start_period: 90s
 
   init-mongodb-replica:
     image: mongo:8.0
@@ -59,12 +59,25 @@ services:
     networks: [ecommerce-local-network]
     depends_on:
       mongodb:
-        condition: service_healthy
+        condition: service_started
     entrypoint: ["/bin/bash", "-ec"]
     command:
       - |
         uri='mongodb://local_admin:local_mongo_password@mongodb:27017/admin?authSource=admin'
-        mongosh "$$uri" --quiet --eval 'try { rs.status() } catch (error) { printjson(rs.initiate({_id:"rs0",members:[{_id:0,host:"mongodb:27017"}]})) }'
+        until mongosh "$$uri" --quiet --eval 'db.adminCommand({ ping: 1 })' >/dev/null; do
+          echo "Waiting for MongoDB to accept authenticated connections..."
+          sleep 2
+        done
+        mongosh "$$uri" --quiet --eval '
+          try {
+            rs.status()
+          } catch (error) {
+            if (error.codeName !== "NotYetInitialized" && !/no replset config/.test(error.message)) {
+              throw error
+            }
+            printjson(rs.initiate({_id:"rs0",members:[{_id:0,host:"mongodb:27017"}]}))
+          }
+        '
         until mongosh "$$uri" --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)'; do sleep 2; done
 
   redis:
