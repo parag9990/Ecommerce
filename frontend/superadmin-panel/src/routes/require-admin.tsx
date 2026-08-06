@@ -4,7 +4,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { PermissionDenied } from "../components/ui/permission-denied";
 import { RouteLoader } from "../components/ui/route-loader";
 import { hasAnyRole, isAdminUser, type AdminRole } from "../lib/admin-rbac";
-import { useAuthStore } from "../stores/auth-store";
+import { useAdminRoles, useAuthStore } from "../stores/auth-store";
 
 export function RequireAdmin() {
   const location = useLocation();
@@ -34,7 +34,7 @@ export function RequireAdminRoles({
   roles: readonly AdminRole[];
   children: ReactNode;
 }) {
-  const userRoles = useAuthStore((state) => state.user?.roles ?? []);
+  const userRoles = useAdminRoles();
 
   if (!hasAnyRole(userRoles, roles)) {
     return <PermissionDenied compact />;

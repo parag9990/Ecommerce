@@ -1,0 +1,685 @@
+{
+  "info": {
+    "_postman_id": "fc9f9c25-201b-01bf-6e98-9be5c9d3d949",
+    "name": "Ecommerce Platform - user-service",
+    "description": "user-service REST endpoints from api/master-api.json. Use the base_url variable for the API Gateway, or change it to a direct service URL when appropriate.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "User Me Get",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{buyer_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: user.me_get\nService: user-service\nAuth: buyer\ngRPC: UserService.GetUser\nRequest schema: Empty\nResponse schema: UserProfile",
+        "url": {
+          "raw": "{{base_url}}/api/v1/me",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "me"
+          ],
+          "query": [],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "User Me Update",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{buyer_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: user.me_update\nService: user-service\nAuth: buyer\ngRPC: UserService.UpdateUserProfile\nRequest schema: UpdateUserProfileRequest\nResponse schema: UserProfile",
+        "url": {
+          "raw": "{{base_url}}/api/v1/me",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "me"
+          ],
+          "query": [],
+          "variable": []
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"full_name\": \"Postman Demo Buyer\",\n  \"phone\": \"+919876543210\",\n  \"avatar_url\": \"https://cdn.example.com/avatars/postman-demo.png\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "User Addresses List",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{buyer_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: user.addresses_list\nService: user-service\nAuth: buyer\ngRPC: UserService.ListUserAddresses\nRequest schema: PaginationRequest\nResponse schema: AddressListResponse\nOptional query parameters are included but disabled by default.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/me/addresses",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "me",
+            "addresses"
+          ],
+          "query": [
+            {
+              "key": "page",
+              "value": "1",
+              "description": "Optional PaginationRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "page_size",
+              "value": "20",
+              "description": "Optional PaginationRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "cursor",
+              "value": "",
+              "description": "Optional PaginationRequest field.",
+              "disabled": true
+            }
+          ],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "User Address Create",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{buyer_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: user.address_create\nService: user-service\nAuth: buyer\ngRPC: UserService.CreateAddress\nRequest schema: AddressInput\nResponse schema: Address",
+        "url": {
+          "raw": "{{base_url}}/api/v1/me/addresses",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "me",
+            "addresses"
+          ],
+          "query": [],
+          "variable": []
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Postman Demo\",\n  \"phone\": \"+919876543210\",\n  \"line1\": \"221B Baker Street\",\n  \"line2\": \"Near Central Market\",\n  \"city\": \"Delhi\",\n  \"state\": \"Delhi\",\n  \"postal_code\": \"110001\",\n  \"country\": \"IN\",\n  \"is_default\": true\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "User Address Update",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{buyer_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: user.address_update\nService: user-service\nAuth: buyer\ngRPC: UserService.UpdateAddress\nRequest schema: AddressInput\nResponse schema: Address",
+        "url": {
+          "raw": "{{base_url}}/api/v1/me/addresses/{{address_id}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "me",
+            "addresses",
+            "{{address_id}}"
+          ],
+          "query": [],
+          "variable": [
+            {
+              "key": "address_id",
+              "value": "{{address_id}}",
+              "description": "Path variable. Example: addr_local_demo"
+            }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Postman Demo\",\n  \"phone\": \"+919876543210\",\n  \"line1\": \"221B Baker Street\",\n  \"line2\": \"Near Central Market\",\n  \"city\": \"Delhi\",\n  \"state\": \"Delhi\",\n  \"postal_code\": \"110001\",\n  \"country\": \"IN\",\n  \"is_default\": true\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "User Address Delete",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{buyer_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: user.address_delete\nService: user-service\nAuth: buyer\ngRPC: UserService.DeleteAddress\nRequest schema: IdPathRequest\nResponse schema: SuccessResponse",
+        "url": {
+          "raw": "{{base_url}}/api/v1/me/addresses/{{address_id}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "me",
+            "addresses",
+            "{{address_id}}"
+          ],
+          "query": [],
+          "variable": [
+            {
+              "key": "address_id",
+              "value": "{{address_id}}",
+              "description": "Path variable. Example: addr_local_demo"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Seller Profile Get",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{seller_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: seller.profile_get\nService: user-service\nAuth: seller\ngRPC: UserService.GetSellerProfile\nRequest schema: Empty\nResponse schema: SellerProfile",
+        "url": {
+          "raw": "{{base_url}}/api/v1/sellers/me",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "sellers",
+            "me"
+          ],
+          "query": [],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Seller Profile Update",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{seller_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: seller.profile_update\nService: user-service\nAuth: seller\ngRPC: UserService.UpdateSellerProfile\nRequest schema: UpdateSellerProfileRequest\nResponse schema: SellerProfile",
+        "url": {
+          "raw": "{{base_url}}/api/v1/sellers/me",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "sellers",
+            "me"
+          ],
+          "query": [],
+          "variable": []
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"store_name\": \"Local Demo Store\",\n  \"display_name\": \"Local Demo Store\",\n  \"gst_number\": \"07ABCDE1234F1Z5\",\n  \"support_email\": \"seller.local@example.com\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "let data = {};",
+          "try { data = pm.response.json(); } catch (error) { data = {}; }",
+          "const payload = data.data && typeof data.data === 'object' ? data.data : data;",
+          "const tokens = payload.tokens || data.tokens || data;",
+          "function save(key, value) {",
+          "  if (value !== undefined && value !== null && String(value).trim() !== '') {",
+          "    pm.environment.set(key, value);",
+          "  }",
+          "}",
+          "if (tokens.access_token) {",
+          "  save('access_token', tokens.access_token);",
+          "  const user = payload.user || data.user || {};",
+          "  const roles = Array.isArray(user.roles) ? user.roles : [];",
+          "  if (roles.includes('seller')) save('seller_access_token', tokens.access_token);",
+          "  else if (roles.includes('superadmin')) save('superadmin_access_token', tokens.access_token);",
+          "  else if (roles.some((role) => ['admin', 'operations_admin', 'finance_admin', 'catalog_admin'].includes(role))) save('admin_access_token', tokens.access_token);",
+          "  else save('buyer_access_token', tokens.access_token);",
+          "}",
+          "if (tokens.refresh_token) save('refresh_token', tokens.refresh_token);",
+          "const keys = ['account_id','address_id','campaign_id','cart_id','category_id','challenge_id','coupon_id','event_id','item_id','order_id','payment_id','product_id','reconciliation_id','refund_id','request_id','resource_id','schedule_id','seller_id','session_id','synonym_id','user_id','variant_id'];",
+          "for (const key of keys) {",
+          "  save(key, payload[key] ?? data[key]);",
+          "}",
+          "if (payload.user && payload.user.user_id) save('user_id', payload.user.user_id);",
+          "if (payload.user && payload.user.seller_id) save('seller_id', payload.user.seller_id);",
+          "if (payload.tokens && payload.tokens.access_token) save('access_token', payload.tokens.access_token);"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "local_password",
+      "value": "LocalDemo#2026!",
+      "type": "string"
+    },
+    {
+      "key": "buyer_email",
+      "value": "buyer.local@example.com",
+      "type": "string"
+    },
+    {
+      "key": "seller_email",
+      "value": "seller.local@example.com",
+      "type": "string"
+    },
+    {
+      "key": "admin_email",
+      "value": "analytics.admin.local@example.com",
+      "type": "string"
+    },
+    {
+      "key": "superadmin_email",
+      "value": "superadmin.local@example.com",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "buyer_access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "seller_access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "admin_access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "superadmin_access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "payment_webhook_signature",
+      "value": "t=1775381400,v1=replace-with-local-signature",
+      "type": "string"
+    },
+    {
+      "key": "user_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "address_id",
+      "value": "addr_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "campaign_id",
+      "value": "cmp_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "coupon_id",
+      "value": "coupon_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "item_id",
+      "value": "item_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "key",
+      "value": "checkout.payment_providers",
+      "type": "string"
+    },
+    {
+      "key": "order_id",
+      "value": "order_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "payment_id",
+      "value": "pay_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "product_id",
+      "value": "prod_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "provider",
+      "value": "stripe_like",
+      "type": "string"
+    },
+    {
+      "key": "reconciliation_id",
+      "value": "recon_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "refund_id",
+      "value": "refund_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "schedule_id",
+      "value": "schedule_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "seller_id",
+      "value": "seller_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "session_id",
+      "value": "sess_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "synonym_id",
+      "value": "syn_mobile",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "user_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "account_id",
+      "value": "acct_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "admin_user_id",
+      "value": "admin_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "event_id",
+      "value": "evt_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "guest_cart_id",
+      "value": "guest_cart_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "request_id",
+      "value": "req_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "resource_id",
+      "value": "res_local_demo",
+      "type": "string"
+    }
+  ]
+}

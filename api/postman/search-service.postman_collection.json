@@ -1,0 +1,807 @@
+{
+  "info": {
+    "_postman_id": "6fa47df2-32b0-5bef-27dd-4274991351fa",
+    "name": "Ecommerce Platform - search-service",
+    "description": "search-service REST endpoints from api/master-api.json. Use the base_url variable for the API Gateway, or change it to a direct service URL when appropriate.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Search Products",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          },
+          {
+            "key": "X-Anonymous-ID",
+            "value": "anon_postman_001",
+            "description": "Optional anonymous analytics identity.",
+            "disabled": true
+          },
+          {
+            "key": "X-Session-ID",
+            "value": "{{session_id}}",
+            "description": "Optional session correlation id.",
+            "disabled": true
+          },
+          {
+            "key": "X-Client-Channel",
+            "value": "web",
+            "description": "Optional client channel.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        },
+        "description": "ID: search.products\nService: search-service\nAuth: public\ngRPC: SearchService.SearchProducts\nRequest schema: SearchRequest\nResponse schema: SearchResponse\nOptional query parameters are included but disabled by default.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/search",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "search"
+          ],
+          "query": [
+            {
+              "key": "q",
+              "value": "cotton t-shirt",
+              "description": "Optional SearchRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "filters",
+              "value": "{\"source\":\"postman\",\"note\":\"optional metadata\"}",
+              "description": "Optional SearchRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "filter",
+              "value": "brand:=Acme",
+              "description": "Optional SearchRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "brand",
+              "value": "Acme",
+              "description": "Optional SearchRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "category_id",
+              "value": "{{category_id}}",
+              "description": "Optional SearchRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "seller_id",
+              "value": "{{seller_id}}",
+              "description": "Optional SearchRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "min_price",
+              "value": "50000",
+              "description": "Optional SearchRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "max_price",
+              "value": "200000",
+              "description": "Optional SearchRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "min_rating",
+              "value": "4",
+              "description": "Optional SearchRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "in_stock",
+              "value": "example_in_stock",
+              "description": "Optional SearchRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "filters[brand]",
+              "value": "example_filters[brand]",
+              "description": "Optional SearchRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "filters[category_id]",
+              "value": "{{filters[category_id]}}",
+              "description": "Optional SearchRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "filters[seller_id]",
+              "value": "{{filters[seller_id]}}",
+              "description": "Optional SearchRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "filters[min_price]",
+              "value": "example_filters[min_price]",
+              "description": "Optional SearchRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "filters[max_price]",
+              "value": "example_filters[max_price]",
+              "description": "Optional SearchRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "filters[min_rating]",
+              "value": "example_filters[min_rating]",
+              "description": "Optional SearchRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "filters[in_stock]",
+              "value": "example_filters[in_stock]",
+              "description": "Optional SearchRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "sort",
+              "value": "relevance",
+              "description": "Optional SearchRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "page",
+              "value": "1",
+              "description": "Optional SearchRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "page_size",
+              "value": "20",
+              "description": "Optional SearchRequest field.",
+              "disabled": true
+            }
+          ],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Search Autocomplete",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          },
+          {
+            "key": "X-Anonymous-ID",
+            "value": "anon_postman_001",
+            "description": "Optional anonymous analytics identity.",
+            "disabled": true
+          },
+          {
+            "key": "X-Session-ID",
+            "value": "{{session_id}}",
+            "description": "Optional session correlation id.",
+            "disabled": true
+          },
+          {
+            "key": "X-Client-Channel",
+            "value": "web",
+            "description": "Optional client channel.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        },
+        "description": "ID: search.autocomplete\nService: search-service\nAuth: public\ngRPC: SearchService.Autocomplete\nRequest schema: AutocompleteRequest\nResponse schema: AutocompleteResponse",
+        "url": {
+          "raw": "{{base_url}}/api/v1/search/autocomplete",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "search",
+            "autocomplete"
+          ],
+          "query": [
+            {
+              "key": "q",
+              "value": "cotton t-shirt",
+              "description": "Optional AutocompleteRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "limit",
+              "value": "10",
+              "description": "Optional AutocompleteRequest field.",
+              "disabled": false
+            }
+          ],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Admin Search Synonyms",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          },
+          {
+            "key": "X-Anonymous-ID",
+            "value": "anon_postman_001",
+            "description": "Optional anonymous analytics identity.",
+            "disabled": true
+          },
+          {
+            "key": "X-Session-ID",
+            "value": "{{session_id}}",
+            "description": "Optional session correlation id.",
+            "disabled": true
+          },
+          {
+            "key": "X-Client-Channel",
+            "value": "web",
+            "description": "Optional client channel.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.search_synonyms\nService: search-service\nAuth: admin\ngRPC: SearchService.ListSynonyms\nRequest schema: PaginationRequest\nResponse schema: SearchSynonymListResponse\nOptional query parameters are included but disabled by default.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/search/synonyms",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "search",
+            "synonyms"
+          ],
+          "query": [
+            {
+              "key": "page",
+              "value": "1",
+              "description": "Optional PaginationRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "page_size",
+              "value": "20",
+              "description": "Optional PaginationRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "cursor",
+              "value": "",
+              "description": "Optional PaginationRequest field.",
+              "disabled": true
+            }
+          ],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Admin Search Synonym Upsert",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          },
+          {
+            "key": "X-Anonymous-ID",
+            "value": "anon_postman_001",
+            "description": "Optional anonymous analytics identity.",
+            "disabled": true
+          },
+          {
+            "key": "X-Session-ID",
+            "value": "{{session_id}}",
+            "description": "Optional session correlation id.",
+            "disabled": true
+          },
+          {
+            "key": "X-Client-Channel",
+            "value": "web",
+            "description": "Optional client channel.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.search_synonym_upsert\nService: search-service\nAuth: admin\ngRPC: SearchService.CreateSynonym\nRequest schema: SearchSynonymUpsertInput\nResponse schema: SearchSynonym\nExample body includes required and optional fields used by the service handlers.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/search/synonyms",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "search",
+            "synonyms"
+          ],
+          "query": [],
+          "variable": []
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"root\": \"mobile\",\n  \"synonyms\": [\n    \"phone\",\n    \"smartphone\",\n    \"cellphone\"\n  ],\n  \"reason\": \"Improve local search matching from Postman.\",\n  \"version\": 1\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Admin Search Synonym Update",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          },
+          {
+            "key": "X-Anonymous-ID",
+            "value": "anon_postman_001",
+            "description": "Optional anonymous analytics identity.",
+            "disabled": true
+          },
+          {
+            "key": "X-Session-ID",
+            "value": "{{session_id}}",
+            "description": "Optional session correlation id.",
+            "disabled": true
+          },
+          {
+            "key": "X-Client-Channel",
+            "value": "web",
+            "description": "Optional client channel.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.search_synonym_update\nService: search-service\nAuth: admin\ngRPC: SearchService.UpdateSynonym\nRequest schema: SearchSynonymUpsertInput\nResponse schema: SearchSynonym\nExample body includes required and optional fields used by the service handlers.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/search/synonyms/{{synonym_id}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "search",
+            "synonyms",
+            "{{synonym_id}}"
+          ],
+          "query": [],
+          "variable": [
+            {
+              "key": "synonym_id",
+              "value": "{{synonym_id}}",
+              "description": "Path variable. Example: syn_mobile"
+            }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"root\": \"mobile\",\n  \"synonyms\": [\n    \"phone\",\n    \"smartphone\",\n    \"cellphone\"\n  ],\n  \"reason\": \"Improve local search matching from Postman.\",\n  \"version\": 1\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Admin Search Synonym Delete",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          },
+          {
+            "key": "X-Anonymous-ID",
+            "value": "anon_postman_001",
+            "description": "Optional anonymous analytics identity.",
+            "disabled": true
+          },
+          {
+            "key": "X-Session-ID",
+            "value": "{{session_id}}",
+            "description": "Optional session correlation id.",
+            "disabled": true
+          },
+          {
+            "key": "X-Client-Channel",
+            "value": "web",
+            "description": "Optional client channel.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.search_synonym_delete\nService: search-service\nAuth: admin\ngRPC: SearchService.DeleteSynonym\nRequest schema: ReasonRequest\nResponse schema: SuccessResponse\nExample body includes required and optional fields used by the service handlers.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/search/synonyms/{{synonym_id}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "search",
+            "synonyms",
+            "{{synonym_id}}"
+          ],
+          "query": [],
+          "variable": [
+            {
+              "key": "synonym_id",
+              "value": "{{synonym_id}}",
+              "description": "Path variable. Example: syn_mobile"
+            }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"reason\": \"Postman delete request.\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "let data = {};",
+          "try { data = pm.response.json(); } catch (error) { data = {}; }",
+          "const payload = data.data && typeof data.data === 'object' ? data.data : data;",
+          "const tokens = payload.tokens || data.tokens || data;",
+          "function save(key, value) {",
+          "  if (value !== undefined && value !== null && String(value).trim() !== '') {",
+          "    pm.environment.set(key, value);",
+          "  }",
+          "}",
+          "if (tokens.access_token) {",
+          "  save('access_token', tokens.access_token);",
+          "  const user = payload.user || data.user || {};",
+          "  const roles = Array.isArray(user.roles) ? user.roles : [];",
+          "  if (roles.includes('seller')) save('seller_access_token', tokens.access_token);",
+          "  else if (roles.includes('superadmin')) save('superadmin_access_token', tokens.access_token);",
+          "  else if (roles.some((role) => ['admin', 'operations_admin', 'finance_admin', 'catalog_admin'].includes(role))) save('admin_access_token', tokens.access_token);",
+          "  else save('buyer_access_token', tokens.access_token);",
+          "}",
+          "if (tokens.refresh_token) save('refresh_token', tokens.refresh_token);",
+          "const keys = ['account_id','address_id','campaign_id','cart_id','category_id','challenge_id','coupon_id','event_id','item_id','order_id','payment_id','product_id','reconciliation_id','refund_id','request_id','resource_id','schedule_id','seller_id','session_id','synonym_id','user_id','variant_id'];",
+          "for (const key of keys) {",
+          "  save(key, payload[key] ?? data[key]);",
+          "}",
+          "if (payload.user && payload.user.user_id) save('user_id', payload.user.user_id);",
+          "if (payload.user && payload.user.seller_id) save('seller_id', payload.user.seller_id);",
+          "if (payload.tokens && payload.tokens.access_token) save('access_token', payload.tokens.access_token);"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "local_password",
+      "value": "LocalDemo#2026!",
+      "type": "string"
+    },
+    {
+      "key": "buyer_email",
+      "value": "buyer.local@example.com",
+      "type": "string"
+    },
+    {
+      "key": "seller_email",
+      "value": "seller.local@example.com",
+      "type": "string"
+    },
+    {
+      "key": "admin_email",
+      "value": "analytics.admin.local@example.com",
+      "type": "string"
+    },
+    {
+      "key": "superadmin_email",
+      "value": "superadmin.local@example.com",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "buyer_access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "seller_access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "admin_access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "superadmin_access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "payment_webhook_signature",
+      "value": "t=1775381400,v1=replace-with-local-signature",
+      "type": "string"
+    },
+    {
+      "key": "search_url",
+      "value": "http://localhost:8085",
+      "type": "string"
+    },
+    {
+      "key": "address_id",
+      "value": "addr_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "campaign_id",
+      "value": "cmp_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "coupon_id",
+      "value": "coupon_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "item_id",
+      "value": "item_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "key",
+      "value": "checkout.payment_providers",
+      "type": "string"
+    },
+    {
+      "key": "order_id",
+      "value": "order_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "payment_id",
+      "value": "pay_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "product_id",
+      "value": "prod_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "provider",
+      "value": "stripe_like",
+      "type": "string"
+    },
+    {
+      "key": "reconciliation_id",
+      "value": "recon_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "refund_id",
+      "value": "refund_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "schedule_id",
+      "value": "schedule_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "seller_id",
+      "value": "seller_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "session_id",
+      "value": "sess_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "synonym_id",
+      "value": "syn_mobile",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "user_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "account_id",
+      "value": "acct_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "admin_user_id",
+      "value": "admin_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "event_id",
+      "value": "evt_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "guest_cart_id",
+      "value": "guest_cart_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "request_id",
+      "value": "req_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "resource_id",
+      "value": "res_local_demo",
+      "type": "string"
+    }
+  ]
+}

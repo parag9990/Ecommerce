@@ -4,10 +4,10 @@ import { NavLink } from "react-router-dom";
 import { adminMenu } from "../../config/admin-menu";
 import { cn } from "../../lib/classnames";
 import { filterAdminMenu } from "../../lib/admin-rbac";
-import { useAuthStore } from "../../stores/auth-store";
+import { useAdminRoles } from "../../stores/auth-store";
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
-  const roles = useAuthStore((state) => state.user?.roles ?? []);
+  const roles = useAdminRoles();
   const visibleMenu = filterAdminMenu(roles, adminMenu);
 
   return (

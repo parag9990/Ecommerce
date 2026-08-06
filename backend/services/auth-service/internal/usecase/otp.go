@@ -231,27 +231,69 @@ type VerifyOTPInput struct {
 	VerificationSource string
 }
 
+type VerifyOTPOutput struct {
+	ChallengeID string
+	AccountID   *string
+	Target      string
+	Channel     domain.OTPChannel
+	Purpose     domain.OTPPurpose
+}
+
 func (u *OTPUsecase) VerifyOTP(ctx context.Context, input VerifyOTPInput) error {
+	_, err := u.verifyOTP(ctx, input, nil)
+	return err
+}
+
+func (u *OTPUsecase) VerifyOTPForPurpose(ctx context.Context, input VerifyOTPInput, purpose domain.OTPPurpose) (VerifyOTPOutput, error) {
+	expectedPurpose, err := normalizeExpectedOTPPurpose(purpose)
+	if err != nil {
+		return VerifyOTPOutput{}, err
+	}
+	return u.verifyOTP(ctx, input, &expectedPurpose)
+}
+
+func (u *OTPUsecase) GetOTPChallengeForPurpose(ctx context.Context, challengeID string, purpose domain.OTPPurpose) (VerifyOTPOutput, error) {
+	challengeID = strings.TrimSpace(challengeID)
+	if !otpsec.ValidateChallengeID(challengeID) {
+		return VerifyOTPOutput{}, fmt.Errorf("%w: invalid otp challenge", domain.ErrInvalidOTPRequest)
+	}
+	expectedPurpose, err := normalizeExpectedOTPPurpose(purpose)
+	if err != nil {
+		return VerifyOTPOutput{}, err
+	}
+
+	now := u.clock.Now()
+	var output VerifyOTPOutput
+	err = u.challenges.MutateLockedOTPChallenge(ctx, challengeID, func(challenge domain.OTPChallenge) (domain.OTPChallengeMutation, error) {
+		if err := validateOTPChallengeState(challenge, now, &expectedPurpose); err != nil {
+			return domain.OTPChallengeMutation{}, err
+		}
+		output = verifyOTPOutputFromChallenge(challenge)
+		return domain.OTPChallengeMutation{}, nil
+	})
+	if err != nil {
+		return VerifyOTPOutput{}, u.handleOTPChallengeError(ctx, challengeID, err)
+	}
+
+	return output, nil
+}
+
+func (u *OTPUsecase) verifyOTP(ctx context.Context, input VerifyOTPInput, expectedPurpose *domain.OTPPurpose) (VerifyOTPOutput, error) {
 	challengeID := strings.TrimSpace(input.ChallengeID)
 	code := strings.TrimSpace(input.OTP)
 	if !otpsec.ValidateChallengeID(challengeID) || !otpsec.ValidateCode(code, u.policy.Length) {
-		return fmt.Errorf("%w: invalid otp verification request", domain.ErrInvalidOTPRequest)
+		return VerifyOTPOutput{}, fmt.Errorf("%w: invalid otp verification request", domain.ErrInvalidOTPRequest)
 	}
 
 	now := u.clock.Now()
 	if err := u.rates.MarkVerifyAttempt(ctx, challengeID, input.VerificationSource, now); err != nil {
-		return err
+		return VerifyOTPOutput{}, err
 	}
 
+	var output VerifyOTPOutput
 	err := u.challenges.MutateLockedOTPChallenge(ctx, challengeID, func(challenge domain.OTPChallenge) (domain.OTPChallengeMutation, error) {
-		if challenge.IsVerified() {
-			return domain.OTPChallengeMutation{}, domain.ErrOTPAlreadyUsed
-		}
-		if challenge.IsExpired(now) {
-			return domain.OTPChallengeMutation{}, domain.ErrOTPExpired
-		}
-		if challenge.AttemptsExhausted() {
-			return domain.OTPChallengeMutation{}, domain.ErrOTPAttemptsExceeded
+		if err := validateOTPChallengeState(challenge, now, expectedPurpose); err != nil {
+			return domain.OTPChallengeMutation{}, err
 		}
 
 		matched, err := u.hasher.Compare(challenge.ChallengeID, code, challenge.OTPHash)
@@ -262,6 +304,7 @@ func (u *OTPUsecase) VerifyOTP(ctx context.Context, input VerifyOTPInput) error 
 			return domain.OTPChallengeMutation{IncrementAttempts: true}, domain.ErrInvalidOTP
 		}
 
+		output = verifyOTPOutputFromChallenge(challenge)
 		verifiedAt := now.UTC()
 		mutation := domain.OTPChallengeMutation{
 			MarkVerifiedAt: &verifiedAt,
@@ -281,25 +324,67 @@ func (u *OTPUsecase) VerifyOTP(ctx context.Context, input VerifyOTPInput) error 
 		return mutation, nil
 	})
 	if err != nil {
-		if errors.Is(err, domain.ErrOTPChallengeNotFound) {
-			return domain.ErrInvalidOTP
-		}
-		if errors.Is(err, domain.ErrInvalidOTP) ||
-			errors.Is(err, domain.ErrOTPExpired) ||
-			errors.Is(err, domain.ErrOTPAlreadyUsed) ||
-			errors.Is(err, domain.ErrOTPAttemptsExceeded) {
-			u.logger.InfoContext(ctx, "auth.otp.verify_failed",
-				slog.String("challenge_id", challengeID),
-				slog.String("reason", otpFailureReason(err)),
-			)
-		}
-		return err
+		return VerifyOTPOutput{}, u.handleOTPChallengeError(ctx, challengeID, err)
 	}
 
 	u.logger.InfoContext(ctx, "auth.otp.verified",
 		slog.String("challenge_id", challengeID),
 	)
+	return output, nil
+}
+
+func normalizeExpectedOTPPurpose(purpose domain.OTPPurpose) (domain.OTPPurpose, error) {
+	expectedPurpose := domain.OTPPurpose(strings.TrimSpace(string(purpose)))
+	if !expectedPurpose.Valid() {
+		return "", fmt.Errorf("%w: unsupported otp purpose", domain.ErrInvalidOTPRequest)
+	}
+	return expectedPurpose, nil
+}
+
+func validateOTPChallengeState(challenge domain.OTPChallenge, now time.Time, expectedPurpose *domain.OTPPurpose) error {
+	if expectedPurpose != nil && challenge.Purpose != *expectedPurpose {
+		return domain.ErrInvalidOTP
+	}
+	if challenge.IsVerified() {
+		return domain.ErrOTPAlreadyUsed
+	}
+	if challenge.IsExpired(now) {
+		return domain.ErrOTPExpired
+	}
+	if challenge.AttemptsExhausted() {
+		return domain.ErrOTPAttemptsExceeded
+	}
 	return nil
+}
+
+func (u *OTPUsecase) handleOTPChallengeError(ctx context.Context, challengeID string, err error) error {
+	if errors.Is(err, domain.ErrOTPChallengeNotFound) {
+		return domain.ErrInvalidOTP
+	}
+	if errors.Is(err, domain.ErrInvalidOTP) ||
+		errors.Is(err, domain.ErrOTPExpired) ||
+		errors.Is(err, domain.ErrOTPAlreadyUsed) ||
+		errors.Is(err, domain.ErrOTPAttemptsExceeded) {
+		u.logger.InfoContext(ctx, "auth.otp.verify_failed",
+			slog.String("challenge_id", challengeID),
+			slog.String("reason", otpFailureReason(err)),
+		)
+	}
+	return err
+}
+
+func verifyOTPOutputFromChallenge(challenge domain.OTPChallenge) VerifyOTPOutput {
+	output := VerifyOTPOutput{
+		ChallengeID: challenge.ChallengeID,
+		Target:      challenge.Target,
+		Channel:     challenge.Channel,
+		Purpose:     challenge.Purpose,
+	}
+	if challenge.AccountID != nil {
+		accountID := *challenge.AccountID
+		output.AccountID = &accountID
+	}
+	return output
 }
 
 func otpFailureReason(err error) string {

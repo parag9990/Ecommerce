@@ -512,6 +512,100 @@ func TestCreatePasswordResetOTPStoresHashOnly(t *testing.T) {
 	}
 }
 
+func TestVerifyOTPForPurposeReturnsPasswordResetChallenge(t *testing.T) {
+	now := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
+	hasher, _ := otpsec.NewHasher("test-otp-pepper")
+	hash, _ := hasher.Hash("otp_chal_test123", "123456")
+	repo := &fakeOTPChallengeRepository{
+		challenge: domain.OTPChallenge{
+			ChallengeID: "otp_chal_test123",
+			Target:      "buyer@example.com",
+			Channel:     domain.OTPChannelEmail,
+			Purpose:     domain.OTPPurposePasswordReset,
+			OTPHash:     hash,
+			MaxAttempts: 5,
+			ExpiresAt:   now.Add(time.Minute),
+		},
+	}
+	uc := newTestOTPUsecase(t, repo, &fakeOTPRateRepository{}, &fakeOTPNotifier{}, now)
+
+	out, err := uc.VerifyOTPForPurpose(context.Background(), VerifyOTPInput{
+		ChallengeID:        "otp_chal_test123",
+		OTP:                "123456",
+		VerificationSource: "203.0.113.10",
+	}, domain.OTPPurposePasswordReset)
+	if err != nil {
+		t.Fatalf("VerifyOTPForPurpose() error = %v", err)
+	}
+	if out.Target != "buyer@example.com" || out.Purpose != domain.OTPPurposePasswordReset {
+		t.Fatalf("verified challenge = %+v", out)
+	}
+	if repo.verifiedAt == nil || !repo.verifiedAt.Equal(now) {
+		t.Fatalf("verified_at = %v", repo.verifiedAt)
+	}
+}
+
+func TestGetOTPChallengeForPurposeReturnsChallengeWithoutMarkingVerified(t *testing.T) {
+	now := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
+	hasher, _ := otpsec.NewHasher("test-otp-pepper")
+	hash, _ := hasher.Hash("otp_chal_test123", "123456")
+	accountID := "auth_123"
+	repo := &fakeOTPChallengeRepository{
+		challenge: domain.OTPChallenge{
+			ChallengeID: "otp_chal_test123",
+			AccountID:   &accountID,
+			Target:      "buyer@example.com",
+			Channel:     domain.OTPChannelEmail,
+			Purpose:     domain.OTPPurposePasswordReset,
+			OTPHash:     hash,
+			MaxAttempts: 5,
+			ExpiresAt:   now.Add(time.Minute),
+		},
+	}
+	uc := newTestOTPUsecase(t, repo, &fakeOTPRateRepository{}, &fakeOTPNotifier{}, now)
+
+	out, err := uc.GetOTPChallengeForPurpose(context.Background(), "otp_chal_test123", domain.OTPPurposePasswordReset)
+	if err != nil {
+		t.Fatalf("GetOTPChallengeForPurpose() error = %v", err)
+	}
+	if out.AccountID == nil || *out.AccountID != "auth_123" || out.Target != "buyer@example.com" {
+		t.Fatalf("challenge output = %+v", out)
+	}
+	if repo.verifiedAt != nil || repo.incremented {
+		t.Fatalf("challenge lookup mutated otp: verified_at=%v incremented=%v", repo.verifiedAt, repo.incremented)
+	}
+}
+
+func TestVerifyOTPForPurposeRejectsChallengeWithDifferentPurpose(t *testing.T) {
+	now := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
+	hasher, _ := otpsec.NewHasher("test-otp-pepper")
+	hash, _ := hasher.Hash("otp_chal_test123", "123456")
+	repo := &fakeOTPChallengeRepository{
+		challenge: domain.OTPChallenge{
+			ChallengeID: "otp_chal_test123",
+			Target:      "buyer@example.com",
+			Channel:     domain.OTPChannelEmail,
+			Purpose:     domain.OTPPurposeSignup,
+			OTPHash:     hash,
+			MaxAttempts: 5,
+			ExpiresAt:   now.Add(time.Minute),
+		},
+	}
+	uc := newTestOTPUsecase(t, repo, &fakeOTPRateRepository{}, &fakeOTPNotifier{}, now)
+
+	_, err := uc.VerifyOTPForPurpose(context.Background(), VerifyOTPInput{
+		ChallengeID:        "otp_chal_test123",
+		OTP:                "123456",
+		VerificationSource: "203.0.113.10",
+	}, domain.OTPPurposePasswordReset)
+	if !errors.Is(err, domain.ErrInvalidOTP) {
+		t.Fatalf("VerifyOTPForPurpose() error = %v, want invalid otp", err)
+	}
+	if repo.verifiedAt != nil || repo.incremented {
+		t.Fatalf("wrong-purpose challenge mutated: verified_at=%v incremented=%v", repo.verifiedAt, repo.incremented)
+	}
+}
+
 func TestCreateOTPChallengeRateLimitedDoesNotCreateOrDeliverCode(t *testing.T) {
 	now := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
 	repo := &fakeOTPChallengeRepository{}

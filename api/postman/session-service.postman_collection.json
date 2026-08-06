@@ -1,0 +1,1560 @@
+{
+  "info": {
+    "_postman_id": "cb16ddc6-6d1d-254d-5dca-7778d971a52a",
+    "name": "Ecommerce Platform - session-service",
+    "description": "session-service REST endpoints from api/master-api.json. Use the base_url variable for the API Gateway, or change it to a direct service URL when appropriate.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Session Ingest",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          },
+          {
+            "key": "X-Anonymous-ID",
+            "value": "anon_postman_001",
+            "description": "Optional anonymous analytics identity.",
+            "disabled": true
+          },
+          {
+            "key": "X-Session-ID",
+            "value": "{{session_id}}",
+            "description": "Optional session correlation id.",
+            "disabled": true
+          },
+          {
+            "key": "X-Client-Channel",
+            "value": "web",
+            "description": "Optional client channel.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        },
+        "description": "ID: session.ingest\nService: session-service\nAuth: public\ngRPC: SessionService.IngestEvent\nRequest schema: SessionEventInput\nResponse schema: AcceptedResponse\nExample body includes required and optional fields used by the service handlers.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/sessions/events",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "sessions",
+            "events"
+          ],
+          "query": [],
+          "variable": []
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"event_type\": \"product_viewed\",\n  \"anonymous_id\": \"anon_postman_001\",\n  \"session_id\": \"{{session_id}}\",\n  \"user_id\": \"{{user_id}}\",\n  \"occurred_at\": \"2026-08-06T09:30:00Z\",\n  \"path\": \"/products/{{product_id}}\",\n  \"properties\": {\n    \"product_id\": \"{{product_id}}\",\n    \"category_id\": \"{{category_id}}\",\n    \"source\": \"postman\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Analytics Live",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: analytics.live\nService: session-service\nAuth: admin\ngRPC: SessionService.GetLiveMetrics\nRequest schema: LiveMetricsRequest\nResponse schema: LiveMetricsResponse\nOptional query parameters are included but disabled by default.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/analytics/live",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "analytics",
+            "live"
+          ],
+          "query": [
+            {
+              "key": "from",
+              "value": "2026-08-01T00:00:00Z",
+              "description": "Optional LiveMetricsRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "to",
+              "value": "2026-08-06T23:59:59Z",
+              "description": "Optional LiveMetricsRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "device_type",
+              "value": "desktop",
+              "description": "Optional LiveMetricsRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "channel",
+              "value": "email",
+              "description": "Optional LiveMetricsRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "source",
+              "value": "postman",
+              "description": "Optional LiveMetricsRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "user_type",
+              "value": "returning",
+              "description": "Optional LiveMetricsRequest field.",
+              "disabled": true
+            }
+          ],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Analytics Sessions",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: analytics.sessions\nService: session-service\nAuth: admin\ngRPC: SessionService.ListSessions\nRequest schema: SessionListRequest\nResponse schema: SessionListResponse\nOptional query parameters are included but disabled by default.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/analytics/sessions",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "analytics",
+            "sessions"
+          ],
+          "query": [
+            {
+              "key": "page",
+              "value": "1",
+              "description": "Optional SessionListRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "page_size",
+              "value": "20",
+              "description": "Optional SessionListRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "cursor",
+              "value": "",
+              "description": "Optional SessionListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "user_id",
+              "value": "{{user_id}}",
+              "description": "Optional SessionListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "anonymous_id",
+              "value": "anon_postman_001",
+              "description": "Optional SessionListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "from",
+              "value": "2026-08-01T00:00:00Z",
+              "description": "Optional SessionListRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "to",
+              "value": "2026-08-06T23:59:59Z",
+              "description": "Optional SessionListRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "q",
+              "value": "cotton t-shirt",
+              "description": "Optional SessionListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "device_type",
+              "value": "desktop",
+              "description": "Optional SessionListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "channel",
+              "value": "email",
+              "description": "Optional SessionListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "status",
+              "value": "active",
+              "description": "Optional SessionListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "country",
+              "value": "IN",
+              "description": "Optional SessionListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "entry_page",
+              "value": "example_entry_page",
+              "description": "Optional SessionListRequest field.",
+              "disabled": true
+            }
+          ],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Analytics Journey",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: analytics.journey\nService: session-service\nAuth: admin\ngRPC: SessionService.GetJourney\nRequest schema: IdPathRequest\nResponse schema: JourneyResponse\nOptional query parameters are included but disabled by default.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/analytics/sessions/{{session_id}}/journey",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "analytics",
+            "sessions",
+            "{{session_id}}",
+            "journey"
+          ],
+          "query": [
+            {
+              "key": "id",
+              "value": "{{resource_id}}",
+              "description": "Optional IdPathRequest field.",
+              "disabled": true
+            }
+          ],
+          "variable": [
+            {
+              "key": "session_id",
+              "value": "{{session_id}}",
+              "description": "Path variable. Example: sess_local_demo"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Analytics Funnels",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: analytics.funnels\nService: session-service\nAuth: admin\ngRPC: SessionService.GetFunnelReport\nRequest schema: FunnelReportRequest\nResponse schema: FunnelReportResponse\nOptional query parameters are included but disabled by default.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/analytics/funnels",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "analytics",
+            "funnels"
+          ],
+          "query": [
+            {
+              "key": "from",
+              "value": "2026-08-01T00:00:00Z",
+              "description": "Optional FunnelReportRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "to",
+              "value": "2026-08-06T23:59:59Z",
+              "description": "Optional FunnelReportRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "steps",
+              "value": "example_steps",
+              "description": "Optional FunnelReportRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "device_type",
+              "value": "desktop",
+              "description": "Optional FunnelReportRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "channel",
+              "value": "email",
+              "description": "Optional FunnelReportRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "source",
+              "value": "postman",
+              "description": "Optional FunnelReportRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "user_type",
+              "value": "returning",
+              "description": "Optional FunnelReportRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "country",
+              "value": "IN",
+              "description": "Optional FunnelReportRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "campaign",
+              "value": "monsoon-sale",
+              "description": "Optional FunnelReportRequest field.",
+              "disabled": true
+            }
+          ],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Analytics Heatmaps",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: analytics.heatmaps\nService: session-service\nAuth: admin\ngRPC: SessionService.GetHeatmap\nRequest schema: HeatmapRequest\nResponse schema: HeatmapResponse\nOptional query parameters are included but disabled by default.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/analytics/heatmaps",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "analytics",
+            "heatmaps"
+          ],
+          "query": [
+            {
+              "key": "path",
+              "value": "/products/{{product_id}}",
+              "description": "Optional HeatmapRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "device_type",
+              "value": "desktop",
+              "description": "Optional HeatmapRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "heatmap_type",
+              "value": "click",
+              "description": "Optional HeatmapRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "viewport_bucket",
+              "value": "desktop_1440",
+              "description": "Optional HeatmapRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "from",
+              "value": "2026-08-01T00:00:00Z",
+              "description": "Optional HeatmapRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "to",
+              "value": "2026-08-06T23:59:59Z",
+              "description": "Optional HeatmapRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "limit",
+              "value": "10",
+              "description": "Optional HeatmapRequest field.",
+              "disabled": true
+            }
+          ],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Analytics Retention",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: analytics.retention\nService: session-service\nAuth: admin\ngRPC: SessionService.GetRetentionReport\nRequest schema: RetentionReportRequest\nResponse schema: RetentionReportResponse\nOptional query parameters are included but disabled by default.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/analytics/retention",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "analytics",
+            "retention"
+          ],
+          "query": [
+            {
+              "key": "from",
+              "value": "2026-08-01T00:00:00Z",
+              "description": "Required RetentionReportRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "to",
+              "value": "2026-08-06T23:59:59Z",
+              "description": "Required RetentionReportRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "interval",
+              "value": "day",
+              "description": "Required RetentionReportRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "window",
+              "value": "1",
+              "description": "Required RetentionReportRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "device_type",
+              "value": "desktop",
+              "description": "Optional RetentionReportRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "channel",
+              "value": "email",
+              "description": "Optional RetentionReportRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "source",
+              "value": "postman",
+              "description": "Optional RetentionReportRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "user_type",
+              "value": "returning",
+              "description": "Optional RetentionReportRequest field.",
+              "disabled": true
+            }
+          ],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Analytics Report Export",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: analytics.report_export\nService: session-service\nAuth: admin\ngRPC: SessionService.ExportAnalyticsReport\nRequest schema: AnalyticsReportExportRequest\nResponse schema: Empty\nOptional query parameters are included but disabled by default.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/analytics/reports/export",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "analytics",
+            "reports",
+            "export"
+          ],
+          "query": [
+            {
+              "key": "report_type",
+              "value": "overview",
+              "description": "Required AnalyticsReportExportRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "format",
+              "value": "csv",
+              "description": "Required AnalyticsReportExportRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "from",
+              "value": "2026-08-01T00:00:00Z",
+              "description": "Required AnalyticsReportExportRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "to",
+              "value": "2026-08-06T23:59:59Z",
+              "description": "Required AnalyticsReportExportRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "timezone",
+              "value": "Asia/Kolkata",
+              "description": "Required AnalyticsReportExportRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "device",
+              "value": "desktop",
+              "description": "Optional AnalyticsReportExportRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "channel",
+              "value": "email",
+              "description": "Optional AnalyticsReportExportRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "source",
+              "value": "postman",
+              "description": "Optional AnalyticsReportExportRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "country",
+              "value": "IN",
+              "description": "Optional AnalyticsReportExportRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "user_type",
+              "value": "returning",
+              "description": "Optional AnalyticsReportExportRequest field.",
+              "disabled": true
+            }
+          ],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Analytics Report Schedules List",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: analytics.report_schedules_list\nService: session-service\nAuth: admin\ngRPC: SessionService.ListReportSchedules\nRequest schema: Empty\nResponse schema: ReportSchedulesResponse",
+        "url": {
+          "raw": "{{base_url}}/api/v1/analytics/reports/schedules",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "analytics",
+            "reports",
+            "schedules"
+          ],
+          "query": [],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Analytics Report Schedules Create",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: analytics.report_schedules_create\nService: session-service\nAuth: admin\ngRPC: SessionService.CreateReportSchedule\nRequest schema: CreateReportScheduleRequest\nResponse schema: ReportSchedule\nExample body includes required and optional fields used by the service handlers.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/analytics/reports/schedules",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "analytics",
+            "reports",
+            "schedules"
+          ],
+          "query": [],
+          "variable": []
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Weekly funnel report\",\n  \"report_type\": \"funnel\",\n  \"format\": \"csv\",\n  \"frequency\": \"weekly\",\n  \"timezone\": \"Asia/Kolkata\",\n  \"time_of_day\": \"09:30\",\n  \"day_of_week\": \"monday\",\n  \"day_of_month\": 1,\n  \"recipients\": [\n    \"analytics.admin.local@example.com\"\n  ],\n  \"filters\": {\n    \"from\": \"2026-08-01T00:00:00Z\",\n    \"to\": \"2026-08-06T23:59:59Z\",\n    \"device_type\": \"desktop\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Analytics Report Schedules Update",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: analytics.report_schedules_update\nService: session-service\nAuth: admin\ngRPC: SessionService.UpdateReportSchedule\nRequest schema: UpdateReportScheduleRequest\nResponse schema: ReportSchedule",
+        "url": {
+          "raw": "{{base_url}}/api/v1/analytics/reports/schedules/{{schedule_id}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "analytics",
+            "reports",
+            "schedules",
+            "{{schedule_id}}"
+          ],
+          "query": [],
+          "variable": [
+            {
+              "key": "schedule_id",
+              "value": "{{schedule_id}}",
+              "description": "Path variable. Example: schedule_local_demo"
+            }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"active\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Analytics Report Schedules Delete",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: analytics.report_schedules_delete\nService: session-service\nAuth: admin\ngRPC: SessionService.DeleteReportSchedule\nRequest schema: IdPathRequest\nResponse schema: Empty",
+        "url": {
+          "raw": "{{base_url}}/api/v1/analytics/reports/schedules/{{schedule_id}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "analytics",
+            "reports",
+            "schedules",
+            "{{schedule_id}}"
+          ],
+          "query": [],
+          "variable": [
+            {
+              "key": "schedule_id",
+              "value": "{{schedule_id}}",
+              "description": "Path variable. Example: schedule_local_demo"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Analytics Privacy Settings Get",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: analytics.privacy_settings_get\nService: session-service\nAuth: admin\ngRPC: SessionService.GetPrivacySettings\nRequest schema: Empty\nResponse schema: PrivacySettingsResponse",
+        "url": {
+          "raw": "{{base_url}}/api/v1/analytics/privacy/settings",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "analytics",
+            "privacy",
+            "settings"
+          ],
+          "query": [],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Analytics Privacy Settings Update",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: analytics.privacy_settings_update\nService: session-service\nAuth: admin\ngRPC: SessionService.UpdatePrivacySettings\nRequest schema: UpdatePrivacySettingsRequest\nResponse schema: PrivacySettingsResponse\nExample body includes required and optional fields used by the service handlers.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/analytics/privacy/settings",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "analytics",
+            "privacy",
+            "settings"
+          ],
+          "query": [],
+          "variable": []
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"masking\": {\n    \"userIdMode\": \"masked\",\n    \"anonymousIdMode\": \"masked\",\n    \"sessionIdMode\": \"masked\",\n    \"locationGranularity\": \"city\",\n    \"showSearchQueries\": true,\n    \"showIpHash\": false\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Analytics Privacy Retention Get",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: analytics.privacy_retention_get\nService: session-service\nAuth: admin\ngRPC: SessionService.GetRetentionPolicy\nRequest schema: Empty\nResponse schema: PrivacyRetentionSettings",
+        "url": {
+          "raw": "{{base_url}}/api/v1/analytics/privacy/retention",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "analytics",
+            "privacy",
+            "retention"
+          ],
+          "query": [],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Analytics Privacy Retention Update",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{superadmin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: analytics.privacy_retention_update\nService: session-service\nAuth: superadmin\ngRPC: SessionService.UpdateRetentionPolicy\nRequest schema: UpdatePrivacyRetentionRequest\nResponse schema: PrivacyRetentionSettings\nExample body includes required and optional fields used by the service handlers.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/analytics/privacy/retention",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "analytics",
+            "privacy",
+            "retention"
+          ],
+          "query": [],
+          "variable": []
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"rawEventsDays\": 30,\n  \"journeySummariesDays\": 90,\n  \"heatmapAggregatesDays\": 180,\n  \"analyticsAggregatesMonths\": 12,\n  \"activeSessionTtlMinutes\": 30,\n  \"deletionRequestLogDays\": 365,\n  \"reason\": \"Postman retention policy review.\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Analytics Privacy Deletion Preview",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: analytics.privacy_deletion_preview\nService: session-service\nAuth: admin\ngRPC: SessionService.PreviewSessionDataDeletion\nRequest schema: PrivacyDeletionTargetRequest\nResponse schema: PrivacyDeletionPreviewResponse\nExample body includes required and optional fields used by the service handlers.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/analytics/privacy/deletion-preview",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "analytics",
+            "privacy",
+            "deletion-preview"
+          ],
+          "query": [],
+          "variable": []
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"targetType\": \"user_id\",\n  \"targetValue\": \"{{user_id}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Analytics Privacy Deletion Create",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: analytics.privacy_deletion_create\nService: session-service\nAuth: admin\ngRPC: SessionService.CreateSessionDataDeletion\nRequest schema: CreatePrivacyDeletionRequest\nResponse schema: PrivacyDeletionRequest\nExample body includes required and optional fields used by the service handlers.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/analytics/privacy/deletion-requests",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "analytics",
+            "privacy",
+            "deletion-requests"
+          ],
+          "query": [],
+          "variable": []
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"targetType\": \"user_id\",\n  \"targetValue\": \"{{user_id}}\",\n  \"reason\": \"Customer requested analytics data deletion.\",\n  \"confirmed\": true\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Analytics Privacy Deletion List",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: analytics.privacy_deletion_list\nService: session-service\nAuth: admin\ngRPC: SessionService.ListSessionDataDeletions\nRequest schema: Empty\nResponse schema: PrivacyDeletionRequestsResponse",
+        "url": {
+          "raw": "{{base_url}}/api/v1/analytics/privacy/deletion-requests",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "analytics",
+            "privacy",
+            "deletion-requests"
+          ],
+          "query": [],
+          "variable": []
+        }
+      }
+    }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "let data = {};",
+          "try { data = pm.response.json(); } catch (error) { data = {}; }",
+          "const payload = data.data && typeof data.data === 'object' ? data.data : data;",
+          "const tokens = payload.tokens || data.tokens || data;",
+          "function save(key, value) {",
+          "  if (value !== undefined && value !== null && String(value).trim() !== '') {",
+          "    pm.environment.set(key, value);",
+          "  }",
+          "}",
+          "if (tokens.access_token) {",
+          "  save('access_token', tokens.access_token);",
+          "  const user = payload.user || data.user || {};",
+          "  const roles = Array.isArray(user.roles) ? user.roles : [];",
+          "  if (roles.includes('seller')) save('seller_access_token', tokens.access_token);",
+          "  else if (roles.includes('superadmin')) save('superadmin_access_token', tokens.access_token);",
+          "  else if (roles.some((role) => ['admin', 'operations_admin', 'finance_admin', 'catalog_admin'].includes(role))) save('admin_access_token', tokens.access_token);",
+          "  else save('buyer_access_token', tokens.access_token);",
+          "}",
+          "if (tokens.refresh_token) save('refresh_token', tokens.refresh_token);",
+          "const keys = ['account_id','address_id','campaign_id','cart_id','category_id','challenge_id','coupon_id','event_id','item_id','order_id','payment_id','product_id','reconciliation_id','refund_id','request_id','resource_id','schedule_id','seller_id','session_id','synonym_id','user_id','variant_id'];",
+          "for (const key of keys) {",
+          "  save(key, payload[key] ?? data[key]);",
+          "}",
+          "if (payload.user && payload.user.user_id) save('user_id', payload.user.user_id);",
+          "if (payload.user && payload.user.seller_id) save('seller_id', payload.user.seller_id);",
+          "if (payload.tokens && payload.tokens.access_token) save('access_token', payload.tokens.access_token);"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "local_password",
+      "value": "LocalDemo#2026!",
+      "type": "string"
+    },
+    {
+      "key": "buyer_email",
+      "value": "buyer.local@example.com",
+      "type": "string"
+    },
+    {
+      "key": "seller_email",
+      "value": "seller.local@example.com",
+      "type": "string"
+    },
+    {
+      "key": "admin_email",
+      "value": "analytics.admin.local@example.com",
+      "type": "string"
+    },
+    {
+      "key": "superadmin_email",
+      "value": "superadmin.local@example.com",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "buyer_access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "seller_access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "admin_access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "superadmin_access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "payment_webhook_signature",
+      "value": "t=1775381400,v1=replace-with-local-signature",
+      "type": "string"
+    },
+    {
+      "key": "session_url",
+      "value": "http://localhost:8086",
+      "type": "string"
+    },
+    {
+      "key": "address_id",
+      "value": "addr_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "campaign_id",
+      "value": "cmp_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "coupon_id",
+      "value": "coupon_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "item_id",
+      "value": "item_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "key",
+      "value": "checkout.payment_providers",
+      "type": "string"
+    },
+    {
+      "key": "order_id",
+      "value": "order_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "payment_id",
+      "value": "pay_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "product_id",
+      "value": "prod_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "provider",
+      "value": "stripe_like",
+      "type": "string"
+    },
+    {
+      "key": "reconciliation_id",
+      "value": "recon_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "refund_id",
+      "value": "refund_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "schedule_id",
+      "value": "schedule_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "seller_id",
+      "value": "seller_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "session_id",
+      "value": "sess_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "synonym_id",
+      "value": "syn_mobile",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "user_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "account_id",
+      "value": "acct_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "admin_user_id",
+      "value": "admin_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "event_id",
+      "value": "evt_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "guest_cart_id",
+      "value": "guest_cart_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "request_id",
+      "value": "req_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "resource_id",
+      "value": "res_local_demo",
+      "type": "string"
+    }
+  ]
+}

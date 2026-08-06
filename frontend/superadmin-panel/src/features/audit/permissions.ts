@@ -1,5 +1,5 @@
 import { hasAnyRole, type AdminRole } from "../../lib/admin-rbac";
-import { useAuthStore } from "../../stores/auth-store";
+import { useAdminRoles } from "../../stores/auth-store";
 
 export const AUDIT_LOG_VIEW_ROLES: readonly AdminRole[] = [
   "superadmin",
@@ -17,7 +17,7 @@ export function canExportAuditLogs(roles: readonly string[]): boolean {
 }
 
 export function useAuditPermissions() {
-  const roles = useAuthStore((state) => state.adminRoles());
+  const roles = useAdminRoles();
 
   return {
     roles,

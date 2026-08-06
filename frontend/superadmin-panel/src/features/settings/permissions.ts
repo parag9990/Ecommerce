@@ -1,5 +1,5 @@
 import { hasAnyRole, type AdminRole } from "../../lib/admin-rbac";
-import { useAuthStore } from "../../stores/auth-store";
+import { useAdminRoles } from "../../stores/auth-store";
 
 export const PLATFORM_SETTINGS_VIEW_ROLES: readonly AdminRole[] = [
   "superadmin",
@@ -26,7 +26,7 @@ export function canManageSearchSynonyms(roles: readonly string[]): boolean {
 }
 
 export function useSettingsPermissions() {
-  const roles = useAuthStore((state) => state.adminRoles());
+  const roles = useAdminRoles();
 
   return {
     roles,

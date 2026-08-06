@@ -1,0 +1,1690 @@
+{
+  "info": {
+    "_postman_id": "c5b4a546-49cf-cdf7-b8f8-63d1bcf33773",
+    "name": "Ecommerce Platform - superadmin-service",
+    "description": "superadmin-service REST endpoints from api/master-api.json. Use the base_url variable for the API Gateway, or change it to a direct service URL when appropriate.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Admin Users",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.users\nService: superadmin-service\nAuth: admin\ngRPC: SuperadminService.ListUsersForAdmin\nRequest schema: AdminUserListRequest\nResponse schema: AdminUserListResponse\nOptional query parameters are included but disabled by default.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/users",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "users"
+          ],
+          "query": [
+            {
+              "key": "page",
+              "value": "1",
+              "description": "Optional AdminUserListRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "page_size",
+              "value": "20",
+              "description": "Optional AdminUserListRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "cursor",
+              "value": "",
+              "description": "Optional AdminUserListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "q",
+              "value": "cotton t-shirt",
+              "description": "Optional AdminUserListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "status",
+              "value": "active",
+              "description": "Optional AdminUserListRequest field.",
+              "disabled": true
+            }
+          ],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Admin User Status",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.user_status\nService: superadmin-service\nAuth: admin\ngRPC: SuperadminService.UpdateUserStatus\nRequest schema: StatusUpdateRequest\nResponse schema: SuccessResponse\nExample body includes required and optional fields used by the service handlers.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/users/{{user_id}}/status",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "users",
+            "{{user_id}}",
+            "status"
+          ],
+          "query": [],
+          "variable": [
+            {
+              "key": "user_id",
+              "value": "{{user_id}}",
+              "description": "Path variable. Example: user_local_demo"
+            }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"active\",\n  \"reason\": \"Postman admin status update.\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Admin Sellers",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.sellers\nService: superadmin-service\nAuth: admin\ngRPC: SuperadminService.ListSellersForAdmin\nRequest schema: AdminSellerListRequest\nResponse schema: AdminSellerListResponse\nOptional query parameters are included but disabled by default.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/sellers",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "sellers"
+          ],
+          "query": [
+            {
+              "key": "page",
+              "value": "1",
+              "description": "Optional AdminSellerListRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "page_size",
+              "value": "20",
+              "description": "Optional AdminSellerListRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "cursor",
+              "value": "",
+              "description": "Optional AdminSellerListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "q",
+              "value": "cotton t-shirt",
+              "description": "Optional AdminSellerListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "status",
+              "value": "active",
+              "description": "Optional AdminSellerListRequest field.",
+              "disabled": true
+            }
+          ],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Admin Seller Status",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.seller_status\nService: superadmin-service\nAuth: admin\ngRPC: SuperadminService.UpdateSellerStatus\nRequest schema: StatusUpdateRequest\nResponse schema: SuccessResponse\nExample body includes required and optional fields used by the service handlers.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/sellers/{{seller_id}}/status",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "sellers",
+            "{{seller_id}}",
+            "status"
+          ],
+          "query": [],
+          "variable": [
+            {
+              "key": "seller_id",
+              "value": "{{seller_id}}",
+              "description": "Path variable. Example: seller_local_demo"
+            }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"active\",\n  \"reason\": \"Postman admin status update.\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Admin Orders",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.orders\nService: superadmin-service\nAuth: admin\ngRPC: OrderService.ListOrders\nRequest schema: AdminOrderListRequest\nResponse schema: OrderListResponse\nOptional query parameters are included but disabled by default.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/orders",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "orders"
+          ],
+          "query": [
+            {
+              "key": "page",
+              "value": "1",
+              "description": "Optional AdminOrderListRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "page_size",
+              "value": "20",
+              "description": "Optional AdminOrderListRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "cursor",
+              "value": "",
+              "description": "Optional AdminOrderListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "status",
+              "value": "active",
+              "description": "Optional AdminOrderListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "user_id",
+              "value": "{{user_id}}",
+              "description": "Optional AdminOrderListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "seller_id",
+              "value": "{{seller_id}}",
+              "description": "Optional AdminOrderListRequest field.",
+              "disabled": true
+            }
+          ],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Admin Order Detail",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.order_detail\nService: superadmin-service\nAuth: admin\ngRPC: SuperadminService.GetOrderForAdmin\nRequest schema: PathOrderIDRequest\nResponse schema: AdminOrderDetailResponse",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/orders/{{order_id}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "orders",
+            "{{order_id}}"
+          ],
+          "query": [],
+          "variable": [
+            {
+              "key": "order_id",
+              "value": "{{order_id}}",
+              "description": "Path variable. Example: order_local_demo"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Admin Order Disputes",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.order_disputes\nService: superadmin-service\nAuth: admin\ngRPC: SuperadminService.ListOrderDisputes\nRequest schema: PathOrderIDRequest\nResponse schema: OrderDisputeListResponse",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/orders/{{order_id}}/disputes",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "orders",
+            "{{order_id}}",
+            "disputes"
+          ],
+          "query": [],
+          "variable": [
+            {
+              "key": "order_id",
+              "value": "{{order_id}}",
+              "description": "Path variable. Example: order_local_demo"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Admin Order Review",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.order_review\nService: superadmin-service\nAuth: admin\ngRPC: SuperadminService.MarkOrderManualReview\nRequest schema: ManualOrderReviewRequest\nResponse schema: AdminReviewTask\nExample body includes required and optional fields used by the service handlers.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/orders/{{order_id}}/review",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "orders",
+            "{{order_id}}",
+            "review"
+          ],
+          "query": [],
+          "variable": [
+            {
+              "key": "order_id",
+              "value": "{{order_id}}",
+              "description": "Path variable. Example: order_local_demo"
+            }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"category\": \"customer_dispute\",\n  \"reason\": \"Manual review opened from Postman.\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Admin Payments",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.payments\nService: superadmin-service\nAuth: admin\ngRPC: PaymentService.ListPayments\nRequest schema: AdminPaymentListRequest\nResponse schema: PaymentListResponse\nOptional query parameters are included but disabled by default.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/payments",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "payments"
+          ],
+          "query": [
+            {
+              "key": "page",
+              "value": "1",
+              "description": "Optional AdminPaymentListRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "page_size",
+              "value": "20",
+              "description": "Optional AdminPaymentListRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "cursor",
+              "value": "",
+              "description": "Optional AdminPaymentListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "status",
+              "value": "active",
+              "description": "Optional AdminPaymentListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "provider",
+              "value": "stripe_like",
+              "description": "Optional AdminPaymentListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "order_id",
+              "value": "{{order_id}}",
+              "description": "Optional AdminPaymentListRequest field.",
+              "disabled": true
+            }
+          ],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Admin Payment Detail",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.payment_detail\nService: superadmin-service\nAuth: admin\ngRPC: SuperadminService.GetPaymentForAdmin\nRequest schema: PathPaymentIDRequest\nResponse schema: AdminPaymentDetailResponse",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/payments/{{payment_id}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "payments",
+            "{{payment_id}}"
+          ],
+          "query": [],
+          "variable": [
+            {
+              "key": "payment_id",
+              "value": "{{payment_id}}",
+              "description": "Path variable. Example: pay_local_demo"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Admin Refunds",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.refunds\nService: superadmin-service\nAuth: admin\ngRPC: SuperadminService.ListRefunds\nRequest schema: RefundListRequest\nResponse schema: RefundListResponse\nOptional query parameters are included but disabled by default.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/refunds",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "refunds"
+          ],
+          "query": [
+            {
+              "key": "page",
+              "value": "1",
+              "description": "Optional RefundListRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "page_size",
+              "value": "20",
+              "description": "Optional RefundListRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "cursor",
+              "value": "",
+              "description": "Optional RefundListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "status",
+              "value": "active",
+              "description": "Optional RefundListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "payment_id",
+              "value": "{{payment_id}}",
+              "description": "Optional RefundListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "order_id",
+              "value": "{{order_id}}",
+              "description": "Optional RefundListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "provider",
+              "value": "stripe_like",
+              "description": "Optional RefundListRequest field.",
+              "disabled": true
+            }
+          ],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Admin Payment Reconciliations",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.payment_reconciliations\nService: superadmin-service\nAuth: admin\ngRPC: SuperadminService.ListPaymentReconciliations\nRequest schema: ReconciliationListRequest\nResponse schema: ReconciliationListResponse\nOptional query parameters are included but disabled by default.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/payment-reconciliations",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "payment-reconciliations"
+          ],
+          "query": [
+            {
+              "key": "page",
+              "value": "1",
+              "description": "Optional ReconciliationListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "page_size",
+              "value": "20",
+              "description": "Optional ReconciliationListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "cursor",
+              "value": "",
+              "description": "Optional ReconciliationListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "status",
+              "value": "active",
+              "description": "Optional ReconciliationListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "provider",
+              "value": "stripe_like",
+              "description": "Optional ReconciliationListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "severity",
+              "value": "example_severity",
+              "description": "Optional ReconciliationListRequest field.",
+              "disabled": true
+            }
+          ],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Admin Payment Reconciliation Detail",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.payment_reconciliation_detail\nService: superadmin-service\nAuth: admin\ngRPC: SuperadminService.GetPaymentReconciliation\nRequest schema: PathReconciliationIDRequest\nResponse schema: ReconciliationDetailResponse",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/payment-reconciliations/{{reconciliation_id}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "payment-reconciliations",
+            "{{reconciliation_id}}"
+          ],
+          "query": [],
+          "variable": [
+            {
+              "key": "reconciliation_id",
+              "value": "{{reconciliation_id}}",
+              "description": "Path variable. Example: recon_local_demo"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Admin Refund Review",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.refund_review\nService: superadmin-service\nAuth: admin\ngRPC: SuperadminService.ReviewRefund\nRequest schema: RefundReviewRequest\nResponse schema: Refund\nExample body includes required and optional fields used by the service handlers.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/refunds/{{refund_id}}/review",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "refunds",
+            "{{refund_id}}",
+            "review"
+          ],
+          "query": [],
+          "variable": [
+            {
+              "key": "refund_id",
+              "value": "{{refund_id}}",
+              "description": "Path variable. Example: refund_local_demo"
+            }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"decision\": \"approved\",\n  \"reason\": \"Refund reviewed and approved from Postman.\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Admin Order Manual Review",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.order_manual_review\nService: superadmin-service\nAuth: admin\ngRPC: SuperadminService.MarkOrderManualReview\nRequest schema: ManualOrderReviewRequest\nResponse schema: AdminReviewTask\nExample body includes required and optional fields used by the service handlers.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/orders/{{order_id}}/manual-review",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "orders",
+            "{{order_id}}",
+            "manual-review"
+          ],
+          "query": [],
+          "variable": [
+            {
+              "key": "order_id",
+              "value": "{{order_id}}",
+              "description": "Path variable. Example: order_local_demo"
+            }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"category\": \"customer_dispute\",\n  \"reason\": \"Manual review opened from Postman.\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Admin Order Dispute View",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.order_dispute_view\nService: superadmin-service\nAuth: admin\ngRPC: SuperadminService.GetOrderDisputeView\nRequest schema: PathOrderIDRequest\nResponse schema: OrderDisputeViewResponse",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/orders/{{order_id}}/dispute-view",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "orders",
+            "{{order_id}}",
+            "dispute-view"
+          ],
+          "query": [],
+          "variable": [
+            {
+              "key": "order_id",
+              "value": "{{order_id}}",
+              "description": "Path variable. Example: order_local_demo"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Admin Session Analytics Access",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.session_analytics_access\nService: superadmin-service\nAuth: admin\ngRPC: SuperadminService.GetSessionAnalyticsAccess\nRequest schema: Empty\nResponse schema: SessionDashboardAccessResponse",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/session-analytics/access",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "session-analytics",
+            "access"
+          ],
+          "query": [],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Admin Session Analytics Authorize",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.session_analytics_authorize\nService: superadmin-service\nAuth: admin\ngRPC: SuperadminService.AuthorizeSessionAnalytics\nRequest schema: AuthorizeSessionAnalyticsRequest\nResponse schema: AuthorizeSessionAnalyticsResponse\nExample body includes required and optional fields used by the service handlers.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/session-analytics/authorize",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "session-analytics",
+            "authorize"
+          ],
+          "query": [],
+          "variable": []
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"route\": \"analytics.live\",\n  \"include_risk\": true,\n  \"export\": false,\n  \"from\": \"2026-08-01T00:00:00Z\",\n  \"to\": \"2026-08-06T23:59:59Z\",\n  \"page\": 1,\n  \"page_size\": 20,\n  \"session_id\": \"{{session_id}}\",\n  \"path\": \"/products/{{product_id}}\",\n  \"device_type\": \"desktop\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Admin Audit Logs",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.audit_logs\nService: superadmin-service\nAuth: admin\ngRPC: SuperadminService.ListAuditLogs\nRequest schema: AuditLogListRequest\nResponse schema: AuditLogListResponse\nOptional query parameters are included but disabled by default.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/audit-logs",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "audit-logs"
+          ],
+          "query": [
+            {
+              "key": "page",
+              "value": "1",
+              "description": "Optional AuditLogListRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "page_size",
+              "value": "20",
+              "description": "Optional AuditLogListRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "cursor",
+              "value": "",
+              "description": "Optional AuditLogListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "actor_id",
+              "value": "{{admin_user_id}}",
+              "description": "Optional AuditLogListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "action",
+              "value": "example_action",
+              "description": "Optional AuditLogListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "resource_type",
+              "value": "platform_setting",
+              "description": "Optional AuditLogListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "resource_id",
+              "value": "{{resource_id}}",
+              "description": "Optional AuditLogListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "request_id",
+              "value": "{{request_id}}",
+              "description": "Optional AuditLogListRequest field.",
+              "disabled": true
+            },
+            {
+              "key": "from",
+              "value": "2026-08-01T00:00:00Z",
+              "description": "Optional AuditLogListRequest field.",
+              "disabled": false
+            },
+            {
+              "key": "to",
+              "value": "2026-08-06T23:59:59Z",
+              "description": "Optional AuditLogListRequest field.",
+              "disabled": false
+            }
+          ],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Admin Audit Logs Export",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{superadmin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.audit_logs_export\nService: superadmin-service\nAuth: superadmin\ngRPC: SuperadminService.ExportAuditLogs\nRequest schema: AuditLogExportRequest\nResponse schema: CSVExportResponse\nExample body includes required and optional fields used by the service handlers.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/audit-logs/export",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "audit-logs",
+            "export"
+          ],
+          "query": [],
+          "variable": []
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"filters\": {\n    \"actor_id\": \"{{admin_user_id}}\",\n    \"action\": \"settings.update\",\n    \"resource_type\": \"platform_setting\",\n    \"resource_id\": \"checkout.payment_providers\",\n    \"request_id\": \"{{request_id}}\",\n    \"from\": \"2026-08-01T00:00:00Z\",\n    \"to\": \"2026-08-06T23:59:59Z\",\n    \"page\": 1,\n    \"page_size\": 100,\n    \"cursor\": \"\"\n  },\n  \"reason\": \"Audit evidence export from Postman.\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Admin Settings",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{admin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.settings\nService: superadmin-service\nAuth: admin\ngRPC: SuperadminService.GetPlatformSettings\nRequest schema: Empty\nResponse schema: PlatformSettingsResponse",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/settings",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "settings"
+          ],
+          "query": [],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Admin Setting Update",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-{{$guid}}",
+            "description": "Optional for idempotent retries where supported.",
+            "disabled": true
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "req-{{$guid}}",
+            "description": "Optional trace id.",
+            "disabled": true
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{superadmin_access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "ID: admin.setting_update\nService: superadmin-service\nAuth: superadmin\ngRPC: SuperadminService.UpdatePlatformSetting\nRequest schema: PlatformSettingInput\nResponse schema: PlatformSetting\nExample body includes required and optional fields used by the service handlers.",
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/settings/{{key}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "settings",
+            "{{key}}"
+          ],
+          "query": [],
+          "variable": [
+            {
+              "key": "key",
+              "value": "{{key}}",
+              "description": "Path variable. Example: checkout.payment_providers"
+            }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"value\": {\n    \"enabled\": true,\n    \"providers\": [\n      \"stripe_like\",\n      \"razorpay_like\"\n    ]\n  },\n  \"reason\": \"Postman settings update.\",\n  \"version\": 1\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "let data = {};",
+          "try { data = pm.response.json(); } catch (error) { data = {}; }",
+          "const payload = data.data && typeof data.data === 'object' ? data.data : data;",
+          "const tokens = payload.tokens || data.tokens || data;",
+          "function save(key, value) {",
+          "  if (value !== undefined && value !== null && String(value).trim() !== '') {",
+          "    pm.environment.set(key, value);",
+          "  }",
+          "}",
+          "if (tokens.access_token) {",
+          "  save('access_token', tokens.access_token);",
+          "  const user = payload.user || data.user || {};",
+          "  const roles = Array.isArray(user.roles) ? user.roles : [];",
+          "  if (roles.includes('seller')) save('seller_access_token', tokens.access_token);",
+          "  else if (roles.includes('superadmin')) save('superadmin_access_token', tokens.access_token);",
+          "  else if (roles.some((role) => ['admin', 'operations_admin', 'finance_admin', 'catalog_admin'].includes(role))) save('admin_access_token', tokens.access_token);",
+          "  else save('buyer_access_token', tokens.access_token);",
+          "}",
+          "if (tokens.refresh_token) save('refresh_token', tokens.refresh_token);",
+          "const keys = ['account_id','address_id','campaign_id','cart_id','category_id','challenge_id','coupon_id','event_id','item_id','order_id','payment_id','product_id','reconciliation_id','refund_id','request_id','resource_id','schedule_id','seller_id','session_id','synonym_id','user_id','variant_id'];",
+          "for (const key of keys) {",
+          "  save(key, payload[key] ?? data[key]);",
+          "}",
+          "if (payload.user && payload.user.user_id) save('user_id', payload.user.user_id);",
+          "if (payload.user && payload.user.seller_id) save('seller_id', payload.user.seller_id);",
+          "if (payload.tokens && payload.tokens.access_token) save('access_token', payload.tokens.access_token);"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "local_password",
+      "value": "LocalDemo#2026!",
+      "type": "string"
+    },
+    {
+      "key": "buyer_email",
+      "value": "buyer.local@example.com",
+      "type": "string"
+    },
+    {
+      "key": "seller_email",
+      "value": "seller.local@example.com",
+      "type": "string"
+    },
+    {
+      "key": "admin_email",
+      "value": "analytics.admin.local@example.com",
+      "type": "string"
+    },
+    {
+      "key": "superadmin_email",
+      "value": "superadmin.local@example.com",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "buyer_access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "seller_access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "admin_access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "superadmin_access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "payment_webhook_signature",
+      "value": "t=1775381400,v1=replace-with-local-signature",
+      "type": "string"
+    },
+    {
+      "key": "superadmin_url",
+      "value": "http://localhost:8093",
+      "type": "string"
+    },
+    {
+      "key": "address_id",
+      "value": "addr_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "campaign_id",
+      "value": "cmp_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "coupon_id",
+      "value": "coupon_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "item_id",
+      "value": "item_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "key",
+      "value": "checkout.payment_providers",
+      "type": "string"
+    },
+    {
+      "key": "order_id",
+      "value": "order_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "payment_id",
+      "value": "pay_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "product_id",
+      "value": "prod_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "provider",
+      "value": "stripe_like",
+      "type": "string"
+    },
+    {
+      "key": "reconciliation_id",
+      "value": "recon_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "refund_id",
+      "value": "refund_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "schedule_id",
+      "value": "schedule_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "seller_id",
+      "value": "seller_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "session_id",
+      "value": "sess_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "synonym_id",
+      "value": "syn_mobile",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "user_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "account_id",
+      "value": "acct_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "admin_user_id",
+      "value": "admin_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "event_id",
+      "value": "evt_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "guest_cart_id",
+      "value": "guest_cart_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "request_id",
+      "value": "req_local_demo",
+      "type": "string"
+    },
+    {
+      "key": "resource_id",
+      "value": "res_local_demo",
+      "type": "string"
+    }
+  ]
+}

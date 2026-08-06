@@ -1,4 +1,4 @@
-import { useAuthStore } from "../stores/auth-store";
+import { useAdminRoles } from "../stores/auth-store";
 import type { AdminRole } from "./admin-rbac";
 
 export const USER_MANAGEMENT_ROLES: readonly AdminRole[] = [
@@ -29,7 +29,7 @@ export function canMutateUserStatus(roles: readonly string[]): boolean {
 }
 
 export function useCanMutateUserStatus(): boolean {
-  const roles = useAuthStore((state) => state.user?.roles ?? []);
+  const roles = useAdminRoles();
 
   return canMutateUserStatus(roles);
 }

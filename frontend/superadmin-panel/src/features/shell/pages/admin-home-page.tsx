@@ -1,9 +1,9 @@
 import { adminMenu } from "../../../config/admin-menu";
 import { filterAdminMenu } from "../../../lib/admin-rbac";
-import { useAuthStore } from "../../../stores/auth-store";
+import { useAdminRoles } from "../../../stores/auth-store";
 
 export function AdminHomePage() {
-  const roles = useAuthStore((state) => state.user?.roles ?? []);
+  const roles = useAdminRoles();
   const visibleMenu = filterAdminMenu(roles, adminMenu);
 
   return (

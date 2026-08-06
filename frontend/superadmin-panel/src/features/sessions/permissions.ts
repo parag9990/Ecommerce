@@ -1,5 +1,5 @@
 import { hasAnyRole, type AdminRole } from "../../lib/admin-rbac";
-import { useAuthStore } from "../../stores/auth-store";
+import { useAdminRoles } from "../../stores/auth-store";
 
 export const SESSION_VIEW_ROLES: readonly AdminRole[] = [
   "superadmin",
@@ -24,7 +24,7 @@ export function canViewUnmaskedSessionPii(_roles: readonly string[]): boolean {
 }
 
 export function useSessionPermissions() {
-  const roles = useAuthStore((state) => state.adminRoles());
+  const roles = useAdminRoles();
 
   return {
     roles,

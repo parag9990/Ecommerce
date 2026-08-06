@@ -1,5 +1,5 @@
 import type { AdminRole } from "../../lib/admin-rbac";
-import { useAuthStore } from "../../stores/auth-store";
+import { useAdminRoles } from "../../stores/auth-store";
 
 export const ORDER_VIEW_ROLES: readonly AdminRole[] = [
   "superadmin",
@@ -30,7 +30,7 @@ export function canReviewOrders(roles: readonly string[]): boolean {
 }
 
 export function useOrderPermissions() {
-  const roles = useAuthStore((state) => state.adminRoles());
+  const roles = useAdminRoles();
 
   return {
     roles,

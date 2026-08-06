@@ -18,7 +18,7 @@ docker compose up -d --build <service-name>
 
 | Service | Local URL | Docker service | Login | Password / key | Credential source | Verify |
 | --- | --- | --- | --- | --- | --- | --- |
-| User App Frontend | http://localhost:3000 | `user-app` | Not found | Not found | Buyer/user credentials are not seeded yet | http://localhost:3000/healthz |
+| User App Frontend | http://localhost:3000 | `user-app` | `buyer.local@example.com` | `LocalDemo#2026!` | `backend/services/auth-service/migrations/007_seed_local_buyer_account.up.sql`, `backend/services/user-service/migrations/005_seed_local_buyer_user.up.sql` | http://localhost:3000/healthz |
 | Seller Dashboard / CMS | http://localhost:3001 | `seller-dashboard` | `seller.local@example.com` | `LocalDemo#2026!` | `backend/services/auth-service/migrations/006_seed_local_access_accounts.up.sql`, `backend/services/user-service/migrations/004_seed_local_access_users.up.sql`, `backend/services/cms-service/migrations/008_seed_local_seller_staff.up.sql` | http://localhost:3001/healthz |
 | Session Analytics Dashboard | http://localhost:3002 | `session-analytics-dashboard` | `analytics.admin.local@example.com` | `LocalDemo#2026!` | `backend/services/auth-service/migrations/006_seed_local_access_accounts.up.sql`, `backend/services/user-service/migrations/004_seed_local_access_users.up.sql`, `backend/services/superadmin-service/migrations/007_seed_local_admin_users.up.sql` | http://localhost:3002/healthz |
 | Superadmin Panel | http://localhost:3003 | `superadmin-panel` | `superadmin.local@example.com` | `LocalDemo#2026!` | `backend/services/auth-service/migrations/006_seed_local_access_accounts.up.sql`, `backend/services/user-service/migrations/004_seed_local_access_users.up.sql`, `backend/services/superadmin-service/migrations/007_seed_local_admin_users.up.sql` | http://localhost:3003/healthz |
@@ -43,8 +43,9 @@ docker compose up -d --build <service-name>
 - Docker service: `user-app`
 - Depends on: `api-gateway`, `auth-service`, and the backend services needed by the user flow.
 - Login role/type: buyer or normal user.
-- Local credentials: Not found.
-- If login fails: confirm `api-gateway` is ready at http://localhost:8080/health/ready and `auth-service` is ready at http://localhost:8081/readyz. If no local user exists, add local-only seed credentials under `backend/services/auth-service/migrations/` and matching user records under `backend/services/user-service/migrations/`.
+- Local credentials: `buyer.local@example.com` / `LocalDemo#2026!`.
+- Seeded data: active auth account, active user profile, and buyer role assignment.
+- If login fails: confirm `api-gateway` is ready at http://localhost:8080/health/ready and `auth-service` is ready at http://localhost:8081/readyz. If the database existed before these seed migrations were updated, rerun the migration jobs with `docker compose up --force-recreate migrate-auth migrate-user`.
 
 ### Seller Dashboard / CMS
 
@@ -112,11 +113,10 @@ These human app credentials are local/demo only:
 
 | Area | Email | Password | Role/context |
 | --- | --- | --- | --- |
+| User App Frontend | `buyer.local@example.com` | `LocalDemo#2026!` | `buyer` |
 | Seller Dashboard / CMS | `seller.local@example.com` | `LocalDemo#2026!` | `seller`, `seller_local_demo` |
 | Session Analytics Dashboard | `analytics.admin.local@example.com` | `LocalDemo#2026!` | `operations_admin` |
 | Superadmin Panel | `superadmin.local@example.com` | `LocalDemo#2026!` | `superadmin` |
-
-Buyer/user app credentials are still not seeded.
 
 Do not put production credentials in these files. Use obvious local-only emails and passwords, and keep any seed marked as local/demo data.
 

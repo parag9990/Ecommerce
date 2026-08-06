@@ -8,6 +8,25 @@ afterEach(() => {
 });
 
 describe("apiFetch URL composition", () => {
+  it("falls back to the local API gateway when VITE_API_BASE_URL is not configured", async () => {
+    vi.unstubAllEnvs();
+
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiFetch<{ success: boolean }>("/api/v1/admin/sellers");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const requestUrl = new URL(String(fetchMock.mock.calls[0]?.[0]));
+    expect(requestUrl.origin).toBe("http://localhost:8080");
+    expect(requestUrl.pathname).toBe("/api/v1/admin/sellers");
+  });
+
   it("joins the gateway origin and a versioned API path exactly once", async () => {
     vi.stubEnv("VITE_API_BASE_URL", "https://gateway.example.test/");
 

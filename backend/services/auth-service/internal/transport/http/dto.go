@@ -32,6 +32,12 @@ type resetPasswordRequest struct {
 	NewPassword string `json:"new_password"`
 }
 
+type passwordResetWithOTPRequest struct {
+	ChallengeID string `json:"challenge_id"`
+	OTP         string `json:"otp"`
+	NewPassword string `json:"new_password"`
+}
+
 type signupRequest struct {
 	Email    string        `json:"email"`
 	Phone    string        `json:"phone,omitempty"`

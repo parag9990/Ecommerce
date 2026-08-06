@@ -30,6 +30,15 @@ function normalizeOptionalString(value: unknown) {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+function normalizeOptionalTrimmedString(value: unknown) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 function normalizeNumber(value: unknown) {
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? numberValue : 0;
@@ -47,12 +56,64 @@ function normalizeAttributes(value: unknown): Record<string, string> {
   );
 }
 
-function normalizeImages(value: unknown) {
+type NormalizedImage = {
+  isPrimary: boolean;
+  position: number;
+  status: string;
+  url: string;
+};
+
+function normalizeImage(value: unknown, index: number): NormalizedImage | undefined {
+  if (typeof value === "string") {
+    const url = normalizeOptionalTrimmedString(value);
+
+    return url
+      ? {
+          isPrimary: index === 0,
+          position: index,
+          status: "active",
+          url,
+        }
+      : undefined;
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const url = normalizeOptionalTrimmedString(candidate.url);
+  const position = Number(candidate.position);
+
+  if (!url) {
+    return undefined;
+  }
+
+  return {
+    isPrimary: candidate.is_primary === true || candidate.isPrimary === true,
+    position: Number.isFinite(position) ? position : index,
+    status: normalizeOptionalTrimmedString(candidate.status) ?? "active",
+    url,
+  };
+}
+
+function normalizeImages(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
-  return value.filter((image): image is string => typeof image === "string");
+  return value
+    .map(normalizeImage)
+    .filter((image): image is NormalizedImage => Boolean(image?.url))
+    .filter((image) => image.status === "active" || image.status === "")
+    .sort((left, right) => {
+      if (left.isPrimary !== right.isPrimary) {
+        return left.isPrimary ? -1 : 1;
+      }
+
+      return left.position - right.position;
+    })
+    .map((image) => image.url);
 }
 
 export function isProductStatus(value: unknown): value is ProductStatus {

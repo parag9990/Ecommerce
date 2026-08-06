@@ -15,6 +15,7 @@ import (
 type fakeCredentialRepository struct {
 	accountCredential domain.AccountCredential
 	findErr           error
+	findIdentifier    string
 
 	createdCredential domain.Credential
 	updatedAccountID  string
@@ -38,6 +39,7 @@ func (r *fakeCredentialRepository) CreateCredential(ctx context.Context, credent
 }
 
 func (r *fakeCredentialRepository) FindByIdentifier(ctx context.Context, identifier string) (domain.AccountCredential, error) {
+	r.findIdentifier = identifier
 	if r.findErr != nil {
 		return domain.AccountCredential{}, r.findErr
 	}
@@ -328,5 +330,66 @@ func TestResetPasswordStoresNewHashAndChangedAt(t *testing.T) {
 	}
 	if !repo.updatedChangedAt.Equal(now) || !summary.PasswordChangedAt.Equal(now) {
 		t.Fatalf("changed_at update = %v summary = %v", repo.updatedChangedAt, summary.PasswordChangedAt)
+	}
+}
+
+func TestResolvePasswordResetAccountFindsActiveCredential(t *testing.T) {
+	now := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
+	repo := &fakeCredentialRepository{
+		accountCredential: domain.AccountCredential{
+			AccountID:     "auth_123",
+			AccountStatus: domain.AccountStatusActive,
+		},
+	}
+	uc := newTestUsecase(t, repo, stubHasher{}, now)
+
+	account, err := uc.ResolvePasswordResetAccount(context.Background(), ResolvePasswordResetAccountInput{
+		Identifier: " Buyer@Example.COM ",
+	})
+	if err != nil {
+		t.Fatalf("ResolvePasswordResetAccount() error = %v", err)
+	}
+	if account.AccountID != "auth_123" || account.Identifier != "buyer@example.com" {
+		t.Fatalf("resolved account = %+v", account)
+	}
+	if repo.findIdentifier != "buyer@example.com" {
+		t.Fatalf("find identifier = %q", repo.findIdentifier)
+	}
+}
+
+func TestResolvePasswordResetAccountUnknownCredentialReturnsInvalidCredentials(t *testing.T) {
+	now := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
+	repo := &fakeCredentialRepository{findErr: domain.ErrCredentialNotFound}
+	uc := newTestUsecase(t, repo, stubHasher{}, now)
+
+	_, err := uc.ResolvePasswordResetAccount(context.Background(), ResolvePasswordResetAccountInput{
+		Identifier: "missing@example.com",
+	})
+	if !errors.Is(err, domain.ErrInvalidCredentials) {
+		t.Fatalf("ResolvePasswordResetAccount() error = %v, want invalid credentials", err)
+	}
+}
+
+func TestResetPasswordByIdentifierFindsAccountAndStoresNewHash(t *testing.T) {
+	now := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
+	repo := &fakeCredentialRepository{
+		accountCredential: domain.AccountCredential{AccountID: "auth_123"},
+	}
+	uc := newTestUsecase(t, repo, stubHasher{
+		hashResult: password.HashResult{EncodedHash: "new-password-hash", Algorithm: password.AlgorithmArgon2id},
+	}, now)
+
+	_, err := uc.ResetPasswordByIdentifier(context.Background(), ResetPasswordByIdentifierInput{
+		Identifier:  " Buyer@Example.COM ",
+		NewPassword: "new-correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("ResetPasswordByIdentifier() error = %v", err)
+	}
+	if repo.findIdentifier != "buyer@example.com" {
+		t.Fatalf("find identifier = %q", repo.findIdentifier)
+	}
+	if repo.updatedAccountID != "auth_123" || repo.updatedHash != "new-password-hash" {
+		t.Fatalf("update call = account %q hash %q", repo.updatedAccountID, repo.updatedHash)
 	}
 }

@@ -1,5 +1,5 @@
-import { useAuthStore } from "../../stores/auth-store";
 import type { AdminRole } from "../../lib/admin-rbac";
+import { useAdminRoles } from "../../stores/auth-store";
 
 export const SELLER_MANAGEMENT_ROLES: readonly AdminRole[] = [
   "superadmin",
@@ -55,7 +55,7 @@ export function canViewSellerCatalog(roles: readonly string[]): boolean {
 }
 
 export function useSellerPermissions() {
-  const roles = useAuthStore((state) => state.adminRoles());
+  const roles = useAdminRoles();
 
   return {
     roles,

@@ -21,7 +21,9 @@ const maxRequestBodyBytes = 1 << 20
 type PasswordUsecase interface {
 	CreateCredential(ctx context.Context, input usecase.CreateCredentialInput) (usecase.CredentialSummary, error)
 	VerifyPassword(ctx context.Context, input usecase.VerifyPasswordInput) (usecase.VerifyPasswordOutput, error)
+	ResolvePasswordResetAccount(ctx context.Context, input usecase.ResolvePasswordResetAccountInput) (usecase.PasswordResetAccount, error)
 	ResetPassword(ctx context.Context, input usecase.ResetPasswordInput) (usecase.CredentialSummary, error)
+	ResetPasswordByIdentifier(ctx context.Context, input usecase.ResetPasswordByIdentifierInput) (usecase.CredentialSummary, error)
 }
 
 type AuthUsecase interface {
@@ -42,7 +44,9 @@ type TokenUsecase interface {
 
 type OTPUsecase interface {
 	CreateOTPChallenge(ctx context.Context, input usecase.CreateOTPChallengeInput) (usecase.CreateOTPChallengeOutput, error)
+	GetOTPChallengeForPurpose(ctx context.Context, challengeID string, purpose domain.OTPPurpose) (usecase.VerifyOTPOutput, error)
 	VerifyOTP(ctx context.Context, input usecase.VerifyOTPInput) error
+	VerifyOTPForPurpose(ctx context.Context, input usecase.VerifyOTPInput, purpose domain.OTPPurpose) (usecase.VerifyOTPOutput, error)
 }
 
 type RoleUsecase interface {
@@ -103,6 +107,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/auth/otp/send", h.handleSendOTP)
 	mux.HandleFunc("/api/v1/auth/otp/verify", h.handleVerifyOTP)
 	mux.HandleFunc("/api/v1/auth/password/forgot", h.handleForgotPassword)
+	mux.HandleFunc("/api/v1/auth/password/reset", h.handlePublicResetPassword)
 	mux.HandleFunc("/internal/v1/auth/credentials", h.handleCreateCredential)
 	mux.HandleFunc("/internal/v1/auth/password/verify", h.handleVerifyPassword)
 	mux.HandleFunc("/internal/v1/auth/password/reset", h.handleResetPassword)
@@ -266,6 +271,63 @@ func (h *Handler) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, successResponse{Success: true})
 }
 
+func (h *Handler) handlePublicResetPassword(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+
+	var req passwordResetWithOTPRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+		return
+	}
+
+	challenge, err := h.otpUsecase.GetOTPChallengeForPurpose(r.Context(), req.ChallengeID, domain.OTPPurposePasswordReset)
+	if err != nil {
+		h.writeUsecaseError(w, r, err)
+		return
+	}
+
+	accountID := ""
+	if challenge.AccountID != nil {
+		accountID = strings.TrimSpace(*challenge.AccountID)
+	}
+	if accountID == "" {
+		account, err := h.passwordUsecase.ResolvePasswordResetAccount(r.Context(), usecase.ResolvePasswordResetAccountInput{
+			Identifier: challenge.Target,
+		})
+		if err != nil {
+			h.writeUsecaseError(w, r, err)
+			return
+		}
+		accountID = account.AccountID
+	}
+
+	verifiedChallenge, err := h.otpUsecase.VerifyOTPForPurpose(r.Context(), usecase.VerifyOTPInput{
+		ChallengeID:        req.ChallengeID,
+		OTP:                req.OTP,
+		VerificationSource: verificationSource(r),
+	}, domain.OTPPurposePasswordReset)
+	if err != nil {
+		h.writeUsecaseError(w, r, err)
+		return
+	}
+	if verifiedChallenge.AccountID != nil && strings.TrimSpace(*verifiedChallenge.AccountID) != "" {
+		accountID = strings.TrimSpace(*verifiedChallenge.AccountID)
+	}
+
+	_, err = h.passwordUsecase.ResetPassword(r.Context(), usecase.ResetPasswordInput{
+		AccountID:   accountID,
+		NewPassword: req.NewPassword,
+	})
+	if err != nil {
+		h.writeUsecaseError(w, r, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, successResponse{Success: true})
+}
+
 func (h *Handler) handleSendOTP(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodPost) {
 		return
@@ -315,10 +377,21 @@ func (h *Handler) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(channel) == "" {
 		channel = inferOTPChannel(target)
 	}
+
+	account, err := h.passwordUsecase.ResolvePasswordResetAccount(r.Context(), usecase.ResolvePasswordResetAccountInput{
+		Identifier: target,
+	})
+	if err != nil {
+		h.writeUsecaseError(w, r, err)
+		return
+	}
+
+	accountID := account.AccountID
 	out, err := h.otpUsecase.CreateOTPChallenge(r.Context(), usecase.CreateOTPChallengeInput{
-		Target:  target,
-		Channel: domain.OTPChannel(channel),
-		Purpose: domain.OTPPurposePasswordReset,
+		AccountID: &accountID,
+		Target:    account.Identifier,
+		Channel:   domain.OTPChannel(channel),
+		Purpose:   domain.OTPPurposePasswordReset,
 	})
 	if err != nil {
 		h.writeUsecaseError(w, r, err)

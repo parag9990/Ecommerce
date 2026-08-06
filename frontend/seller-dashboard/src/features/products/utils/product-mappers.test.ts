@@ -84,6 +84,7 @@ describe("product mappers", () => {
       attributes: {
         capacity: "350",
       },
+      images: ["https://cdn.example.com/mug.jpg"],
       variants: [
         {
           sku: "MUG-BLK",
@@ -95,5 +96,41 @@ describe("product mappers", () => {
         },
       ],
     });
+  });
+
+  it("normalizes object-shaped product images into ordered URLs", () => {
+    expect(
+      normalizeProduct({
+        product_id: "product-1",
+        seller_id: "seller-1",
+        title: "Marble Look Tray",
+        category_id: "cat-home-decor",
+        status: "published",
+        images: [
+          {
+            url: " https://cdn.example.com/tray-side.jpg ",
+            position: 2,
+            status: "active",
+          },
+          {
+            url: "https://cdn.example.com/tray-primary.jpg",
+            is_primary: true,
+            position: 3,
+            status: "active",
+          },
+          {
+            url: "https://cdn.example.com/tray-archived.jpg",
+            position: 1,
+            status: "inactive",
+          },
+          "https://cdn.example.com/tray-string.jpg",
+        ],
+        variants: [],
+      }).images,
+    ).toEqual([
+      "https://cdn.example.com/tray-primary.jpg",
+      "https://cdn.example.com/tray-side.jpg",
+      "https://cdn.example.com/tray-string.jpg",
+    ]);
   });
 });

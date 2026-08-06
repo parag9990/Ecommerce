@@ -1,5 +1,5 @@
 import type { AdminRole } from "../../lib/admin-rbac";
-import { useAuthStore } from "../../stores/auth-store";
+import { useAdminRoles } from "../../stores/auth-store";
 
 export const PAYMENT_VIEW_ROLES: readonly AdminRole[] = [
   "superadmin",
@@ -39,7 +39,7 @@ export function canExportPayments(roles: readonly string[]): boolean {
 }
 
 export function usePaymentPermissions() {
-  const roles = useAuthStore((state) => state.adminRoles());
+  const roles = useAdminRoles();
 
   return {
     roles,

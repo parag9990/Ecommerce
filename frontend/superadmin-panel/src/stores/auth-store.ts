@@ -1,8 +1,10 @@
+import { useMemo } from "react";
 import { create } from "zustand";
 
 import { normalizeAdminRoles, type AdminRole } from "../lib/admin-rbac";
 
 const SESSION_STORAGE_KEY = "superadmin.session";
+const EMPTY_USER_ROLES: readonly string[] = [];
 
 export type AdminUser = {
   id: string;
@@ -22,7 +24,6 @@ type AuthState = {
   user: AdminUser | null;
   expiresAt: string | null;
   isHydrated: boolean;
-  adminRoles: () => AdminRole[];
   hydrateSession: () => void;
   setSession: (session: AdminSession) => void;
   clearSession: () => void;
@@ -73,12 +74,11 @@ function clearStoredSession(): void {
   window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
 }
 
-export const useAuthStore = create<AuthState>((set, get) => ({
+export const useAuthStore = create<AuthState>((set) => ({
   accessToken: null,
   user: null,
   expiresAt: null,
   isHydrated: false,
-  adminRoles: () => normalizeAdminRoles(get().user?.roles ?? []),
   hydrateSession: () => {
     const storedSession = readStoredSession();
 
@@ -109,6 +109,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ accessToken: null, user: null, expiresAt: null, isHydrated: true });
   }
 }));
+
+export function useAdminRoles(): AdminRole[] {
+  const userRoles = useAuthStore((state) => state.user?.roles ?? EMPTY_USER_ROLES);
+
+  return useMemo(() => normalizeAdminRoles(userRoles), [userRoles]);
+}
 
 export function resetAuthStoreForTest(): void {
   clearStoredSession();
